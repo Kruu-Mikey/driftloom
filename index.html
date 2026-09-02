@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0C1618">
+<meta name="description" content="A procedural loop machine for relaxing, meditative and joyful nostalgic loops.">
+<title>Driftloom</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<main id="app">
+
+  <section class="readout" aria-label="Current loop">
+    <div class="readout-top">
+      <h1 id="loopName" class="loop-name">—</h1>
+      <button id="renameBtn" class="ghost tiny" title="Rename this loop">rename</button>
+    </div>
+    <p id="loopDetail" class="loop-detail">press play to begin</p>
+    <div id="playhead" class="playhead" aria-hidden="true"></div>
+  </section>
+
+  <section class="transport" aria-label="Transport">
+    <button id="playBtn" class="play" aria-pressed="false">
+      <span class="play-glyph" aria-hidden="true"></span>
+      <span id="playLabel">Play</span>
+    </button>
+    <button id="newBtn" class="key">New loop</button>
+    <button id="saveBtn" class="key">Save</button>
+  </section>
+
+  <section class="layers" aria-label="Layers">
+    <h2 class="section-head">Layers</h2>
+    <div id="layerList"></div>
+    <p class="hint">Re-roll one part and the rest stays exactly as it is.</p>
+  </section>
+
+  <section class="panel" aria-label="Drift">
+    <h2 class="section-head">Drift</h2>
+    <p class="hint">The loop keeps returning to itself, but never plays quite the same way twice.</p>
+    <label class="switch">
+      <input type="checkbox" id="driftToggle">
+      <span>Let the loop wander</span>
+    </label>
+    <label class="slider">
+      <span>How far it strays</span>
+      <input type="range" id="driftAmount" min="0.2" max="2.4" step="0.05" value="1">
+    </label>
+    <div class="row">
+      <span id="loopCounter" class="counter">pass 0</span>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Sound">
+    <h2 class="section-head">Sound</h2>
+    <label class="slider"><span>Tempo <b id="bpmVal">—</b></span>
+      <input type="range" id="bpm" min="52" max="104" step="1" value="74"></label>
+    <label class="slider"><span>Warmth</span>
+      <input type="range" id="warmth" min="0" max="1" step="0.01" value="0.6"></label>
+    <label class="slider"><span>Room</span>
+      <input type="range" id="space" min="0" max="1" step="0.01" value="0.5"></label>
+    <label class="slider"><span>Wobble</span>
+      <input type="range" id="wobble" min="0" max="1" step="0.01" value="0.4"></label>
+    <label class="slider"><span>Volume</span>
+      <input type="range" id="volume" min="0" max="1" step="0.01" value="0.85"></label>
+    <label class="switch">
+      <input type="checkbox" id="liteMode">
+      <span>Lighter on the processor</span>
+    </label>
+  </section>
+
+  <section class="panel" aria-label="Saved loops">
+    <h2 class="section-head">Saved</h2>
+    <div id="savedList" class="saved-list"></div>
+    <div class="row wrap">
+      <button id="exportMidi" class="ghost">Export MIDI</button>
+      <button id="exportJson" class="ghost">Back up all</button>
+      <button id="importBtn" class="ghost">Restore</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </div>
+  </section>
+
+  <footer class="colophon">
+    <p>Space plays. N makes something new. S saves it. 1–5 re-roll a layer.</p>
+    <p>Everything is generated in the browser and stored on this device.</p>
+  </footer>
+
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
