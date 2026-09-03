@@ -176,8 +176,18 @@ function togglePlay() {
 }
 
 function newLoop() {
+  // Save the current loop to history before creating a new one (if it exists)
+  if (state.spec) {
+    // Avoid duplicate if the current spec is already the last in history
+    const last = state.history[state.history.length - 1];
+    if (!last || JSON.stringify(last) !== JSON.stringify(state.spec)) {
+      pushHistory(state.spec);
+    }
+  }
   const s = newSpec();
-  resetHistory(s);
+  // Push the new spec to history (this truncates any forward history)
+  pushHistory(s);
+  // Load the new spec without pushing it again
   loadSpec(s, { pushToHistory: false });
   state.engine.reset();
   ui.el('loopCounter').textContent = 'pass 0';
