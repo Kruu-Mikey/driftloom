@@ -66,18 +66,20 @@ function pushHistory(spec) {
 function goBack() {
   if (state.historyIndex > 0) {
     state.historyIndex--;
-    loadSpec(cloneSpec(state.history[state.historyIndex]), { keepPosition: true, pushToHistory: false });
+    const spec = cloneSpec(state.history[state.historyIndex]);
+    loadSpec(spec, { keepPosition: false, pushToHistory: false });
     if (!state.engine.playing) togglePlay();
-    ui.toast(`↩ ${state.spec.name}`);
+    ui.toast(`↩ ${spec.name}`);
   }
 }
 
 function goForward() {
   if (state.historyIndex < state.history.length - 1) {
     state.historyIndex++;
-    loadSpec(cloneSpec(state.history[state.historyIndex]), { keepPosition: true, pushToHistory: false });
+    const spec = cloneSpec(state.history[state.historyIndex]);
+    loadSpec(spec, { keepPosition: false, pushToHistory: false });
     if (!state.engine.playing) togglePlay();
-    ui.toast(`↪ ${state.spec.name}`);
+    ui.toast(`↪ ${spec.name}`);
   }
 }
 
@@ -176,15 +178,6 @@ function togglePlay() {
 function newLoop() {
   const s = newSpec();
   resetHistory(s);
-  loadSpec(s, { pushToHistory: false }); // push happens inside loadSpec if pushToHistory true? We'll push manually to ensure history is set after load.
-  // Actually loadSpec with pushToHistory = true will push after loading. But we want to push after reset.
-  // We'll call loadSpec with pushToHistory: true, and resetHistory already sets the first spec.
-  // Better: loadSpec(s, { pushToHistory: true }); and then resetHistory? No, we want to replace history.
-  // Let's just do: resetHistory(s); loadSpec(s, { pushToHistory: false }); and then manually push? That's messy.
-  // Simpler: remove resetHistory call and rely on loadSpec's pushToHistory, but we need to clear forward history.
-  // Actually we want to start fresh: history = [s], index 0.
-  state.history = [JSON.parse(JSON.stringify(s))];
-  state.historyIndex = 0;
   loadSpec(s, { pushToHistory: false });
   state.engine.reset();
   ui.el('loopCounter').textContent = 'pass 0';
@@ -315,7 +308,7 @@ function wire() {
     }
   });
 
-  // Resume audio context when page becomes visible again (helps background playback)
+  // Resume audio context when page becomes visible again
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && state.ctx && state.ctx.state === 'suspended') {
       state.ctx.resume();
@@ -330,9 +323,7 @@ function wire() {
   if (prefs.volume != null) ui.el('volume').value = prefs.volume;
 
   state.spec = newSpec();
-  // Set initial history
-  state.history = [JSON.parse(JSON.stringify(state.spec))];
-  state.historyIndex = 0;
+  resetHistory(state.spec);
   ui.renderReadout(state.spec, { meta: { kit: 'none' } });
   syncToneInputs(state.spec);
   refreshSaved();
