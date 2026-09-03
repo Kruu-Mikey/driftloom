@@ -8,8 +8,8 @@
 import { render, drift } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
 
-const LOOKAHEAD = 0.12; // seconds of audio scheduled in advance
-const TICK = 25; // ms between scheduler wake-ups
+const LOOKAHEAD = 0.3;  // seconds of audio scheduled in advance
+const TICK = 50;        // ms between scheduler wake-ups
 
 export class Engine {
   constructor(ctx, synth) {

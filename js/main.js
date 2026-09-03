@@ -14,16 +14,16 @@ const state = {
   currentId: null,
   bar: -1,
   lite: false,
+  history: [],            // array of specs (max 5)
+  historyIndex: -1,       // current position in history
 };
+const HISTORY_LIMIT = 5;
 
 let lights = null;
 let cells = null;
 
 // --------------------------------------------------------------- audio
 
-// Browsers will not make sound until a real gesture has happened, so the
-// audio graph is built the first time you press something rather than on
-// page load.
 function ensureAudio() {
   if (state.ctx) {
     if (state.ctx.state === 'suspended') state.ctx.resume();
@@ -50,9 +50,53 @@ function buildAudio() {
   }
 }
 
+// -------------------------------------------------------------- history
+
+function pushHistory(spec) {
+  // If we're not at the end, discard forward history
+  if (state.historyIndex < state.history.length - 1) {
+    state.history = state.history.slice(0, state.historyIndex + 1);
+  }
+  state.history.push(JSON.parse(JSON.stringify(spec)));
+  if (state.history.length > HISTORY_LIMIT) state.history.shift();
+  state.historyIndex = state.history.length - 1;
+  updateHistoryButtons();
+}
+
+function goBack() {
+  if (state.historyIndex > 0) {
+    state.historyIndex--;
+    loadSpec(cloneSpec(state.history[state.historyIndex]), { keepPosition: true, pushToHistory: false });
+    if (!state.engine.playing) togglePlay();
+    ui.toast(`↩ ${state.spec.name}`);
+  }
+}
+
+function goForward() {
+  if (state.historyIndex < state.history.length - 1) {
+    state.historyIndex++;
+    loadSpec(cloneSpec(state.history[state.historyIndex]), { keepPosition: true, pushToHistory: false });
+    if (!state.engine.playing) togglePlay();
+    ui.toast(`↪ ${state.spec.name}`);
+  }
+}
+
+function resetHistory(spec) {
+  state.history = [JSON.parse(JSON.stringify(spec))];
+  state.historyIndex = 0;
+  updateHistoryButtons();
+}
+
+function updateHistoryButtons() {
+  const prev = ui.el('prevBtn');
+  const next = ui.el('nextBtn');
+  if (prev) prev.disabled = state.historyIndex <= 0;
+  if (next) next.disabled = state.historyIndex >= state.history.length - 1;
+}
+
 // -------------------------------------------------------------- loading
 
-function loadSpec(spec, { keepPosition = false, id = null } = {}) {
+function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false } = {}) {
   ensureAudio();
   state.spec = spec;
   state.currentId = id;
@@ -62,6 +106,8 @@ function loadSpec(spec, { keepPosition = false, id = null } = {}) {
   ui.renderGrids(cells, state.pattern, 0, spec.mutes);
   syncToneInputs(spec);
   refreshSaved();
+  if (pushToHistory) pushHistory(spec);
+  updateHistoryButtons();
 }
 
 function syncToneInputs(spec) {
@@ -75,7 +121,8 @@ function syncToneInputs(spec) {
 function refreshSaved() {
   ui.renderSaved(store.loadAll(), state.currentId, {
     onOpen: (entry) => {
-      loadSpec(cloneSpec(entry.spec), { id: entry.id });
+      resetHistory(cloneSpec(entry.spec));
+      loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
       if (!state.engine.playing) togglePlay();
       ui.toast(`Loaded ${entry.spec.name}`);
     },
@@ -92,7 +139,7 @@ function refreshSaved() {
 // ------------------------------------------------------------ callbacks
 
 function onStep(step) {
-  if (!state.engine.playing) return; // frames queued before Stop
+  if (!state.engine.playing) return;
   const bar = Math.floor(step / STEPS_PER_BAR);
   if (bar !== state.bar) {
     state.bar = bar;
@@ -109,7 +156,11 @@ function onLoop(count) {
 
 function togglePlay() {
   ensureAudio();
-  if (!state.engine.spec) loadSpec(state.spec || newSpec());
+  if (!state.engine.spec) {
+    const s = state.spec || newSpec();
+    resetHistory(s);
+    loadSpec(s, { pushToHistory: false });
+  }
   if (state.engine.playing) {
     state.engine.stop();
     ui.el('playBtn').setAttribute('aria-pressed', 'false');
@@ -123,18 +174,30 @@ function togglePlay() {
 }
 
 function newLoop() {
-  loadSpec(newSpec());
+  const s = newSpec();
+  resetHistory(s);
+  loadSpec(s, { pushToHistory: false }); // push happens inside loadSpec if pushToHistory true? We'll push manually to ensure history is set after load.
+  // Actually loadSpec with pushToHistory = true will push after loading. But we want to push after reset.
+  // We'll call loadSpec with pushToHistory: true, and resetHistory already sets the first spec.
+  // Better: loadSpec(s, { pushToHistory: true }); and then resetHistory? No, we want to replace history.
+  // Let's just do: resetHistory(s); loadSpec(s, { pushToHistory: false }); and then manually push? That's messy.
+  // Simpler: remove resetHistory call and rely on loadSpec's pushToHistory, but we need to clear forward history.
+  // Actually we want to start fresh: history = [s], index 0.
+  state.history = [JSON.parse(JSON.stringify(s))];
+  state.historyIndex = 0;
+  loadSpec(s, { pushToHistory: false });
   state.engine.reset();
   ui.el('loopCounter').textContent = 'pass 0';
   if (!state.engine.playing) togglePlay();
-  ui.toast(`New loop: ${state.spec.name}`);
+  ui.toast(`New loop: ${s.name}`);
+  updateHistoryButtons();
 }
 
 function reroll(layer) {
   if (!state.spec) return newLoop();
   const next = rerollLayer(state.spec, layer);
-  next.name = state.spec.name; // a re-roll is a revision, not a new piece
-  loadSpec(next, { keepPosition: true, id: null });
+  next.name = state.spec.name;
+  loadSpec(next, { keepPosition: true, id: null, pushToHistory: true });
   ui.toast(`Re-rolled ${layer}`);
 }
 
@@ -155,7 +218,6 @@ function saveCurrent() {
 
 function exportMidi(spec = state.spec) {
   if (!spec) return;
-  // Rendered straight from the spec so exporting never disturbs playback.
   const blob = patternToMidi(render(spec), { repeats: 4 });
   ui.download(blob, `${spec.name}-${spec.bpm}bpm.mid`);
   ui.toast('MIDI exported');
@@ -171,6 +233,8 @@ function wire() {
   ui.el('newBtn').addEventListener('click', newLoop);
   ui.el('saveBtn').addEventListener('click', saveCurrent);
   ui.el('exportMidi').addEventListener('click', () => exportMidi());
+  ui.el('prevBtn').addEventListener('click', goBack);
+  ui.el('nextBtn').addEventListener('click', goForward);
 
   ui.el('renameBtn').addEventListener('click', () => {
     if (!state.spec) return;
@@ -236,13 +300,28 @@ function wire() {
 
   document.addEventListener('keydown', (e) => {
     if (e.target.matches('input, textarea')) return;
-    if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
-    else if (e.key === 'n') newLoop();
+    if (e.code === 'Space' || e.code === 'MediaPlayPause') {
+      e.preventDefault();
+      togglePlay();
+    } else if (e.key === 'n') newLoop();
     else if (e.key === 's') saveCurrent();
     else if (e.key >= '1' && e.key <= '5') reroll(LAYERS[parseInt(e.key, 10) - 1]);
+    else if (e.code === 'MediaNextTrack') {
+      e.preventDefault();
+      goForward();
+    } else if (e.code === 'MediaPreviousTrack') {
+      e.preventDefault();
+      goBack();
+    }
   });
 
-  // Small phones and cheap tablets get the lighter graph by default.
+  // Resume audio context when page becomes visible again (helps background playback)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && state.ctx && state.ctx.state === 'suspended') {
+      state.ctx.resume();
+    }
+  });
+
   const cores = navigator.hardwareConcurrency || 4;
   const prefs = store.getPrefs();
   state.lite = prefs.lite ?? cores <= 4;
@@ -250,12 +329,14 @@ function wire() {
   ui.el('driftToggle').checked = prefs.drift ?? true;
   if (prefs.volume != null) ui.el('volume').value = prefs.volume;
 
-  // Show something on screen before any audio exists, so the first thing
-  // you see is a real loop rather than an empty machine.
   state.spec = newSpec();
+  // Set initial history
+  state.history = [JSON.parse(JSON.stringify(state.spec))];
+  state.historyIndex = 0;
   ui.renderReadout(state.spec, { meta: { kit: 'none' } });
   syncToneInputs(state.spec);
   refreshSaved();
+  updateHistoryButtons();
 }
 
 wire();
