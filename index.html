@@ -25,14 +25,18 @@
   </section>
 
   <section class="transport" aria-label="Transport">
-    <button id="playBtn" class="play" aria-pressed="false">
-      <span class="play-glyph" aria-hidden="true"></span>
-      <span id="playLabel">Play</span>
-    </button>
-    <button id="newBtn" class="key">New loop</button>
-    <button id="saveBtn" class="key">Save</button>
-    <button id="prevBtn" class="key" title="Previous loop">←</button>
-    <button id="nextBtn" class="key" title="Next loop">→</button>
+    <div class="transport-main">
+      <button id="prevBtn" class="step" title="Previous loop" aria-label="Previous loop">‹</button>
+      <button id="playBtn" class="play" aria-pressed="false">
+        <span class="play-glyph" aria-hidden="true"></span>
+        <span id="playLabel">Play</span>
+      </button>
+      <button id="nextBtn" class="step" title="Next loop" aria-label="Next loop">›</button>
+    </div>
+    <div class="transport-sub">
+      <button id="newBtn" class="key">New loop</button>
+      <button id="saveBtn" class="key">Save</button>
+    </div>
   </section>
 
   <section class="layers" aria-label="Layers">
@@ -82,12 +86,17 @@
       <button id="exportMidi" class="ghost">Export MIDI</button>
       <button id="exportJson" class="ghost">Back up all</button>
       <button id="importBtn" class="ghost">Restore</button>
-      <input type="file" id="importFile" accept="application/json" hidden>
+      <input type="file" id="importFile" hidden>
+    </div>
+    <div class="row wrap">
+      <button id="copyBackup" class="ghost">Copy backup</button>
+      <button id="pasteBackup" class="ghost">Paste backup</button>
     </div>
   </section>
 
   <footer class="colophon">
     <p>Space plays. N makes something new. S saves it. 1–5 re-roll a layer.</p>
+    <p>Headset and lock-screen buttons work once it is playing.</p>
     <p>Everything is generated in the browser and stored on this device.</p>
   </footer>
 

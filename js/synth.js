@@ -100,6 +100,10 @@ export class Synth {
     this.hp.connect(this.comp);
     this.comp.connect(this.master);
     this.master.connect(this.ceiling);
+    // The last node in the chain. Connected straight to the speakers here
+    // so the synth works on its own, but MediaBridge re-routes it through
+    // a media element so the phone treats us as a music player.
+    this.output = this.ceiling;
     this.ceiling.connect(ctx.destination);
 
     // Reverb: parallel damped comb filters. Far cheaper than a convolver

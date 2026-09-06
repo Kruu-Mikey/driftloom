@@ -7,9 +7,16 @@
 
 import { render, drift } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
+import { Clock } from './clock.js';
 
-const LOOKAHEAD = 0.3;  // seconds of audio scheduled in advance
-const TICK = 50;        // ms between scheduler wake-ups
+// While you are looking at it, a short lookahead keeps mutes and re-rolls
+// feeling immediate. Once the page is hidden the timer may be throttled to
+// about one tick a second, so the queue has to be deep enough to cover the
+// gap between wake-ups or the audio runs dry.
+const LOOKAHEAD_VISIBLE = 0.3;
+const LOOKAHEAD_HIDDEN = 1.8;
+const TICK_VISIBLE = 50;
+const TICK_HIDDEN = 250;
 
 export class Engine {
   constructor(ctx, synth) {
@@ -21,7 +28,7 @@ export class Engine {
     this.live = null; // the pattern as currently being played
     this.step = 0;
     this.nextStepTime = 0;
-    this.timer = null;
+    this.clock = new Clock(() => this._tick());
     this.driftOn = false;
     this.driftAmount = 1.0;
     this.loopCount = 0;
@@ -48,18 +55,30 @@ export class Engine {
     return 60 / this.spec.bpm / 4;
   }
 
+  get hidden() {
+    return typeof document !== 'undefined' && document.hidden;
+  }
+
+  get lookahead() {
+    return this.hidden ? LOOKAHEAD_HIDDEN : LOOKAHEAD_VISIBLE;
+  }
+
+  // Called when the page is shown or hidden, so the tick rate follows.
+  retune() {
+    if (this.playing) this.clock.start(this.hidden ? TICK_HIDDEN : TICK_VISIBLE);
+  }
+
   start() {
     if (this.playing || !this.spec) return;
     this.playing = true;
     this.nextStepTime = this.ctx.currentTime + 0.08;
-    this.timer = setInterval(() => this._tick(), TICK);
+    this.clock.start(this.hidden ? TICK_HIDDEN : TICK_VISIBLE);
     this._tick();
   }
 
   stop() {
     this.playing = false;
-    clearInterval(this.timer);
-    this.timer = null;
+    this.clock.stop();
   }
 
   reset() {
@@ -70,9 +89,9 @@ export class Engine {
 
   _tick() {
     if (!this.playing) return;
-    const horizon = this.ctx.currentTime + LOOKAHEAD;
+    const horizon = this.ctx.currentTime + this.lookahead;
     let guard = 0;
-    while (this.nextStepTime < horizon && guard++ < 64) {
+    while (this.nextStepTime < horizon && guard++ < 256) {
       this._scheduleStep(this.step, this.nextStepTime);
       this._advance();
     }

@@ -57,6 +57,8 @@ random stream, and re-rolling only moves one of them.
 
 ```
 js/rng.js         seeded PRNG, and the syllable generator for loop names
+js/clock.js       worker-based tick source that survives backgrounding
+js/media.js       media element routing and lock-screen / headset controls
 js/theory.js      scales, chord building, pitch maths
 js/generator.js   the composer: spec -> pattern, and the drift mutations
 js/synth.js       voices and the reverb/echo bus
@@ -94,6 +96,26 @@ they're structurally valid with no unreleased notes. This has already caught
 three real bugs, including chord voicings that walked off the bottom of the
 keyboard over successive bars.
 
+## Playing it in your pocket
+
+The finished mix is routed through a hidden `<audio>` element rather than
+straight at the speakers. That one change is what makes Android treat
+Driftloom as a music player: you get a lock-screen notification, and the
+transport buttons on Bluetooth headphones reach the app through the Media
+Session API. Play, pause, and skip all work from a headset.
+
+Skipping forward past the end of the history makes a brand new loop, so the
+next-track button always does something.
+
+If a device mishandles the media-element route, the app notices the stream
+is not advancing and reconnects straight to the speakers. You lose the
+lock-screen controls, never the sound.
+
+The scheduler runs off a Web Worker and queues further ahead while the page
+is hidden (1.8s instead of 0.3s). Backgrounded pages get their timers
+clamped to about one tick a second, which was what made playback cut out
+occasionally.
+
 ## Known rough edges
 
 - **The mix is not balanced yet.** Bass sits about two to three times louder
@@ -103,7 +125,10 @@ keyboard over successive bars.
   little squashed. This is the next thing to fix.
 - Loops are always 4/4. No odd meters yet.
 - There's no way to edit a pattern by hand — you can only re-roll.
-- Saves live in this browser on this device. Use "Back up all" to move them.
+- Saves live in this browser on this device. "Back up all" downloads a file;
+  if Android's file picker will not show it again, use "Copy backup" and
+  "Paste backup", which go through the clipboard and avoid the file system
+  entirely.
 
 ## Licence
 

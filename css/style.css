@@ -107,10 +107,33 @@ body {
 /* -------------------------------------------------------- transport */
 
 .transport {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
+
+/* Skip buttons flank Play, the way they do on anything else that plays
+   music, so the gesture is already familiar. */
+.transport-main {
+  display: grid;
+  grid-template-columns: 1fr 2.6fr 1fr;
+  gap: 8px;
+}
+
+.transport-sub {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.step {
+  font-family: var(--mono);
+  font-size: 26px;
+  line-height: 1;
+  padding: 14px 0;
+  color: var(--haze);
+}
+.step:not(:disabled):hover { color: var(--sand); }
 
 button {
   font: inherit;
@@ -128,6 +151,12 @@ button:focus-visible {
   outline: 2px solid var(--mint);
   outline-offset: 2px;
 }
+
+button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+button:disabled:hover { background: var(--panel); }
 
 .play {
   display: flex;

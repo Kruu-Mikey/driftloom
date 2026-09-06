@@ -2,6 +2,7 @@ import { newSpec, rerollLayer, cloneSpec, render, LAYERS, STEPS_PER_BAR } from '
 import { Synth } from './synth.js';
 import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
+import { MediaBridge } from './media.js';
 import * as store from './storage.js';
 import * as ui from './ui.js';
 
@@ -14,6 +15,7 @@ const state = {
   currentId: null,
   bar: -1,
   lite: false,
+  media: null,
   history: [],            // array of specs (max 5)
   historyIndex: -1,       // current position in history
 };
@@ -38,6 +40,16 @@ function buildAudio() {
   const wasPlaying = state.engine ? state.engine.playing : false;
   if (state.engine) state.engine.stop();
   state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full');
+  // Route the mix through a media element so the phone gives us lock-screen
+  // controls and stops treating us as an idle tab.
+  state.media = new MediaBridge(state.ctx);
+  state.media.attach(state.synth.output);
+  state.media.setHandlers({
+    onPlay: () => { if (!state.engine.playing) togglePlay(); },
+    onPause: () => { if (state.engine.playing) togglePlay(); },
+    onNext: () => goForward(),
+    onPrev: () => goBack(),
+  });
   state.engine = new Engine(state.ctx, state.synth);
   state.engine.onStep = onStep;
   state.engine.onLoop = onLoop;
@@ -69,18 +81,23 @@ function goBack() {
     const spec = cloneSpec(state.history[state.historyIndex]);
     loadSpec(spec, { keepPosition: false, pushToHistory: false });
     if (!state.engine.playing) togglePlay();
-    ui.toast(`↩ ${spec.name}`);
+    ui.toast(spec.name);
   }
 }
 
 function goForward() {
-  if (state.historyIndex < state.history.length - 1) {
-    state.historyIndex++;
-    const spec = cloneSpec(state.history[state.historyIndex]);
-    loadSpec(spec, { keepPosition: false, pushToHistory: false });
-    if (!state.engine.playing) togglePlay();
-    ui.toast(`↪ ${spec.name}`);
+  // At the end of the history, skipping forward makes something new. A skip
+  // button that does nothing is worse than no skip button, and on a headset
+  // there is no other way to ask for a fresh loop.
+  if (state.historyIndex >= state.history.length - 1) {
+    newLoop();
+    return;
   }
+  state.historyIndex++;
+  const spec = cloneSpec(state.history[state.historyIndex]);
+  loadSpec(spec, { keepPosition: false, pushToHistory: false });
+  if (!state.engine.playing) togglePlay();
+  ui.toast(spec.name);
 }
 
 function resetHistory(spec) {
@@ -91,9 +108,8 @@ function resetHistory(spec) {
 
 function updateHistoryButtons() {
   const prev = ui.el('prevBtn');
-  const next = ui.el('nextBtn');
   if (prev) prev.disabled = state.historyIndex <= 0;
-  if (next) next.disabled = state.historyIndex >= state.history.length - 1;
+  // Next is never disabled: past the end of the history it makes a new loop.
 }
 
 // -------------------------------------------------------------- loading
@@ -110,6 +126,15 @@ function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false
   refreshSaved();
   if (pushToHistory) pushHistory(spec);
   updateHistoryButtons();
+  syncMediaMetadata();
+}
+
+// The lock screen and the headset notification read from here. Called on
+// every load and again on Play, because the very first loop is put into the
+// engine while the audio graph is being built, before any load happens.
+function syncMediaMetadata() {
+  if (!state.media || !state.spec) return;
+  state.media.setMetadata(state.spec.name, `${state.spec.bpm} bpm · Driftloom`);
 }
 
 function syncToneInputs(spec) {
@@ -165,11 +190,16 @@ function togglePlay() {
   }
   if (state.engine.playing) {
     state.engine.stop();
+    state.media.stop();
+    state.media.setPlaybackState(false);
     ui.el('playBtn').setAttribute('aria-pressed', 'false');
     ui.el('playLabel').textContent = 'Play';
     ui.moveCursor(lights, cells, -1);
   } else {
+    state.media.start();
     state.engine.start();
+    syncMediaMetadata();
+    state.media.setPlaybackState(true);
     ui.el('playBtn').setAttribute('aria-pressed', 'true');
     ui.el('playLabel').textContent = 'Stop';
   }
@@ -288,6 +318,32 @@ function wire() {
     ui.download(store.exportAll(), 'driftloom-loops.json');
   });
   ui.el('importBtn').addEventListener('click', () => ui.el('importFile').click());
+
+  ui.el('copyBackup').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(await store.exportAll().text());
+      ui.toast('Backup copied. Paste it somewhere safe.');
+    } catch {
+      ui.toast('This browser will not let the page reach the clipboard');
+    }
+  });
+
+  ui.el('pasteBackup').addEventListener('click', async () => {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      text = prompt('Paste your backup here') || '';
+    }
+    if (!text.trim()) return;
+    try {
+      const added = store.importAll(text);
+      refreshSaved();
+      ui.toast(added ? `Restored ${added} loops` : 'Nothing new in that backup');
+    } catch {
+      ui.toast('That does not look like a Driftloom backup');
+    }
+  });
   ui.el('importFile').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -318,10 +374,14 @@ function wire() {
     }
   });
 
-  // Resume audio context when page becomes visible again
+  // The scheduler queues further ahead while hidden, so it has to be told
+  // when that changes. Resume anything the system paused on the way out.
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && state.ctx && state.ctx.state === 'suspended') {
-      state.ctx.resume();
+    if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume();
+    if (state.engine) state.engine.retune();
+    if (document.visibilityState === 'visible' && state.media && state.engine
+        && state.engine.playing) {
+      state.media.resume();
     }
   });
 
