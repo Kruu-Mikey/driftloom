@@ -11,13 +11,26 @@
 // glitches under CPU pressure. It was tried; it produced sound and nothing
 // else.
 //
-// What does work is playing a real encoded file. Chrome grants a media
-// session to an element playing an actual resource, so this loops a two
-// second WAV at about -58 dBFS: inaudible in practice, but not digital
-// silence, because a stream Chrome considers silent loses the session.
+// What does work is playing a real encoded file, and it has to clear two
+// separate bars that are easy to miss:
+//
+//   Length. Chrome treats anything under about five seconds as a sound
+//   effect rather than content, and sound effects never get transport
+//   controls. A two second loop was granted a session and still showed no
+//   notification. This file is fifteen seconds.
+//
+//   Level. A stream Chrome judges silent loses the session, so this is not
+//   digital silence: it is noise at roughly -62 dBFS RMS, inaudible under
+//   music but comfortably above the detector's threshold. That is also why
+//   it stays lossless — an MP3 encoder would discard a signal this quiet
+//   and hand back actual silence.
+//
 // The music itself goes straight to the speakers, untouched.
 
-const KEEPALIVE = 'audio/keepalive.wav';
+const KEEPALIVE = [
+  ['audio/keepalive.flac', 'audio/flac'],
+  ['audio/keepalive.wav', 'audio/wav'],
+];
 
 export class MediaBridge {
   constructor(ctx) {
@@ -36,7 +49,14 @@ export class MediaBridge {
 
     try {
       this.audio = document.createElement('audio');
-      this.audio.src = KEEPALIVE;
+      // FLAC first because it is a third of the size; the WAV is there in
+      // case a browser will not take it.
+      for (const [src, type] of KEEPALIVE) {
+        const source = document.createElement('source');
+        source.src = src;
+        source.type = type;
+        this.audio.appendChild(source);
+      }
       this.audio.loop = true;
       this.audio.preload = 'auto';
       // Quiet content, not a quiet element. A muted or zero-volume element
@@ -130,6 +150,13 @@ export class MediaBridge {
       keepaliveErr: this.lastError || '-',
       keepalivePlaying: this.audio ? !this.audio.paused : false,
       keepaliveTime: this.audio ? +this.audio.currentTime.toFixed(1) : 0,
+      keepaliveDuration: this.audio && isFinite(this.audio.duration)
+        ? +this.audio.duration.toFixed(1) : '?',
+      keepaliveSrc: this.audio && this.audio.currentSrc
+        ? this.audio.currentSrc.split('/').pop() : '(none)',
+      keepaliveReady: this.audio ? this.audio.readyState : '-',
+      keepaliveMediaErr: this.audio && this.audio.error
+        ? this.audio.error.code : '-',
       mediaSession: ms,
       handlers: this.handlersSet,
       metadata: ms && navigator.mediaSession.metadata

@@ -109,12 +109,20 @@ category as a WebRTC call, and communications audio is deliberately
 excluded from media notifications. It also adds a resampling stage that
 glitches under load. It was tried, and it produced sound and nothing else.
 
-What works is playing a real encoded file. `audio/keepalive.wav` is a two
-second loop at about -58 dBFS: inaudible in practice, but not digital
-silence, because a stream Chrome judges silent loses the session. It runs
-alongside the music, which goes straight to the speakers untouched. That
-gets us the notification, the lock screen, and the headset buttons through
-the Media Session API.
+What works is playing a real encoded file, and it has to clear two separate
+bars that are easy to miss:
+
+- **Length.** Chrome treats media under about five seconds as a sound
+  effect rather than content, and sound effects never get transport
+  controls. A two second loop was granted a session and still produced no
+  notification. `audio/keepalive` is fifteen seconds.
+- **Level.** A stream Chrome judges silent loses the session, so the file
+  is not digital silence: it is noise at roughly -62 dBFS RMS, inaudible
+  under music but clear of the detector's threshold. That is also why it
+  stays lossless — an MP3 encoder would discard a signal that quiet and
+  hand back real silence. FLAC is offered first, with a WAV fallback.
+
+It runs alongside the music, which goes straight to the speakers untouched.
 
 Skipping forward past the end of the history makes a brand new loop, so the
 next-track button always does something.
