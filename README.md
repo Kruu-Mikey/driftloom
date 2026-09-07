@@ -98,23 +98,38 @@ keyboard over successive bars.
 
 ## Playing it in your pocket
 
-The finished mix is routed through a hidden `<audio>` element rather than
-straight at the speakers. That one change is what makes Android treat
-Driftloom as a music player: you get a lock-screen notification, and the
-transport buttons on Bluetooth headphones reach the app through the Media
-Session API. Play, pause, and skip all work from a headset.
+Android will only give a web page lock-screen controls, a notification, and
+the Bluetooth transport buttons if it considers the page a media player.
+Web Audio alone does not qualify.
+
+The obvious approach — routing the mix through an `<audio>` element with a
+`MediaStreamAudioDestinationNode` — **does not work on Chrome for Android**.
+Stream-backed elements are classed as communications audio, the same
+category as a WebRTC call, and communications audio is deliberately
+excluded from media notifications. It also adds a resampling stage that
+glitches under load. It was tried, and it produced sound and nothing else.
+
+What works is playing a real encoded file. `audio/keepalive.wav` is a two
+second loop at about -58 dBFS: inaudible in practice, but not digital
+silence, because a stream Chrome judges silent loses the session. It runs
+alongside the music, which goes straight to the speakers untouched. That
+gets us the notification, the lock screen, and the headset buttons through
+the Media Session API.
 
 Skipping forward past the end of the history makes a brand new loop, so the
 next-track button always does something.
 
-If a device mishandles the media-element route, the app notices the stream
-is not advancing and reconnects straight to the speakers. You lose the
-lock-screen controls, never the sound.
-
 The scheduler runs off a Web Worker and queues further ahead while the page
-is hidden (1.8s instead of 0.3s). Backgrounded pages get their timers
-clamped to about one tick a second, which was what made playback cut out
-occasionally.
+is hidden (3s instead of 0.3s). Backgrounded pages get their timers clamped
+to roughly one tick a second, which starves a short queue.
+
+## Diagnostics
+
+There is a Diagnostics panel at the bottom of the page. It reports which
+audio path is live, whether the media session was granted, and a count of
+scheduler wake-ups that arrived too late to place a note — which is what a
+stutter looks like from the inside. Play with the screen off for a minute,
+come back, and read `lateTicks` and `worstLateMs`.
 
 ## Known rough edges
 

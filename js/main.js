@@ -319,6 +319,38 @@ function wire() {
   });
   ui.el('importBtn').addEventListener('click', () => ui.el('importFile').click());
 
+  const renderDiag = () => {
+    const lines = [];
+    const push = (o) => { for (const [k, v] of Object.entries(o)) lines.push(`${k}: ${v}`); };
+    lines.push(`ua: ${navigator.userAgent}`);
+    lines.push(`standalone: ${window.matchMedia('(display-mode: standalone)').matches}`);
+    lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);
+    if (state.media) push(state.media.report());
+    else lines.push('media: not built yet (press Play)');
+    if (state.engine && state.engine.spec) push(state.engine.report());
+    else lines.push('engine: not built yet (press Play)');
+    ui.el('diagOut').textContent = lines.join('\n');
+  };
+
+  ui.el('diagRefresh').addEventListener('click', renderDiag);
+  document.querySelector('.diag').addEventListener('toggle', (e) => {
+    if (e.target.open) renderDiag();
+  });
+  ui.el('diagReset').addEventListener('click', () => {
+    if (state.engine) state.engine.clearMetrics();
+    renderDiag();
+    ui.toast('Counters cleared');
+  });
+  ui.el('diagCopy').addEventListener('click', async () => {
+    renderDiag();
+    try {
+      await navigator.clipboard.writeText(ui.el('diagOut').textContent);
+      ui.toast('Diagnostics copied');
+    } catch {
+      ui.toast('Select the text above and copy it manually');
+    }
+  });
+
   ui.el('copyBackup').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(await store.exportAll().text());

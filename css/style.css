@@ -437,3 +437,32 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
   #app { padding-top: 32px; }
   .layer { grid-template-columns: 70px 1fr auto auto; }
 }
+
+/* ------------------------------------------------------ diagnostics */
+
+.diag summary {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--haze);
+  cursor: pointer;
+  list-style: none;
+}
+.diag summary::-webkit-details-marker { display: none; }
+.diag summary::before { content: "+ "; }
+.diag[open] summary::before { content: "\2212 "; }
+
+.diag-out {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--haze);
+  background: #0e1e21;
+  border: 1px solid var(--line-soft);
+  border-radius: 2px;
+  padding: 10px;
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}

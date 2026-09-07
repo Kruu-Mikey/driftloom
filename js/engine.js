@@ -14,7 +14,7 @@ import { Clock } from './clock.js';
 // about one tick a second, so the queue has to be deep enough to cover the
 // gap between wake-ups or the audio runs dry.
 const LOOKAHEAD_VISIBLE = 0.3;
-const LOOKAHEAD_HIDDEN = 1.8;
+const LOOKAHEAD_HIDDEN = 3.0;
 const TICK_VISIBLE = 50;
 const TICK_HIDDEN = 250;
 
@@ -35,6 +35,11 @@ export class Engine {
     this.driftRng = new Rng(randomSeed());
     this.onStep = null;
     this.onLoop = null;
+    // Dropout counters. A stutter you cannot measure is a stutter you
+    // cannot fix, and this runs on a phone that is not in front of me.
+    this.lateTicks = 0;
+    this.worstLateMs = 0;
+    this.totalTicks = 0;
   }
 
   load(spec, { keepPosition = false } = {}) {
@@ -81,6 +86,27 @@ export class Engine {
     this.clock.stop();
   }
 
+  report() {
+    return {
+      clock: this.clock.usingWorker ? 'worker' : 'timer',
+      hidden: this.hidden,
+      lookahead: this.lookahead,
+      ticks: this.totalTicks,
+      lateTicks: this.lateTicks,
+      worstLateMs: this.worstLateMs,
+      ctxState: this.ctx.state,
+      sampleRate: this.ctx.sampleRate,
+      baseLatency: this.ctx.baseLatency ? +this.ctx.baseLatency.toFixed(4) : '-',
+      outputLatency: this.ctx.outputLatency ? +this.ctx.outputLatency.toFixed(4) : '-',
+    };
+  }
+
+  clearMetrics() {
+    this.lateTicks = 0;
+    this.worstLateMs = 0;
+    this.totalTicks = 0;
+  }
+
   reset() {
     this.step = 0;
     this.loopCount = 0;
@@ -89,6 +115,17 @@ export class Engine {
 
   _tick() {
     if (!this.playing) return;
+    this.totalTicks++;
+    // If the next step was already due before we woke up, the queue ran dry
+    // and something audible was missed.
+    const behind = this.ctx.currentTime - this.nextStepTime;
+    if (behind > 0) {
+      this.lateTicks++;
+      this.worstLateMs = Math.max(this.worstLateMs, Math.round(behind * 1000));
+      // Do not try to catch up by cramming the missed steps in at once;
+      // that turns a gap into a burst. Skip to now and carry on.
+      if (behind > 0.25) this.nextStepTime = this.ctx.currentTime + 0.02;
+    }
     const horizon = this.ctx.currentTime + this.lookahead;
     let guard = 0;
     while (this.nextStepTime < horizon && guard++ < 256) {
