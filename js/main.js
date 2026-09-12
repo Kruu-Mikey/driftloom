@@ -15,6 +15,7 @@ const state = {
   currentId: null,
   bar: -1,
   gridSteps: 16,
+  frameHandle: null,
   lite: false,
   media: null,
   history: [],            // array of specs (max 5)
@@ -54,6 +55,7 @@ function buildAudio() {
   state.engine = new Engine(state.ctx, state.synth);
   state.engine.onStep = onStep;
   state.engine.onLoop = onLoop;
+  state.engine.visualOffset = (parseInt(ui.el('playheadSync').value, 10) || 0) / 1000;
   state.engine.driftOn = ui.el('driftToggle').checked;
   state.engine.driftAmount = parseFloat(ui.el('driftAmount').value);
   state.synth.setVolume(parseFloat(ui.el('volume').value));
@@ -117,6 +119,16 @@ function updateHistoryButtons() {
 
 function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false } = {}) {
   ensureAudio();
+  // A bar of 6/8 is twelve cells and 5/4 is twenty, so the grid has to be
+  // rebuilt whenever the metre changes. Without this the cursor indexes a
+  // sixteen-cell grid against twelve steps of music and drifts away from it.
+  const spb = spec.stepsPerBar || 16;
+  if (spb !== state.gridSteps) {
+    state.gridSteps = spb;
+    lights = ui.buildPlayhead(spb);
+    cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, spb);
+    ui.resetCursor();
+  }
   state.spec = spec;
   state.currentId = id;
   state.pattern = state.engine.load(spec, { keepPosition });
@@ -166,14 +178,27 @@ function refreshSaved() {
 
 // ------------------------------------------------------------ callbacks
 
+// Repaint on animation frames, reading position off the audio clock. This
+// is the only place the cursor moves.
+function frameLoop() {
+  if (!state.engine || !state.engine.playing) {
+    state.frameHandle = null;
+    return;
+  }
+  const step = state.engine.visualStep();
+  if (step != null) onStep(step);
+  state.frameHandle = requestAnimationFrame(frameLoop);
+}
+
 function onStep(step) {
   if (!state.engine.playing) return;
-  const bar = Math.floor(step / STEPS_PER_BAR);
+  const spb = state.gridSteps;
+  const bar = Math.floor(step / spb);
   if (bar !== state.bar) {
     state.bar = bar;
     ui.renderGrids(cells, state.engine.live, bar, state.spec.mutes);
   }
-  ui.moveCursor(lights, cells, step % STEPS_PER_BAR);
+  ui.moveCursor(lights, cells, step % spb);
 }
 
 function onLoop(count) {
@@ -196,9 +221,11 @@ function togglePlay() {
     ui.el('playBtn').setAttribute('aria-pressed', 'false');
     ui.el('playLabel').textContent = 'Play';
     ui.moveCursor(lights, cells, -1);
+    ui.resetCursor();
   } else {
     state.media.start();
     state.engine.start();
+    if (!state.frameHandle) state.frameHandle = requestAnimationFrame(frameLoop);
     syncMediaMetadata();
     state.media.setPlaybackState(true);
     ui.el('playBtn').setAttribute('aria-pressed', 'true');
@@ -266,8 +293,8 @@ function exportMidi(spec = state.spec) {
 // ---------------------------------------------------------------- boot
 
 function wire() {
-  lights = ui.buildPlayhead();
-  cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute });
+  lights = ui.buildPlayhead(state.gridSteps);
+  cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, state.gridSteps);
 
   ui.el('playBtn').addEventListener('click', togglePlay);
   ui.el('newBtn').addEventListener('click', newLoop);
@@ -310,6 +337,13 @@ function wire() {
       if (state.synth) state.synth.setTone(state.spec.tone);
     });
   }
+  ui.el('playheadSync').addEventListener('input', (e) => {
+    const ms = parseInt(e.target.value, 10);
+    ui.el('syncVal').textContent = `${ms} ms`;
+    if (state.engine) state.engine.visualOffset = ms / 1000;
+    store.setPrefs({ playheadSync: ms });
+  });
+
   ui.el('volume').addEventListener('input', (e) => {
     if (state.synth) state.synth.setVolume(parseFloat(e.target.value));
     store.setPrefs({ volume: parseFloat(e.target.value) });
@@ -430,8 +464,17 @@ function wire() {
   ui.el('liteMode').checked = state.lite;
   ui.el('driftToggle').checked = prefs.drift ?? true;
   if (prefs.volume != null) ui.el('volume').value = prefs.volume;
+  const sync = prefs.playheadSync ?? 0;
+  ui.el('playheadSync').value = sync;
+  ui.el('syncVal').textContent = `${sync} ms`;
 
   state.spec = newSpec();
+  // Build the grid for the metre of the loop that is actually on screen,
+  // not for an assumed 4/4.
+  state.gridSteps = state.spec.stepsPerBar || 16;
+  lights = ui.buildPlayhead(state.gridSteps);
+  cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, state.gridSteps);
+  ui.resetCursor();
   resetHistory(state.spec);
   ui.renderReadout(state.spec, { meta: { kit: 'none' } });
   syncToneInputs(state.spec);

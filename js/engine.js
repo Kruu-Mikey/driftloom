@@ -46,6 +46,21 @@ export class Engine {
     this.worstLateMs = 0;
     this.totalTicks = 0;
     this.tailsDucked = false;
+    this.visualQueue = [];
+    // Positive values show the cursor later. Audio scheduled at time T is
+    // heard one output-latency afterwards, and that latency is large and
+    // very device-dependent on Android, so this is adjustable.
+    this.visualOffset = 0;
+  }
+
+  // The step that should be lit right now, or null if nothing has changed.
+  visualStep() {
+    const now = this.ctx.currentTime - this.visualOffset;
+    let found = null;
+    while (this.visualQueue.length && this.visualQueue[0].time <= now) {
+      found = this.visualQueue.shift().step;
+    }
+    return found;
   }
 
   load(spec, { keepPosition = false } = {}) {
@@ -96,6 +111,7 @@ export class Engine {
   stop() {
     this.playing = false;
     this.clock.stop();
+    this.visualQueue = [];
     if (this.tailsDucked) {
       this.synth.restoreTails(this.ctx.currentTime);
       this.tailsDucked = false;
@@ -262,9 +278,11 @@ export class Engine {
       }
     }
 
-    if (this.onStep) {
-      const delay = Math.max(0, (time - this.ctx.currentTime) * 1000);
-      setTimeout(() => this.onStep(step), delay);
-    }
+    // The cursor used to get a setTimeout per step. Timer callbacks drift,
+    // arrive in bursts and are the first thing the main thread drops under
+    // load, so the playhead wandered away from the music. Record when each
+    // step is due and let a frame loop read it off the audio clock instead.
+    this.visualQueue.push({ step, time });
+    if (this.visualQueue.length > 512) this.visualQueue.shift();
   }
 }

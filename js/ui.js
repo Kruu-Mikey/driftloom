@@ -32,7 +32,7 @@ export function renderReadout(spec, pattern) {
     const second = CHARACTERS[spec.character2];
     if (second) name = `${name}/${second.label}`;
   }
-  const bits = [name, key, `${spec.bpm} bpm`, meter];
+  const bits = [name, key, `${spec.bpm} bpm`, meter, `${spec.bars} bars`];
   const mood = spec.mood ?? 0.5;
   bits.push(mood > 0.78 ? 'joyful' : mood > 0.6 ? 'happy' : mood > 0.4 ? 'peaceful' : 'reflective');
   if (pattern && pattern.form) bits.push('airy');
@@ -119,16 +119,30 @@ export function renderGrids(cells, pattern, bar, mutes) {
   }
 }
 
+let lastCursor = -1;
+
+export function resetCursor() {
+  lastCursor = -1;
+}
+
+// Only the cell being left and the cell being entered change. The old
+// version rewrote every cell in every layer on every step -- well over a
+// hundred class writes several times a second, each one forcing a style
+// recalculation, which is enough to make the playhead visibly drag on a
+// phone.
 export function moveCursor(lights, cells, index) {
-  for (let i = 0; i < lights.length; i++) {
-    lights[i].classList.toggle('on', i === index);
-  }
-  for (const layer of Object.keys(cells)) {
-    const boxes = cells[layer];
-    for (let i = 0; i < boxes.length; i++) {
-      boxes[i].classList.toggle('cursor', i === index);
+  if (index === lastCursor) return;
+  const paint = (i, on) => {
+    if (i < 0) return;
+    if (lights[i]) lights[i].classList.toggle('on', on);
+    for (const layer of Object.keys(cells)) {
+      const box = cells[layer][i];
+      if (box) box.classList.toggle('cursor', on);
     }
-  }
+  };
+  paint(lastCursor, false);
+  paint(index, true);
+  lastCursor = index;
 }
 
 // --------------------------------------------------------------- saved

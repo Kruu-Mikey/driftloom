@@ -133,6 +133,22 @@ Notes worth knowing if you go digging:
 - **Lighter on the processor** halves the comb count and drops oversampling.
   It's on by default on devices reporting four cores or fewer.
 
+## Playhead
+
+The cursor is driven by a requestAnimationFrame loop reading position off
+the audio clock, not by a setTimeout per step. Timer callbacks drift, arrive
+in bursts and are the first thing a loaded main thread drops, which made the
+playhead wander away from the music.
+
+It also only repaints the two cells that changed. It used to rewrite every
+cell in every layer on every step -- well over a hundred class writes
+several times a second, each forcing a style recalculation.
+
+If it still reads early or late on your device, **Playhead sync** in the
+Sound panel shifts it by up to 300ms either way. Audio scheduled at a given
+time is heard one output latency later, and on Android that can be over
+300ms, so the right value is device-specific.
+
 ## Tests
 
 ```sh
