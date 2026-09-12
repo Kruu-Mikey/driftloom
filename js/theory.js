@@ -86,3 +86,38 @@ export function nearestChordTone(midi, chordNotes) {
   }
   return best;
 }
+
+
+// How bright each mode sounds, 0 sombre to 1 joyful. Used to steer scale
+// choice from a single mood value, so a loop's harmony, register and contour
+// all agree about what kind of day it is.
+export const SCALE_BRIGHTNESS = {
+  lydian: 1.0,
+  ionian: 0.92,
+  majorPent: 0.9,
+  yo: 0.82,
+  lydianDominant: 0.78,
+  mixolydian: 0.75,
+  ritusen: 0.68,
+  kumoi: 0.52,
+  akebono: 0.48,
+  dorian: 0.46,
+  wholeTone: 0.44,
+  dorianSharp4: 0.4,
+  minorPent: 0.34,
+  insen: 0.3,
+  hirajoshi: 0.28,
+  aeolian: 0.24,
+  phrygianDominant: 0.2,
+  harmonicMinor: 0.14,
+  phrygian: 0.08,
+};
+
+// Reweight a scale pool so modes matching the mood are likelier. Nothing is
+// ever excluded, so a bright loop can still reach for something wistful.
+export function moodWeighted(pool, mood) {
+  return pool.map(([key, w]) => {
+    const bright = SCALE_BRIGHTNESS[key] ?? 0.5;
+    return [key, w * (0.2 + 2.1 * (1 - Math.abs(bright - mood)))];
+  });
+}

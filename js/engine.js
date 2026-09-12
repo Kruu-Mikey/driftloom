@@ -185,7 +185,7 @@ export class Engine {
       const s = at('bass');
       for (const e of p.tracks.bass) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide);
+        this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice);
       }
     }
     if (!mutes.chords) {

@@ -165,7 +165,7 @@ export class Synth {
     this.channels = {};
     const cfg = {
       drums: { gain: 0.82, verb: 0.1, echo: 0.05 },
-      bass: { gain: 0.8, verb: 0.05, echo: 0.0 },
+      bass: { gain: 0.62, verb: 0.05, echo: 0.0 },
       chords: { gain: 0.5, verb: 0.35, echo: 0.15 },
       melody: { gain: 0.45, verb: 0.4, echo: 0.35 },
       texture: { gain: 0.5, verb: 0.6, echo: 0.25 },
@@ -349,47 +349,134 @@ export class Synth {
 
   // -------------------------------------------------------------- bass
 
-  bass(midi, time, dur, vel = 0.7, glide = false) {
+  // One sawtooth-plus-sub recipe for every loop was both the muddiest option
+  // and the most monotonous. Each of these keeps the low end clear a
+  // different way: less sub, a steeper filter, or no sawtooth at all.
+  bass(midi, time, dur, vel = 0.7, glide = false, voice = 'sub') {
     if (!this._budget()) return;
     const ctx = this.ctx;
     const out = this.channels.bass.gain;
     const f = midiToFreq(midi);
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    if (glide) {
-      osc.frequency.setValueAtTime(f * 0.66, time);
-      osc.frequency.exponentialRampToValueAtTime(f, time + 0.08);
+    const stop = time + dur + 0.4;
+    // Measured trims. Sustained low voices build up far more energy than
+    // short ones, so a single channel fader either leaves the sustained
+    // ones booming or buries the plucked ones.
+    const TRIM = { sub: 0.55, fifths: 0.55, round: 0.75, pluckbass: 0.72, rhodesbass: 0.8, moogbass: 1 };
+    vel *= TRIM[voice] ?? 1;
+
+    const env = (peak, sustain, release) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.001, peak), time + 0.014);
+      if (sustain != null) g.gain.setTargetAtTime(sustain, time + 0.05, 0.25);
+      g.gain.setTargetAtTime(0.0001, time + dur, release);
+      return g;
+    };
+
+    const setF = (osc) => {
+      if (glide) {
+        osc.frequency.setValueAtTime(f * 0.66, time);
+        osc.frequency.exponentialRampToValueAtTime(f, time + 0.08);
+      } else {
+        osc.frequency.setValueAtTime(f, time);
+      }
+    };
+
+    if (voice === 'round') {
+      // Triangle through a gentle filter. No sawtooth buzz, no sub piled on
+      // top: the cleanest option and the right one under a quiet pad.
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      setF(o);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 0.9;
+      lp.frequency.setValueAtTime(Math.min(2200, f * 6), time);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(140, f * 2.4), time + Math.min(0.5, dur));
+      const g = env(vel * 0.34, vel * 0.22, 0.08);
+      o.connect(lp).connect(g).connect(out);
+      o.start(time); o.stop(stop);
+    } else if (voice === 'fifths') {
+      // Root and fifth, sine only. Open and weightless -- it states a bass
+      // note without asserting a chord, which is what the ambient
+      // characters want underneath a floating harmony.
+      for (const [mult, lvl] of [[1, 0.3], [1.5, 0.14]]) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f * mult, time);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(vel * lvl, time + Math.min(0.4, dur * 0.3));
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.2);
+        o.connect(g).connect(out);
+        o.start(time); o.stop(stop + 0.4);
+      }
+    } else if (voice === 'rhodesbass') {
+      this.fm(midi, time, dur, vel * 0.85, { out, ratio: 1, index: 130, decay: 0.4, attack: 0.006 });
+    } else if (voice === 'pluckbass') {
+      // Short and woody, with a little noise for the finger. Leaves space
+      // between notes instead of filling the whole bar with low end.
+      const o = ctx.createOscillator();
+      o.type = 'triangle';
+      setF(o);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 2;
+      lp.frequency.setValueAtTime(Math.min(2600, f * 9), time);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(130, f * 2), time + 0.22);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(vel * 0.42, time + 0.006);
+      g.gain.setTargetAtTime(0.0001, time + Math.min(dur, 0.3), 0.1);
+      o.connect(lp).connect(g).connect(out);
+      o.start(time); o.stop(stop);
+      const click = this._noiseSource(time, 0.02);
+      const cf = ctx.createBiquadFilter();
+      cf.type = 'bandpass';
+      cf.frequency.value = 900;
+      const cg = ctx.createGain();
+      cg.gain.setValueAtTime(vel * 0.1, time);
+      cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.025);
+      click.connect(cf).connect(cg).connect(out);
+    } else if (voice === 'moogbass') {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      setF(o);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 9;
+      lp.frequency.setValueAtTime(Math.min(3600, f * 11), time);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(150, f * 2.2), time + Math.min(0.35, dur));
+      const g = env(vel * 0.26, vel * 0.15, 0.07);
+      o.connect(lp).connect(g).connect(out);
+      o.start(time); o.stop(stop);
     } else {
-      osc.frequency.setValueAtTime(f, time);
+      // The original: sawtooth over a sine sub. Kept, but with the sub
+      // pulled well down -- at the old level the two fundamentals stacked
+      // and turned into mud.
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      setF(o);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.Q.value = 3;
+      lp.frequency.setValueAtTime(Math.min(4200, f * 10), time);
+      lp.frequency.exponentialRampToValueAtTime(Math.max(120, f * 2.2), time + Math.min(0.4, dur));
+      const g = env(vel * 0.17, vel * 0.11, 0.06);
+      o.connect(lp).connect(g).connect(out);
+      o.start(time); o.stop(stop);
+
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(f, time);
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, time);
+      sg.gain.exponentialRampToValueAtTime(vel * 0.13, time + 0.015);
+      sg.gain.setTargetAtTime(0.0001, time + dur, 0.08);
+      sub.connect(sg).connect(out);
+      sub.start(time); sub.stop(stop);
     }
-    const sub = ctx.createOscillator();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(f, time);
-
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.Q.value = 4;
-    lp.frequency.setValueAtTime(Math.min(4200, f * 10), time);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(120, f * 2.2), time + Math.min(0.4, dur));
-
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(vel * 0.2, time + 0.012);
-    g.gain.setTargetAtTime(vel * 0.13, time + 0.05, 0.25);
-    g.gain.setTargetAtTime(0.0001, time + dur, 0.06);
-
-    const subG = ctx.createGain();
-    subG.gain.setValueAtTime(0.0001, time);
-    subG.gain.exponentialRampToValueAtTime(vel * 0.2, time + 0.015);
-    subG.gain.setTargetAtTime(0.0001, time + dur, 0.08);
-
-    osc.connect(lp).connect(g).connect(out);
-    sub.connect(subG).connect(out);
-    osc.start(time);
-    sub.start(time);
-    osc.stop(time + dur + 0.4);
-    sub.stop(time + dur + 0.4);
-    this._release(dur + 0.4);
+    this._release(dur + 0.8);
   }
 
   // ------------------------------------------------------------- tuned
@@ -711,6 +798,28 @@ export class Synth {
       g.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
       src.connect(bp).connect(g).connect(out);
       this._release(0.15);
+    } else if (kind === 'birds') {
+      // Two or three quick rising chirps: a narrow resonant band swept
+      // upward, which is roughly what a small bird is.
+      if (!this._budget()) return;
+      const n = 2 + Math.floor(Math.random() * 2);
+      for (let i = 0; i < n; i++) {
+        const t0 = time + i * (0.07 + Math.random() * 0.06);
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        const base = 2100 + Math.random() * 1700;
+        o.frequency.setValueAtTime(base, t0);
+        o.frequency.exponentialRampToValueAtTime(base * (1.25 + Math.random() * 0.5), t0 + 0.035);
+        o.frequency.exponentialRampToValueAtTime(base * 0.92, t0 + 0.07);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(vel * 0.16, t0 + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.075);
+        o.connect(g).connect(out);
+        o.start(t0);
+        o.stop(t0 + 0.09);
+      }
+      this._release(0.4);
     } else if (kind === 'wind') {
       if (!this._budget()) return;
       const src = ctx.createBufferSource();

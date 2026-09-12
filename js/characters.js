@@ -46,6 +46,8 @@ export const CHARACTERS = {
     chordVoices: [['keys', 5], ['pad', 3], ['both', 2]],
     melodyVoices: [['pluck', 3], ['bell', 2], ['keys', 2], ['saw', 1]],
     bassStyles: [['held', 3], ['pulse', 3], ['dub', 2.5], ['walk', 1.5], ['sparse', 2]],
+    bassVoices: [['sub', 3], ['round', 2], ['pluckbass', 2], ['moogbass', 1.5]],
+    mood: [0.2, 0.8],
     restBar: 0.22,
     chordSize: [[3, 3], [4, 4], [2, 1]],
     tone: { warmth: [0.35, 0.9], space: [0.25, 0.8], wobble: [0.1, 0.7] },
@@ -69,6 +71,8 @@ export const CHARACTERS = {
     chordVoices: [['harp', 4], ['keys', 2], ['pad', 2]],
     melodyVoices: [['ocarina', 4], ['flute', 2.5], ['harp', 2], ['musicbox', 1]],
     bassStyles: [['held', 3], ['pulse', 2], ['walk', 2], ['sparse', 1]],
+    bassVoices: [['pluckbass', 3], ['round', 3], ['sub', 1.5], ['fifths', 1]],
+    mood: [0.45, 1],
     restBar: 0.14,
     chordSize: [[3, 4], [4, 3]],
     flatSeven: 0.45,   // chance a progression reaches for bVII
@@ -93,6 +97,8 @@ export const CHARACTERS = {
     chordVoices: [['piano', 5], ['pad', 1.5]],
     melodyVoices: [['piano', 5], ['musicbox', 1.5], ['sine', 1]],
     bassStyles: [['sparse', 4], ['held', 2]],
+    bassVoices: [['round', 3], ['fifths', 2.5], ['sub', 1]],
+    mood: [0.35, 0.9],
     restBar: 0.45,
     chordSize: [[3, 2], [4, 3]],
     pointillist: 0.5,  // leap an octave rather than step
@@ -119,6 +125,8 @@ export const CHARACTERS = {
     chordVoices: [['rhodes', 5], ['pad', 2]],
     melodyVoices: [['rhodes', 4], ['sine', 2], ['musicbox', 1.5]],
     bassStyles: [['sparse', 4], ['held', 3]],
+    bassVoices: [['round', 3], ['rhodesbass', 2.5], ['fifths', 2]],
+    mood: [0.5, 1],
     restBar: 0.4,
     chordSize: [[3, 3], [4, 2]],
     // The records are close-miked and almost dry. Resist the urge to drown
@@ -143,6 +151,8 @@ export const CHARACTERS = {
     chordVoices: [['moogpad', 3], ['keys', 2], ['pad', 2]],
     melodyVoices: [['moog', 5], ['whistle', 3]],
     bassStyles: [['pulse', 4], ['walk', 2], ['dub', 1.5]],
+    bassVoices: [['moogbass', 4], ['sub', 2], ['pluckbass', 1.5]],
+    mood: [0.6, 1],
     restBar: 0.1,
     chordSize: [[3, 4], [4, 2]],
     glide: 0.55,       // portamento, the Moog giveaway
@@ -166,6 +176,8 @@ export const CHARACTERS = {
     chordVoices: [['pad', 4], ['choir', 3], ['piano', 2]],
     melodyVoices: [['piano', 3], ['choir', 2], ['sine', 2]],
     bassStyles: [['sparse', 5]],
+    bassVoices: [['fifths', 3], ['round', 3], ['rhodesbass', 1.5]],
+    mood: [0.4, 0.95],
     restBar: 0.5,
     chordSize: [[3, 3], [4, 3]],
     polymeter: true,   // coprime layer cycles that never resynchronise
@@ -180,3 +192,52 @@ export const CHARACTER_WEIGHTS = Object.entries(CHARACTERS).map(([k, c]) => [k, 
 // at 3, 4, 5, 7 and 8 bars restate together once every 840 bars, which at
 // these tempos is several hours.
 export const POLY_CYCLES = [3, 4, 5, 7, 8, 9, 11];
+
+
+// ---------------------------------------------------------------- blending
+
+const NUM_RANGES = ['bpm', 'swing', 'hatDensity'];
+const NUM_SCALARS = ['drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist', 'skipStep', 'glide'];
+const WEIGHTED = ['scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices', 'bassStyles', 'bassVoices', 'chordSize'];
+
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function blendWeighted(a = [], b = [], mix) {
+  // Both pools stay available; the mix only changes how likely each is. That
+  // is what lets a Hyrule/Airports loop reach for an ocarina or a choir.
+  const out = new Map();
+  for (const [k, w] of a) out.set(k, (out.get(k) || 0) + w * (1 - mix));
+  for (const [k, w] of b) out.set(k, (out.get(k) || 0) + w * mix);
+  return [...out].filter(([, w]) => w > 0.001);
+}
+
+// A pure function of (a, b, mix), so a spec only has to store two names and a
+// number and the blend can be rebuilt identically every time.
+export function blendCharacters(keyA, keyB, mix) {
+  const a = CHARACTERS[keyA] || CHARACTERS.tape;
+  if (!keyB || keyB === keyA) return a;
+  const b = CHARACTERS[keyB] || CHARACTERS.tape;
+
+  const out = { label: `${a.label}/${b.label}`, blended: true };
+  for (const k of NUM_RANGES) {
+    const av = a[k] || [0, 0];
+    const bv = b[k] || [0, 0];
+    out[k] = [lerp(av[0], bv[0], mix), lerp(av[1], bv[1], mix)];
+  }
+  for (const k of NUM_SCALARS) {
+    const av = a[k] ?? 0;
+    const bv = b[k] ?? 0;
+    const v = lerp(av, bv, mix);
+    if (v) out[k] = v;
+  }
+  for (const k of WEIGHTED) out[k] = blendWeighted(a[k], b[k], mix);
+  out.tone = {};
+  for (const k of ['warmth', 'space', 'wobble']) {
+    out.tone[k] = [lerp(a.tone[k][0], b.tone[k][0], mix), lerp(a.tone[k][1], b.tone[k][1], mix)];
+  }
+  out.mood = [lerp(a.mood[0], b.mood[0], mix), lerp(a.mood[1], b.mood[1], mix)];
+  // Polymeter is all or nothing; it goes with whichever side is dominant.
+  out.polymeter = mix < 0.5 ? !!a.polymeter : !!b.polymeter;
+  out.level = lerp(a.level ?? 1, b.level ?? 1, mix);
+  return out;
+}

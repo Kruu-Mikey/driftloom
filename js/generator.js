@@ -7,8 +7,8 @@
 // random streams never moved.
 
 import { Rng, randomSeed, seedName } from './rng.js';
-import { SCALES, scalePitch, buildChord, voiceInRange, nearestChordTone } from './theory.js';
-import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES } from './characters.js';
+import { SCALES, scalePitch, buildChord, voiceInRange, nearestChordTone, moodWeighted } from './theory.js';
+import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES, blendCharacters } from './characters.js';
 
 export const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 export const LAYER_LABELS = {
@@ -28,7 +28,21 @@ export const STEPS_PER_BAR = 16;
 export function newSpec(seed = randomSeed()) {
   const r = new Rng(seed);
   const characterKey = r.weighted(CHARACTER_WEIGHTS);
-  const c = CHARACTERS[characterKey];
+  // Most loops lean on one character, but well over half pull something in
+  // from a second, so the six palettes shade into each other rather than
+  // sitting in six separate boxes.
+  let secondKey = null;
+  let blend = 0;
+  if (r.chance(0.62)) {
+    secondKey = r.weighted(CHARACTER_WEIGHTS.filter(([k]) => k !== characterKey));
+    blend = r.range(0.2, 0.6);
+  }
+  const c = blendCharacters(characterKey, secondKey, blend);
+
+  // Mood runs sombre to joyful and steers scale, register and contour
+  // together. Skewed upward: the app was reliably wistful and almost never
+  // glad, and it should be able to be both.
+  const mood = c.mood[0] + (c.mood[1] - c.mood[0]) * Math.pow(r.f(), 0.62);
 
   const stepsPerBar = r.weighted(c.stepsPerBar);
   const bars = r.weighted(c.bars);
@@ -37,9 +51,12 @@ export function newSpec(seed = randomSeed()) {
     seed,
     name: seedName(seed),
     character: characterKey,
-    bpm: Math.round(r.range(c.bpm[0], c.bpm[1])),
+    character2: secondKey,
+    blend: +blend.toFixed(3),
+    mood: +mood.toFixed(3),
+    bpm: Math.round(r.range(c.bpm[0], c.bpm[1]) + (mood - 0.5) * 6),
     root: r.int(0, 11),
-    scale: r.weighted(c.scales),
+    scale: r.weighted(moodWeighted(c.scales, mood)),
     bars,
     stepsPerBar,
     swing: r.range(c.swing[0], c.swing[1]),
@@ -74,7 +91,19 @@ export function newSpec(seed = randomSeed()) {
 }
 
 export function characterOf(spec) {
-  return CHARACTERS[spec.character] || CHARACTERS.tape;
+  if (!spec.character2 || !spec.blend) return CHARACTERS[spec.character] || CHARACTERS.tape;
+  return blendCharacters(spec.character, spec.character2, spec.blend);
+}
+
+export function moodOf(spec) {
+  return spec.mood ?? 0.5;
+}
+
+// Rolling a layer should always give you that layer. If a character almost
+// never has drums, rolling the drum track still has to produce drums --
+// otherwise the button looks broken. Silence is what Mute is for.
+function forced(spec, layer) {
+  return !!(spec.forceLayers && spec.forceLayers[layer]);
 }
 
 // The longest thing that has to happen before the piece could repeat.
@@ -87,6 +116,7 @@ export function patternSteps(spec) {
 export function rerollLayer(spec, layer) {
   const next = cloneSpec(spec);
   next.layerSeeds[layer] = randomSeed();
+  next.forceLayers = { ...(next.forceLayers || {}), [layer]: true };
   return next;
 }
 
@@ -185,7 +215,11 @@ function genHarmony(spec) {
       ? [0, 3, 6, 9].slice(0, size).map((step) => scalePitch(spec.root, scale, degree + step, 0))
       : buildChord(spec.root, scale, degree, size, 0);
     // Occasionally colour the chord with a ninth.
-    if (!pentatonic && r.chance(0.28)) notes.push(scalePitch(spec.root, scale, degree + 8, 0));
+    const mood = moodOf(spec);
+    if (!pentatonic && r.chance(0.18 + mood * 0.3)) {
+      // The added ninth is most of what separates glad from merely pleasant.
+      notes.push(scalePitch(spec.root, scale, degree + 8, 0));
+    }
     notes = voiceInRange(notes, 55, 79);
     // Voice leading: nudge the whole shape toward the previous chord, but
     // never by more than an octave, and always re-clamp afterwards. Without
@@ -277,7 +311,11 @@ function genBass(spec, harmony) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
-  const style = r.weighted(c.bassStyles);
+  const style = forced(spec, 'bass')
+    ? r.weighted(c.bassStyles.filter(([k]) => k !== 'sparse').length
+        ? c.bassStyles.filter(([k]) => k !== 'sparse') : c.bassStyles)
+    : r.weighted(c.bassStyles);
+  const voice = r.weighted(c.bassVoices || [['sub', 1]]);
   const glideChance = c.glide || 0;
   const octaveShift = r.chance(0.25) ? -12 : 0;
   const events = [];
@@ -286,7 +324,7 @@ function genBass(spec, harmony) {
     let m = midi + octaveShift;
     while (m > 52) m -= 12;
     while (m < 28) m += 12;
-    events.push({ step: step % total, dur, midi: m, vel, glide });
+    events.push({ step: step % total, dur, midi: m, vel, glide, voice });
   };
 
   for (const slot of harmony.slots) {
@@ -324,7 +362,7 @@ function genBass(spec, harmony) {
     }
   }
 
-  return { events, style };
+  return { events, style, voice };
 }
 
 // ------------------------------------------------------------- melody
@@ -336,9 +374,8 @@ function genMelody(spec, harmony) {
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
   const voice = r.weighted(c.melodyVoices);
-  const brightScale = ['majorPent', 'ionian', 'lydian', 'mixolydian'].includes(spec.scale);
-  const silent = r.chance(brightScale ? 0.05 : 0.09);
-  if (silent) return { events: [], voice, motif: [] };
+  const mood = moodOf(spec);
+  if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [] };
 
   // Build a short motif in scale-degree offsets, then quote it across the
   // loop with variations. Repetition with variation is most of what makes
@@ -364,12 +401,19 @@ function genMelody(spec, harmony) {
       dur: r.pick([2, 2, 3, 4, 6]),
       vel: 0.4 + r.f() * 0.3,
     });
-    deg += r.weighted([[0, 1], [1, 3], [-1, 3], [2, 2], [-2, 1.5], [3, 1], [-3, 0.8], [4, 0.5]]);
+    // A rising line reads as glad, a falling one as wistful. Mood tilts the
+    // random walk rather than dictating it.
+    const up = 1 + mood * 2.2;
+    const down = 1 + (1 - mood) * 2.2;
+    deg += r.weighted([
+      [0, 1], [1, 2 * up], [-1, 2 * down], [2, 1.4 * up], [-2, 1.1 * down],
+      [3, 0.8 * up], [-3, 0.6 * down], [4, 0.4 * up],
+    ]);
     deg = Math.max(-4, Math.min(9, deg));
   }
 
   const events = [];
-  const octave = r.pick([0, 0, 1]);
+  const octave = r.chance(0.25 + mood * 0.5) ? 1 : 0;
   const restBarChance = c.restBar;
   const pointillist = c.pointillist || 0;
   // Kataoka's Lost Woods loop appears to skip a beat, which knocks it out of
@@ -433,7 +477,7 @@ function genDrums(spec) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const total = spec.bars * spb;
   const events = [];
-  if (!r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
+  if (!forced(spec, 'drums') && !r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
   const kit = r.weighted([['tape', 4], ['brush', 2], ['machine', 3]]);
 
   // A bar of 6/8 is not a bar of 4/4 with four steps missing; it needs its
@@ -490,9 +534,22 @@ function genTexture(spec, harmony) {
   const r = new Rng(spec.layerSeeds.texture);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const total = spec.bars * spb;
-  const kind = r.weighted([['bells', 3], ['swell', 3], ['wind', 2], ['drops', 2], ['none', 1.5]]);
+  const mood = moodOf(spec);
+  // Birdsong earns its keep at the bright end: this is meant to sit happily
+  // next to actual wind and actual birds on a hillside.
+  const kind = r.weighted([
+    ['bells', 3], ['swell', 3], ['wind', 2], ['drops', 2],
+    ['birds', 1 + mood * 4],
+    ['none', forced(spec, 'texture') ? 0 : 1.5],
+  ]);
   const events = [];
   if (kind === 'none') return { events, kind };
+  if (kind === 'birds') {
+    for (let i = 0; i < r.int(3, 7); i++) {
+      events.push({ step: r.int(0, total - 1), dur: 3, notes: [], vel: 0.18 + r.f() * 0.18, kind: 'birds' });
+    }
+    return { events, kind };
+  }
 
   if (kind === 'swell') {
     for (let bar = 0; bar < spec.bars; bar += 2) {
@@ -559,7 +616,7 @@ export function render(spec) {
       melody: melody.events,
       texture: texture.events,
     },
-    meta: { bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, textureKind: texture.kind },
+    meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, textureKind: texture.kind },
   };
 }
 

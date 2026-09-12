@@ -27,7 +27,14 @@ export function renderReadout(spec, pattern) {
   const character = CHARACTERS[spec.character];
   const key = `${NOTE_NAMES[spec.root]} ${SCALES[spec.scale].label}`;
   const meter = METER[spec.stepsPerBar || 16] || `${spec.stepsPerBar}/16`;
-  const bits = [character ? character.label : 'Tape', key, `${spec.bpm} bpm`, meter];
+  let name = character ? character.label : 'Tape';
+  if (spec.character2 && spec.blend) {
+    const second = CHARACTERS[spec.character2];
+    if (second) name = `${name}/${second.label}`;
+  }
+  const bits = [name, key, `${spec.bpm} bpm`, meter];
+  const mood = spec.mood ?? 0.5;
+  bits.push(mood > 0.78 ? 'bright' : mood > 0.58 ? 'warm' : mood > 0.38 ? 'still' : 'low');
   if (spec.cycles) bits.push('drifting');
   el('loopDetail').textContent = bits.join(' · ');
   el('bpmVal').textContent = spec.bpm;

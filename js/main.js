@@ -230,8 +230,14 @@ function newLoop() {
 function reroll(layer) {
   if (!state.spec) return newLoop();
   const next = rerollLayer(state.spec, layer);
-  next.name = state.spec.name;
-  loadSpec(next, { keepPosition: true, id: null, pushToHistory: true });
+  next.name = state.spec.name; // a re-roll is a revision, not a new piece
+  // And because it is a revision it REPLACES the current history entry
+  // instead of adding one. Otherwise Previous walks back through your own
+  // rolls of the same loop rather than reaching the loop before it.
+  loadSpec(next, { keepPosition: true, id: null, pushToHistory: false });
+  if (state.historyIndex >= 0 && state.history[state.historyIndex]) {
+    state.history[state.historyIndex] = cloneSpec(next);
+  }
   ui.toast(`Re-rolled ${layer}`);
 }
 

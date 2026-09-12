@@ -63,6 +63,25 @@ rather than only in detail. Each is built from how the real thing works:
 | **Plantasia** | Garson. Monophonic Moog lead with portamento through a resonant filter. Bright and quick |
 | **Airports** | Eno. Layer cycles of coprime lengths that never resynchronise |
 
+About 60% of loops blend two characters rather than sitting in one box, so
+you get things like an ocarina over an Eno drift, or a Moog lead on a tape
+beat. The blend is stored as two names and a number, and rebuilt
+deterministically, so it still costs nothing to save.
+
+A **mood** value, sombre to joyful, is sampled per loop and steers scale
+choice, melodic register, the direction of the melodic walk, and whether
+chords take an added ninth -- so those things agree with each other instead
+of pulling apart. It is skewed upward on purpose: the app was reliably
+wistful and almost never glad. Mean scale brightness now sits around 0.67,
+with roughly 79% of loops warm or bright. Birdsong appears as a texture on
+about a quarter of them, more often the brighter the loop.
+
+Rolling a layer always produces that layer. A character that almost never
+has drums will still give you drums when you roll the drum track -- silence
+is what Mute is for. Rolling is a revision of the current loop, so it
+replaces it in the history rather than adding an entry; Previous steps
+between loops, not between your own rolls.
+
 Roughly half of all loops have percussion; the rest are ambient by design.
 Metre is 4/4 about three quarters of the time, 6/8 a fifth, occasionally 5/4.
 
@@ -166,11 +185,10 @@ come back, and read `lateTicks` and `worstLateMs`.
 
 ## Known rough edges
 
-- **The mix is not balanced yet.** Bass sits about two to three times louder
-  than the drums, and one melody voice is louder still. Peaks before limiting
-  run to about 1.45, so the output compressor is working on every loop instead
-  of catching the occasional transient. Expect it to sound bass-heavy and a
-  little squashed. This is the next thing to fix.
+- The bass/drums balance is fixed (was 3.3x, now 1.06x) and there are six
+  bass timbres rather than one. Raw mix peaks still reach about 1.3, so the
+  output limiter is doing more work than it should; the remaining excess is
+  in the chord layer on dense loops.
 - Loops are always 4/4. No odd meters yet.
 - There's no way to edit a pattern by hand — you can only re-roll.
 - Saves live in this browser on this device. "Back up all" downloads a file;
