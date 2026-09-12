@@ -5,7 +5,7 @@
 // The actual note times are absolute Web Audio clock times, which are
 // sample-accurate. Standard two-clock pattern.
 
-import { render, drift } from './generator.js';
+import { render, drift, LAYERS } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
 import { Clock } from './clock.js';
 import { CHARACTERS } from './characters.js';
@@ -45,6 +45,7 @@ export class Engine {
     this.lateTicks = 0;
     this.worstLateMs = 0;
     this.totalTicks = 0;
+    this.tailsDucked = false;
   }
 
   load(spec, { keepPosition = false } = {}) {
@@ -95,6 +96,10 @@ export class Engine {
   stop() {
     this.playing = false;
     this.clock.stop();
+    if (this.tailsDucked) {
+      this.synth.restoreTails(this.ctx.currentTime);
+      this.tailsDucked = false;
+    }
   }
 
   report() {
@@ -160,10 +165,44 @@ export class Engine {
     }
   }
 
+  // True when every layer is scheduled out for the bar containing this step,
+  // either by the loop's entry schedule or by a drift rest.
+  _isSilentBar(absStep) {
+    const p = this.live;
+    if (!p) return false;
+    const spb = p.stepsPerBar || 16;
+    const bar = Math.floor((absStep % p.totalSteps) / spb);
+    if (p.driftSilentBars && p.driftSilentBars.indexOf(bar) !== -1) return true;
+    if (p.silentBars && p.silentBars.indexOf(bar) !== -1) return true;
+    if (!p.form) return false;
+    for (const layer of LAYERS) {
+      const sched = p.form[layer];
+      if (!sched) return false; // a freshly rolled layer plays throughout
+      const cycle = (p.cycles && p.cycles[layer]) || p.totalSteps;
+      const b = Math.floor((absStep % cycle) / spb) % sched.length;
+      if (sched[b]) return false;
+    }
+    return true;
+  }
+
   _scheduleStep(step, time) {
     const p = this.live;
     const cyc = p.cycles || {};
     const abs = this.absStep;
+
+    // At each bar line, decide whether the tails should still be ringing.
+    const spbNow = p.stepsPerBar || 16;
+    if (abs % spbNow === 0) {
+      const quiet = this._isSilentBar(abs);
+      if (quiet && !this.tailsDucked) {
+        this.synth.fadeTails(time);
+        this.tailsDucked = true;
+      } else if (!quiet && this.tailsDucked) {
+        // Restore just before the bar starts, so the first note is not dry.
+        this.synth.restoreTails(Math.max(this.ctx.currentTime, time - 0.12));
+        this.tailsDucked = false;
+      }
+    }
     // Where each layer is inside its own loop.
     const at = (layer) => {
       const len = cyc[layer] || p.totalSteps;

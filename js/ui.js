@@ -35,6 +35,7 @@ export function renderReadout(spec, pattern) {
   const bits = [name, key, `${spec.bpm} bpm`, meter];
   const mood = spec.mood ?? 0.5;
   bits.push(mood > 0.78 ? 'joyful' : mood > 0.6 ? 'happy' : mood > 0.4 ? 'peaceful' : 'reflective');
+  if (pattern && pattern.form) bits.push('airy');
   if (spec.cycles) bits.push('drifting');
   el('loopDetail').textContent = bits.join(' · ');
   el('bpmVal').textContent = spec.bpm;

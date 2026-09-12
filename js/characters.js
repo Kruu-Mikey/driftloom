@@ -33,7 +33,8 @@ export const CHARACTERS = {
     weight: 3.8,
     bpm: [61, 88],
     stepsPerBar: [[16, 1]],
-    bars: [[4, 7], [2, 2], [8, 2]],
+    bars: [[4, 7], [2, 2], [8, 3], [16, 1.2]],
+    airy: 0.25,
     swing: [0.04, 0.3],
     scales: [
       ['dorian', 3], ['aeolian', 3], ['minorPent', 2], ['majorPent', 1.6],
@@ -59,7 +60,8 @@ export const CHARACTERS = {
     weight: 2.1,
     bpm: [74, 112],
     stepsPerBar: [[16, 2], [12, 3]], // 4/4 and 6/8
-    bars: [[4, 5], [8, 3], [2, 1]],
+    bars: [[4, 5], [8, 3], [2, 1], [16, 1.5]],
+    airy: 0.35,
     swing: [0, 0.1],
     scales: [
       ['mixolydian', 3.5], ['dorian', 3], ['lydian', 2.5], ['ionian', 2],
@@ -85,7 +87,8 @@ export const CHARACTERS = {
     weight: 1.9,
     bpm: [50, 72],
     stepsPerBar: [[16, 3], [12, 1], [20, 1]], // sometimes 5/4
-    bars: [[4, 3], [8, 3], [6, 1], [3, 1]],
+    bars: [[4, 2.5], [8, 3], [6, 1], [3, 1], [16, 3], [24, 1.5]],
+    airy: 0.75,
     swing: [0, 0.06],
     scales: [
       ['lydian', 2.5], ['kumoi', 2.5], ['majorPent', 2], ['insen', 1.5],
@@ -113,7 +116,8 @@ export const CHARACTERS = {
     weight: 1.7,
     bpm: [46, 66],
     stepsPerBar: [[16, 3], [12, 1]],
-    bars: [[4, 3], [8, 3], [2, 1]],
+    bars: [[4, 2.5], [8, 3], [2, 1], [16, 2.5], [24, 1.2]],
+    airy: 0.7,
     swing: [0, 0.05],
     scales: [
       ['majorPent', 3], ['kumoi', 2.5], ['yo', 2], ['ritusen', 1.8],
@@ -140,7 +144,8 @@ export const CHARACTERS = {
     weight: 1.5,
     bpm: [84, 118],
     stepsPerBar: [[16, 3], [12, 2]],
-    bars: [[4, 5], [8, 2], [2, 2]],
+    bars: [[4, 5], [8, 2], [2, 2], [16, 1]],
+    airy: 0.15,
     swing: [0, 0.16],
     scales: [
       ['ionian', 3], ['lydian', 3], ['mixolydian', 2], ['majorPent', 2],
@@ -165,7 +170,8 @@ export const CHARACTERS = {
     weight: 1.3,
     bpm: [40, 58],
     stepsPerBar: [[16, 1]],
-    bars: [[4, 1]],
+    bars: [[4, 1], [8, 2], [16, 2.5], [32, 1.5]],
+    airy: 0.8,
     swing: [0, 0],
     scales: [
       ['lydian', 2.5], ['ionian', 2], ['majorPent', 2], ['kumoi', 1.5],
@@ -197,7 +203,7 @@ export const POLY_CYCLES = [3, 4, 5, 7, 8, 9, 11];
 // ---------------------------------------------------------------- blending
 
 const NUM_RANGES = ['bpm', 'swing', 'hatDensity'];
-const NUM_SCALARS = ['drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist', 'skipStep', 'glide'];
+const NUM_SCALARS = ['drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist', 'skipStep', 'glide', 'airy'];
 const WEIGHTED = ['scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices', 'bassStyles', 'bassVoices', 'chordSize'];
 
 const lerp = (a, b, t) => a + (b - a) * t;

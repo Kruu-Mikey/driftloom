@@ -589,8 +589,30 @@ export function render(spec) {
   const texture = genTexture(layerSpec(spec, 'texture'), harmony);
 
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const form = genForm(spec);
+  const raw = {
+    drums: drums.events,
+    bass: bass.events,
+    chords: harmony.events,
+    melody: melody.events,
+    texture: texture.events,
+  };
+  const tracks = { ...raw };
+  let quiet = [];
+  if (form) {
+    for (const layer of LAYERS) tracks[layer] = applyForm(tracks[layer], form[layer], spb);
+    const c = characterOf(spec);
+    // Airier characters get a longer allowance, but nobody gets an outage.
+    const maxRest = Math.max(1, Math.round(1 + (c.airy ?? 0.25) * 2));
+    const counts = limitSilence(tracks, raw, form, spec.bars, spb, maxRest, spec.cycles);
+    // Report what is actually empty, not what the schedule intended: a layer
+    // can be scheduled in and still have nothing to play that bar.
+    for (let bar = 0; bar < spec.bars; bar++) if (!counts[bar]) quiet.push(bar);
+  }
   return {
     spec,
+    form,
+    silentBars: quiet,
     totalSteps: spec.bars * spb,
     stepsPerBar: spb,
     // Per-layer loop lengths. Null means "same as the pattern"; the Eno
@@ -603,13 +625,7 @@ export function render(spec) {
       texture: (spec.cycles && spec.cycles.texture) || spec.bars * spb,
     },
     harmony,
-    tracks: {
-      drums: drums.events,
-      bass: bass.events,
-      chords: harmony.events,
-      melody: melody.events,
-      texture: texture.events,
-    },
+    tracks,
     meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, textureKind: texture.kind },
   };
 }
@@ -623,6 +639,176 @@ function neighbourInScale(midi, root, steps, dir) {
     if (steps.includes(pc)) return cand;
   }
   return midi;
+}
+
+
+// --------------------------------------------------------------- form
+
+// Entry schedules.
+//
+// Temple of Time and the Breath of the Wild field tracks have several
+// seconds of actual nothing in them. A loop cannot get that by leaving a
+// fixed hole in the bar line -- on a short loop the same gap every sixteen
+// seconds reads as a skip, not a rest.
+//
+// Instead each layer is given its own schedule of which bars it is present
+// for, in runs of a few bars at a time. Silence emerges wherever the runs
+// happen to coincide in absence, and because the layers have different run
+// lengths (and under polymeter, different cycle lengths) it lands somewhere
+// different each time round.
+//
+// Derived from the loop seed rather than any layer seed, so re-rolling the
+// bass does not rearrange the whole form underneath you.
+
+const FORM_RUNS = {
+  //          in-run bars     out-run bars
+  drums:   [[4, 12], [2, 6]],
+  bass:    [[4, 10], [2, 6]],
+  chords:  [[4, 12], [2, 5]],
+  melody:  [[2, 6], [3, 9]],   // the sparsest, which is what leaves holes
+  texture: [[2, 6], [3, 10]],
+};
+
+function runSchedule(r, bars, [inLo, inHi], [outLo, outHi], startIn) {
+  const out = new Array(bars).fill(false);
+  let i = 0;
+  let on = startIn;
+  while (i < bars) {
+    const len = on ? r.int(inLo, inHi) : r.int(outLo, outHi);
+    for (let k = 0; k < len && i < bars; k++, i += 1) out[i] = on;
+    on = !on;
+  }
+  // Never schedule a layer out for the entire loop; that is not silence,
+  // that is a missing instrument.
+  if (!out.some(Boolean)) {
+    for (let k = 0; k < Math.min(bars, 4); k++) out[k] = true;
+  }
+  return out;
+}
+
+export function genForm(spec) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const c = characterOf(spec);
+  // Short loops are left alone. A hole in a two-bar loop is a glitch.
+  if (spec.bars < 8) return null;
+  const r = new Rng(((spec.seed ^ 0x5f3759df) >>> 0) || 7);
+  if (!r.chance(c.airy ?? 0.25)) return null;
+
+  const schedules = {};
+  for (const layer of LAYERS) {
+    // A freshly rolled layer plays throughout, so the roll is audible at
+    // once instead of waiting eight bars for its entry.
+    if (spec.forceLayers && spec.forceLayers[layer]) {
+      schedules[layer] = null;
+      continue;
+    }
+    const cycle = (spec.cycles && spec.cycles[layer]) || spec.bars * spb;
+    const bars = Math.max(1, Math.round(cycle / spb));
+    const [inRun, outRun] = FORM_RUNS[layer];
+    schedules[layer] = runSchedule(r, bars, inRun, outRun, r.chance(0.7));
+  }
+
+  // If nothing ever coincides, place one rest by hand at a phrase boundary,
+  // so a loop that asked for air actually gets some.
+  const silent = silentBars(schedules, spec, spb);
+  if (!silent.length) {
+    const at = Math.min(spec.bars - 2, Math.max(4, Math.round(spec.bars / 2 / 4) * 4));
+    const span = r.chance(0.5) ? 2 : 1;
+    for (const layer of LAYERS) {
+      const sched = schedules[layer];
+      if (!sched) continue;
+      for (let k = 0; k < span; k++) {
+        const idx = (at + k) % sched.length;
+        sched[idx] = false;
+      }
+    }
+  }
+  return schedules;
+}
+
+// Which bars of the loop have every layer scheduled out.
+function silentBars(schedules, spec, spb) {
+  const out = [];
+  for (let bar = 0; bar < spec.bars; bar++) {
+    let quiet = true;
+    for (const layer of LAYERS) {
+      const sched = schedules[layer];
+      if (!sched) { quiet = false; break; }
+      const cycleBars = sched.length;
+      if (sched[bar % cycleBars]) { quiet = false; break; }
+    }
+    if (quiet) out.push(bar);
+  }
+  return out;
+}
+
+// Silence events rather than deleting them, so the pattern keeps its shape,
+// Drift still has something to vary, and a masked bar can be put back.
+// Order and length are preserved, so index i here matches index i in the
+// unmasked track -- which is what makes the repair pass below cheap.
+function applyForm(events, schedule, spb) {
+  if (!schedule) return events;
+  return events.map((e) => {
+    const bar = Math.floor(e.step / spb) % schedule.length;
+    return schedule[bar] ? e : { ...e, vel: 0 };
+  });
+}
+
+// Counting with `% bars` is wrong under polymeter: a layer on an 8-bar cycle
+// inside a 32-bar loop has no events past global bar 7, yet it plays all the
+// way through because the engine wraps it on its own cycle. Fold each layer
+// on its own length first, then read it off per global bar.
+function localBars(cycles, layer, bars, spb) {
+  const cycle = (cycles && cycles[layer]) || bars * spb;
+  return Math.max(1, Math.round(cycle / spb));
+}
+
+function audiblePerBar(tracks, bars, spb, cycles) {
+  const counts = new Array(bars).fill(0);
+  for (const layer of LAYERS) {
+    const cb = localBars(cycles, layer, bars, spb);
+    const per = new Array(cb).fill(0);
+    for (const e of tracks[layer]) {
+      if (!e.vel) continue;
+      per[Math.floor(e.step / spb) % cb] += 1;
+    }
+    for (let b = 0; b < bars; b++) counts[b] += per[b % cb];
+  }
+  return counts;
+}
+
+// Schedules alone overshoot badly. Entry runs, the melody's own rest-bar
+// chance and the sparser bass styles all subtract independently, and they
+// compound: one sixteen-bar loop played for four bars and then stopped for
+// eleven. A rest is a few seconds of held breath, not an outage.
+//
+// So after masking, any run of empty bars longer than the allowance gets a
+// layer put back, cheapest-sounding first.
+const REPAIR_ORDER = ['chords', 'bass', 'texture', 'melody', 'drums'];
+
+function limitSilence(tracks, raw, form, bars, spb, maxRest, cycles) {
+  let counts = audiblePerBar(tracks, bars, spb, cycles);
+  let run = 0;
+  for (let bar = 0; bar < bars; bar++) {
+    if (counts[bar] > 0) { run = 0; continue; }
+    run += 1;
+    if (run <= maxRest) continue;
+    let repaired = false;
+    for (const layer of REPAIR_ORDER) {
+      const cb = localBars(cycles, layer, bars, spb);
+      const local = bar % cb;
+      const inBar = (e) => Math.floor(e.step / spb) % cb === local;
+      if (!raw[layer].some((e) => e.vel > 0 && inBar(e))) continue;
+      tracks[layer] = tracks[layer].map((e, i) => (inBar(e) ? { ...raw[layer][i] } : e));
+      if (form[layer]) form[layer][local] = true;
+      repaired = true;
+      break;
+    }
+    if (!repaired) continue; // genuinely nothing to put back anywhere
+    counts = audiblePerBar(tracks, bars, spb, cycles);
+    run = 0;
+  }
+  return counts;
 }
 
 // ----------------------------------------------------------- drift
@@ -685,7 +871,27 @@ export function drift(pattern, rng, amount) {
     if (rng.chance(0.06 * a) && e.notes.length) e.notes.push(e.notes[0] + 14);
     if (rng.chance(0.05 * a)) e.vel *= 0.4;
   }
-  // Now and then a whole layer takes a breath.
+  // And now and then the whole thing stops. Unpredictable, over a loop you
+  // already know, which is the part a fixed rest can never give you.
+  if (rng.chance(0.1 * a)) {
+    const spb = pattern.stepsPerBar || 16;
+    const bars = Math.max(1, Math.floor(p.totalSteps / spb));
+    if (bars >= 4) {
+      const span = rng.chance(0.35) ? 2 : 1;
+      const start = rng.int(1, Math.max(1, bars - span));
+      const from = start * spb;
+      const to = (start + span) * spb;
+      for (const layer of Object.keys(p.tracks)) {
+        for (const e of p.tracks[layer]) {
+          if (e.step >= from && e.step < to) e.vel = 0;
+        }
+      }
+      p.driftSilentBars = [];
+      for (let k = 0; k < span; k++) p.driftSilentBars.push(start + k);
+    }
+  }
+
+  // Now and then a single layer takes a breath.
   if (rng.chance(0.1 * a)) {
     const layer = rng.pick(['melody', 'chords', 'drums']);
     const half = rng.chance(0.5) ? 0 : p.totalSteps / 2;

@@ -30,7 +30,7 @@ export class Synth {
   constructor(ctx, quality = 'full') {
     this.ctx = ctx;
     this.quality = quality;
-    this.voices = 0;
+    this._releases = [];
     this.noise = this._makeNoise(2.0);
     this._build();
   }
@@ -149,10 +149,17 @@ export class Synth {
     }
     this.combSum.gain.value = 0.2 / this.combs.length;
     this.combSum.connect(this.reverbOut);
+    // Both tails run through one gain so a scheduled rest can be made into
+    // real silence. Without this a four second hole is two seconds of hole
+    // and two seconds of reverb wash, which is not what silence sounds like.
+    this.tails = ctx.createGain();
+    this.tails.gain.value = 1;
+    this.tails.connect(this.preBus);
+
     const preDelay = ctx.createDelay(0.2);
     preDelay.delayTime.value = 0.02;
     this.reverbOut.connect(preDelay);
-    preDelay.connect(this.preBus);
+    preDelay.connect(this.tails);
 
     // Echo, tuned to a dotted eighth by default; set per loop tempo later.
     this.echo = ctx.createDelay(2.0);
@@ -167,7 +174,7 @@ export class Synth {
     this.echo.connect(this.echoTone);
     this.echoTone.connect(this.echoFb);
     this.echoFb.connect(this.echo);
-    this.echoTone.connect(this.preBus);
+    this.echoTone.connect(this.tails);
 
     // No continuous surface-noise layer: the musical voices and reverb
     // provide the atmosphere without adding an audible hiss.
@@ -215,6 +222,17 @@ export class Synth {
     this.flutterDepth.gain.setTargetAtTime(0.00004 + wobble * 0.0005, t, 0.2);
   }
 
+  // Let the tail ring naturally for a moment, then take it down to nothing.
+  fadeTails(time, hold = 0.7, fall = 1.1) {
+    this.tails.gain.cancelScheduledValues(time);
+    this.tails.gain.setTargetAtTime(0.0001, time + hold, fall / 3);
+  }
+
+  restoreTails(time) {
+    this.tails.gain.cancelScheduledValues(time);
+    this.tails.gain.setTargetAtTime(1, time, 0.08);
+  }
+
   setEchoTime(seconds) {
     this.echo.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
   }
@@ -242,15 +260,26 @@ export class Synth {
     this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08);
   }
 
-  _budget() {
-    if (this.voices > MAX_VOICES) return false;
-    this.voices++;
+  // Voice budgeting used to count down with setTimeout. That is wrong twice
+  // over. Backgrounded pages have their timers clamped to about 1Hz, so
+  // releases arrive late, the counter stays high and notes get dropped --
+  // a real cause of dropouts with the screen off. And in an offline render
+  // the callbacks never fire at all, so the budget saturates after 28 notes
+  // and silently discards the rest of the piece.
+  //
+  // Releases are now tracked on the audio clock and pruned against the time
+  // the note is scheduled for, which is correct in both cases.
+  _budget(time = this.ctx.currentTime) {
+    while (this._releases.length && this._releases[0] <= time) this._releases.shift();
+    if (this._releases.length > MAX_VOICES) return false;
     return true;
   }
-  _release(dur) {
-    setTimeout(() => {
-      this.voices = Math.max(0, this.voices - 1);
-    }, dur * 1000 + 120);
+
+  _release(time, dur) {
+    const at = (typeof dur === 'number' ? time + dur : this.ctx.currentTime + time) + 0.12;
+    let i = this._releases.length;
+    while (i > 0 && this._releases[i - 1] > at) i--;
+    this._releases.splice(i, 0, at);
   }
 
   _noiseSource(time, dur) {
@@ -265,7 +294,7 @@ export class Synth {
   // ------------------------------------------------------------- drums
 
   drum(inst, time, vel = 0.8) {
-    if (!this._budget()) return;
+    if (!this._budget(time)) return;
     const ctx = this.ctx;
     const out = this.channels.drums.gain;
     const v = Math.max(0, Math.min(1, vel));
@@ -291,7 +320,7 @@ export class Synth {
       cg.gain.setValueAtTime(v * 0.28, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
       click.connect(cf).connect(cg).connect(out);
-      this._release(0.45);
+      this._release(time, 0.45);
       return;
     }
 
@@ -317,7 +346,7 @@ export class Synth {
       body.connect(bg).connect(out);
       body.start(time);
       body.stop(time + 0.12);
-      this._release(dur);
+      this._release(time, dur);
       return;
     }
 
@@ -332,7 +361,7 @@ export class Synth {
       g.gain.exponentialRampToValueAtTime(v * (inst === 'shaker' ? 0.3 : 0.42), time + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
       src.connect(hpf).connect(g).connect(out);
-      this._release(dur);
+      this._release(time, dur);
       return;
     }
 
@@ -352,10 +381,10 @@ export class Synth {
       osc.connect(bp).connect(g).connect(out);
       osc.start(time);
       osc.stop(time + 0.09);
-      this._release(0.1);
+      this._release(time, 0.1);
       return;
     }
-    this._release(0.05);
+    this._release(time, 0.05);
   }
 
   // -------------------------------------------------------------- bass
@@ -364,7 +393,7 @@ export class Synth {
   // and the most monotonous. Each of these keeps the low end clear a
   // different way: less sub, a steeper filter, or no sawtooth at all.
   bass(midi, time, dur, vel = 0.7, glide = false, voice = 'sub') {
-    if (!this._budget()) return;
+    if (!this._budget(time)) return;
     const ctx = this.ctx;
     const out = this.channels.bass.gain;
     const f = midiToFreq(midi);
@@ -487,7 +516,7 @@ export class Synth {
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
     }
-    this._release(dur + 0.8);
+    this._release(time, dur + 0.8);
   }
 
   // ------------------------------------------------------------- tuned
@@ -496,7 +525,7 @@ export class Synth {
   // index envelope is an electric piano, 3.5:1 is a bell, 1:1 is a soft
   // reed. One tiny voice covering most of a mid-80s digital keyboard.
   fm(midi, time, dur, vel, opts = {}) {
-    if (!this._budget()) return;
+    if (!this._budget(time)) return;
     const ctx = this.ctx;
     const out = opts.out || this.channels.chords.gain;
     const f = midiToFreq(midi);
@@ -530,14 +559,14 @@ export class Synth {
     const stop = time + dur + 1.2;
     car.stop(stop);
     mod.stop(stop);
-    this._release(dur + 1.2);
+    this._release(time, dur + 1.2);
   }
 
   pad(notes, time, dur, vel, dest) {
     const ctx = this.ctx;
     const out = dest || this.channels.chords.gain;
     for (const midi of notes) {
-      if (!this._budget()) return;
+      if (!this._budget(time)) return;
       const f = midiToFreq(midi);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
@@ -558,7 +587,7 @@ export class Synth {
         o.stop(time + dur + 1.6);
       }
       lp.connect(g).connect(out);
-      this._release(dur + 1.6);
+      this._release(time, dur + 1.6);
     }
   }
 
@@ -569,7 +598,7 @@ export class Synth {
     } else if (voice === 'keys') {
       this.fm(midi, time, dur, vel, { out, ratio: 2, index: 260, decay: 0.4 });
     } else if (voice === 'saw') {
-      if (!this._budget()) return;
+      if (!this._budget(time)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
@@ -586,10 +615,10 @@ export class Synth {
       o.connect(lp).connect(g).connect(out);
       o.start(time);
       o.stop(time + dur + 0.6);
-      this._release(dur + 0.6);
+      this._release(time, dur + 0.6);
     } else {
       // Square-wave beep with a touch of vibrato. The Adventure Time voice.
-      if (!this._budget()) return;
+      if (!this._budget(time)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -611,7 +640,7 @@ export class Synth {
       vib.start(time);
       o.stop(time + dur + 0.5);
       vib.stop(time + dur + 0.5);
-      this._release(dur + 0.5);
+      this._release(time, dur + 0.5);
     }
   }
 
@@ -638,7 +667,7 @@ export class Synth {
       // player's does.
       case 'ocarina':
       case 'flute': {
-        if (!this._budget()) return;
+        if (!this._budget(time)) return;
         const breathy = name === 'flute';
         const o = ctx.createOscillator();
         o.type = breathy ? 'triangle' : 'sine';
@@ -666,7 +695,7 @@ export class Synth {
         air.connect(bp).connect(ag).connect(dest);
         o.start(time); vib.start(time);
         o.stop(time + dur + 0.4); vib.stop(time + dur + 0.4);
-        this._release(dur + 0.4);
+        this._release(time, dur + 0.4);
         return;
       }
 
@@ -692,7 +721,7 @@ export class Synth {
       // sweep. Monophonic by nature, which is why it is a lead and not a pad.
       case 'moog':
       case 'whistle': {
-        if (!this._budget()) return;
+        if (!this._budget(time)) return;
         const whistle = name === 'whistle';
         const o = ctx.createOscillator();
         o.type = whistle ? 'triangle' : 'sawtooth';
@@ -720,13 +749,13 @@ export class Synth {
         o.connect(lp).connect(g).connect(dest);
         o.start(time); vib.start(time);
         o.stop(time + dur + 0.5); vib.stop(time + dur + 0.5);
-        this._release(dur + 0.5);
+        this._release(time, dur + 0.5);
         return;
       }
 
       // Eno's voices: three detuned saws, heavily filtered, arriving slowly.
       case 'choir': {
-        if (!this._budget()) return;
+        if (!this._budget(time)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.setValueAtTime(700, time);
@@ -745,12 +774,12 @@ export class Synth {
           o.stop(time + dur + 1.8);
         }
         lp.connect(g).connect(dest);
-        this._release(dur + 1.8);
+        this._release(time, dur + 1.8);
         return;
       }
 
       case 'sine': {
-        if (!this._budget()) return;
+        if (!this._budget(time)) return;
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = f;
@@ -761,7 +790,7 @@ export class Synth {
         o.connect(g).connect(dest);
         o.start(time);
         o.stop(time + dur + 1);
-        this._release(dur + 1);
+        this._release(time, dur + 1);
         return;
       }
 
@@ -781,7 +810,7 @@ export class Synth {
     const out = this.channels.texture.gain;
     if (kind === 'swell') {
       for (const midi of notes) {
-        if (!this._budget()) return;
+        if (!this._budget(time)) return;
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = midiToFreq(midi);
@@ -792,12 +821,12 @@ export class Synth {
         o.connect(g).connect(out);
         o.start(time);
         o.stop(time + dur + 0.2);
-        this._release(dur + 0.2);
+        this._release(time, dur + 0.2);
       }
     } else if (kind === 'bell') {
       this.fm(notes[0], time, dur, vel, { out, ratio: 5.1, index: 300, decay: 1.1 });
     } else if (kind === 'drop') {
-      if (!this._budget()) return;
+      if (!this._budget(time)) return;
       const src = this._noiseSource(time, 0.12);
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
@@ -808,9 +837,9 @@ export class Synth {
       g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
       src.connect(bp).connect(g).connect(out);
-      this._release(0.15);
+      this._release(time, 0.15);
     } else if (kind === 'wind') {
-      if (!this._budget()) return;
+      if (!this._budget(time)) return;
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       src.loop = true;
@@ -833,7 +862,7 @@ export class Synth {
       lfo.start(time);
       lfo.stop(time + dur + 1);
       src.stop(time + dur + 1);
-      this._release(dur + 1);
+      this._release(time, dur + 1);
     }
   }
 }

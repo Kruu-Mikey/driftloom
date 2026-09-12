@@ -201,6 +201,33 @@ Dividing by `drive` instead makes the slope at zero exactly 1. Quiet
 passages pass through untouched and only loud ones round off, which is what
 tape does.
 
+## Silence
+
+Temple of Time and the Breath of the Wild field music have several seconds
+of actual nothing in them. A loop cannot get that by leaving a fixed hole in
+the bar line -- on a short loop the same gap every sixteen seconds reads as
+a skip rather than a rest.
+
+Instead each layer gets an **entry schedule**: which bars it is present for,
+in runs of a few bars at a time. Silence emerges wherever the runs coincide
+in absence, and because layers have different run lengths (and under
+polymeter different cycle lengths) it lands somewhere different each time
+round. Drift can also rest everything for a bar or two, unpredictably, over
+a loop you already know.
+
+Schedules alone overshoot badly, because entry runs, the melody's rest-bar
+chance and the sparser bass styles all subtract independently. One sixteen
+bar loop played for four bars and then stopped for eleven. So after masking,
+any run of empty bars beyond the character's allowance gets a layer put
+back. Longest rest now tops out at 3 bars, with 18% of an airy loop silent
+-- four to eight seconds at these tempos.
+
+Loops under 8 bars are left alone entirely; a hole in a two-bar loop is a
+glitch, not a breath. Reverb and echo run through one gain node so a rest
+can be ducked rather than filled with wash. Rests land 20-45 dB below
+programme level rather than at digital zero, because held notes are allowed
+to decay into them, which is what the references do too.
+
 ## Known rough edges
 
 - Output now peaks between about 0.46 and 0.84 with no full-scale samples
