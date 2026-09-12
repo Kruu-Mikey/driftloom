@@ -538,10 +538,10 @@ function genTexture(spec, harmony) {
   const mood = moodOf(spec);
   // No birdsong. Wherever this gets played there are already real birds, and
   // the job is to complement what is outside rather than imitate it.
-  const kind = r.weighted([
-    ['bells', 3], ['swell', 3], ['wind', 2], ['drops', 2],
-    ['none', forced(spec, 'texture') ? 0 : 1.5],
-  ]);
+  const c = characterOf(spec);
+  const pool = (c.textures || [['bells', 3], ['swell', 3], ['chime', 2], ['drops', 2], ['wind', 1], ['none', 1.5]])
+    .filter(([k]) => !(forced(spec, 'texture') && k === 'none'));
+  const kind = r.weighted(pool);
   const events = [];
   if (kind === 'none') return { events, kind };
 
@@ -573,8 +573,38 @@ function genTexture(spec, harmony) {
     for (let i = 0; i < r.int(3, 7); i++) {
       events.push({ step: r.int(0, total - 1), dur: 2, notes: [], vel: 0.2 + r.f() * 0.2, kind: 'drop' });
     }
+  } else if (kind === 'chime') {
+    // Struck metal with a long decay and an inharmonic partial, so it reads
+    // as a different object from the bells rather than the same one slower.
+    const count = r.int(2, 4);
+    for (let i = 0; i < count; i++) {
+      const step = r.int(0, total - 1);
+      const slot = slotAt(harmony.slots, step, harmony.cycleSteps);
+      events.push({
+        step,
+        dur: 16,
+        notes: [slot.notes[r.int(0, slot.notes.length - 1)] + 12],
+        vel: 0.1 + r.f() * 0.1,
+        kind: 'chime',
+      });
+    }
   } else {
-    events.push({ step: 0, dur: total, notes: [], vel: 0.1 + r.f() * 0.1, kind: 'wind' });
+    // Wind used to be one source running the whole loop, which is why it
+    // dominated far beyond how often it was picked: every other texture is
+    // a handful of events, this one never stopped. Cut into segments with
+    // gaps, so it comes and goes and the entry schedule can act on it.
+    const seg = spb * 2;
+    for (let st = 0; st < total; st += seg) {
+      if (st > 0 && r.chance(0.35)) continue;
+      events.push({
+        step: st,
+        dur: seg,
+        notes: [],
+        vel: 0.07 + r.f() * 0.08,
+        kind: 'wind',
+        band: 420 + r.f() * 520,
+      });
+    }
   }
   return { events, kind };
 }
@@ -674,7 +704,11 @@ function runSchedule(r, bars, [inLo, inHi], [outLo, outHi], startIn) {
   let i = 0;
   let on = startIn;
   while (i < bars) {
-    const len = on ? r.int(inLo, inHi) : r.int(outLo, outHi);
+    // Quantise every entry and exit to a two-bar boundary. Music stopping
+    // on bar three and a half is what reads as "it just stopped for no
+    // reason"; stopping where a phrase would end reads as a breath.
+    const raw = on ? r.int(inLo, inHi) : r.int(outLo, outHi);
+    const len = Math.max(2, Math.round(raw / 2) * 2);
     for (let k = 0; k < len && i < bars; k++, i += 1) out[i] = on;
     on = !on;
   }
@@ -878,7 +912,9 @@ export function drift(pattern, rng, amount) {
     const bars = Math.max(1, Math.floor(p.totalSteps / spb));
     if (bars >= 4) {
       const span = rng.chance(0.35) ? 2 : 1;
-      const start = rng.int(1, Math.max(1, bars - span));
+      // Land the rest on an even bar, for the same reason.
+      const latest = Math.max(1, bars - span);
+      const start = Math.min(latest, Math.max(2, rng.int(1, latest) & ~1));
       const from = start * spb;
       const to = (start + span) * spb;
       for (const layer of Object.keys(p.tracks)) {

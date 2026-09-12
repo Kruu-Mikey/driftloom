@@ -258,7 +258,7 @@ export class Engine {
       const s = at('texture');
       for (const e of p.tracks.texture) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.texture(e.kind, e.notes, t, e.dur * sd, e.vel);
+        this.synth.texture(e.kind, e.notes, t, e.dur * sd, e.vel, { band: e.band });
       }
     }
 

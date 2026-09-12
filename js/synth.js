@@ -805,7 +805,7 @@ export class Synth {
 
   // ------------------------------------------------------------ texture
 
-  texture(kind, notes, time, dur, vel) {
+  texture(kind, notes, time, dur, vel, opts = {}) {
     const ctx = this.ctx;
     const out = this.channels.texture.gain;
     if (kind === 'swell') {
@@ -825,6 +825,8 @@ export class Synth {
       }
     } else if (kind === 'bell') {
       this.fm(notes[0], time, dur, vel, { out, ratio: 5.1, index: 300, decay: 1.1 });
+    } else if (kind === 'chime') {
+      this.fm(notes[0], time, dur, vel, { out, ratio: 2.76, index: 230, decay: 1.6, attack: 0.004 });
     } else if (kind === 'drop') {
       if (!this._budget(time)) return;
       const src = this._noiseSource(time, 0.12);
@@ -847,17 +849,19 @@ export class Synth {
       src.start(time);
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.value = 620;
+      // Band varies per segment, so successive gusts are not the same gust.
+      bp.frequency.value = opts.band || 620;
       bp.Q.value = 1.1;
       const lfo = ctx.createOscillator();
-      lfo.frequency.value = 0.07;
+      lfo.frequency.value = 0.07 + Math.random() * 0.06;
       const lfoG = ctx.createGain();
       lfoG.gain.value = 280;
       lfo.connect(lfoG).connect(bp.frequency);
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
-      g.gain.linearRampToValueAtTime(vel * 0.5, time + 1.5);
-      g.gain.setTargetAtTime(0.0001, time + dur - 1, 0.5);
+      // Swell in and back out inside the segment rather than sitting flat.
+      g.gain.linearRampToValueAtTime(vel * 0.32, time + Math.max(0.8, dur * 0.4));
+      g.gain.setTargetAtTime(0.0001, time + dur * 0.75, Math.max(0.4, dur * 0.2));
       src.connect(bp).connect(g).connect(out);
       lfo.start(time);
       lfo.stop(time + dur + 1);

@@ -222,6 +222,10 @@ any run of empty bars beyond the character's allowance gets a layer put
 back. Longest rest now tops out at 3 bars, with 18% of an airy loop silent
 -- four to eight seconds at these tempos.
 
+Entries and exits are quantised to two-bar boundaries. Music stopping on
+bar three and a half is what reads as "it just stopped"; stopping where a
+phrase would end reads as a breath.
+
 Loops under 8 bars are left alone entirely; a hole in a two-bar loop is a
 glitch, not a breath. Reverb and echo run through one gain node so a rest
 can be ducked rather than filled with wash. Rests land 20-45 dB below

@@ -48,6 +48,7 @@ export const CHARACTERS = {
     melodyVoices: [['pluck', 3], ['bell', 2], ['keys', 2], ['saw', 1]],
     bassStyles: [['held', 3], ['pulse', 3], ['dub', 2.5], ['walk', 1.5], ['sparse', 2]],
     bassVoices: [['sub', 3], ['round', 2], ['pluckbass', 2], ['moogbass', 1.5]],
+    textures: [['bells', 3], ['swell', 2], ['drops', 2], ['chime', 1.5], ['wind', 0.7], ['none', 2]],
     mood: [0.2, 0.8],
     restBar: 0.22,
     chordSize: [[3, 3], [4, 4], [2, 1]],
@@ -74,6 +75,7 @@ export const CHARACTERS = {
     melodyVoices: [['ocarina', 4], ['flute', 2.5], ['harp', 2], ['musicbox', 1]],
     bassStyles: [['held', 3], ['pulse', 2], ['walk', 2], ['sparse', 1]],
     bassVoices: [['pluckbass', 3], ['round', 3], ['sub', 1.5], ['fifths', 1]],
+    textures: [['bells', 3], ['chime', 2.5], ['swell', 2], ['drops', 1], ['wind', 0.4], ['none', 1.5]],
     mood: [0.45, 1],
     restBar: 0.14,
     chordSize: [[3, 4], [4, 3]],
@@ -101,6 +103,7 @@ export const CHARACTERS = {
     melodyVoices: [['piano', 5], ['musicbox', 1.5], ['sine', 1]],
     bassStyles: [['sparse', 4], ['held', 2]],
     bassVoices: [['round', 3], ['fifths', 2.5], ['sub', 1]],
+    textures: [['swell', 3], ['chime', 2.5], ['bells', 2.5], ['drops', 1.2], ['wind', 1], ['none', 2]],
     mood: [0.35, 0.9],
     restBar: 0.45,
     chordSize: [[3, 2], [4, 3]],
@@ -130,6 +133,7 @@ export const CHARACTERS = {
     melodyVoices: [['rhodes', 4], ['sine', 2], ['musicbox', 1.5]],
     bassStyles: [['sparse', 4], ['held', 3]],
     bassVoices: [['round', 3], ['rhodesbass', 2.5], ['fifths', 2]],
+    textures: [['swell', 3], ['chime', 2.5], ['bells', 2], ['drops', 0.8], ['wind', 0.8], ['none', 2]],
     mood: [0.5, 1],
     restBar: 0.4,
     chordSize: [[3, 3], [4, 2]],
@@ -157,6 +161,7 @@ export const CHARACTERS = {
     melodyVoices: [['moog', 5], ['whistle', 3]],
     bassStyles: [['pulse', 4], ['walk', 2], ['dub', 1.5]],
     bassVoices: [['moogbass', 4], ['sub', 2], ['pluckbass', 1.5]],
+    textures: [['bells', 2], ['drops', 2], ['chime', 1.5], ['swell', 1.5], ['wind', 0.3], ['none', 2]],
     mood: [0.6, 1],
     restBar: 0.1,
     chordSize: [[3, 4], [4, 2]],
@@ -183,6 +188,7 @@ export const CHARACTERS = {
     melodyVoices: [['piano', 3], ['choir', 2], ['sine', 2]],
     bassStyles: [['sparse', 5]],
     bassVoices: [['fifths', 3], ['round', 3], ['rhodesbass', 1.5]],
+    textures: [['swell', 4], ['chime', 2], ['bells', 1.5], ['wind', 1], ['drops', 0.5], ['none', 1.5]],
     mood: [0.4, 0.95],
     restBar: 0.5,
     chordSize: [[3, 3], [4, 3]],
@@ -204,7 +210,7 @@ export const POLY_CYCLES = [3, 4, 5, 7, 8, 9, 11];
 
 const NUM_RANGES = ['bpm', 'swing', 'hatDensity'];
 const NUM_SCALARS = ['drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist', 'skipStep', 'glide', 'airy'];
-const WEIGHTED = ['scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices', 'bassStyles', 'bassVoices', 'chordSize'];
+const WEIGHTED = ['scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices', 'bassStyles', 'bassVoices', 'chordSize', 'textures'];
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
