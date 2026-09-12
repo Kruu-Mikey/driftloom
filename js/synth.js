@@ -45,6 +45,8 @@ export class Synth {
 
     this.master = ctx.createGain();
     this.master.gain.value = 0.85;
+    this.userVolume = 0.85;
+    this.characterLevel = 1;
 
     // Last line of defence. Whatever combination of layers lands on the
     // same sixteenth, nothing leaves here above unity.
@@ -213,7 +215,20 @@ export class Synth {
   }
 
   setVolume(v) {
-    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05);
+    this.userVolume = v;
+    this._applyGain();
+  }
+
+  // Per-character trim, kept separate from the user's volume so the two do
+  // not fight each other.
+  setCharacterLevel(level) {
+    this.characterLevel = level;
+    this._applyGain();
+  }
+
+  _applyGain() {
+    const v = (this.userVolume ?? 0.85) * (this.characterLevel ?? 1);
+    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08);
   }
 
   _budget() {
@@ -420,9 +435,9 @@ export class Synth {
     this._release(dur + 1.2);
   }
 
-  pad(notes, time, dur, vel) {
+  pad(notes, time, dur, vel, dest) {
     const ctx = this.ctx;
-    const out = this.channels.chords.gain;
+    const out = dest || this.channels.chords.gain;
     for (const midi of notes) {
       if (!this._budget()) return;
       const f = midiToFreq(midi);
@@ -499,6 +514,165 @@ export class Synth {
       o.stop(time + dur + 0.5);
       vib.stop(time + dur + 0.5);
       this._release(dur + 0.5);
+    }
+  }
+
+
+  // ------------------------------------------------------- voice router
+
+  // One entry point for every tuned sound. Characters name a voice and this
+  // decides what that means in oscillators.
+  voice(name, midi, time, dur, vel, out, opts = {}) {
+    const ctx = this.ctx;
+    const dest = out || this.channels.melody.gain;
+    const f = midiToFreq(midi);
+
+    switch (name) {
+      // Zelda's harp: bright, short, two-operator, with a second voice a
+      // hair out of tune so it rings rather than beeps.
+      case 'harp':
+        this.fm(midi, time, dur * 0.8, vel, { out: dest, ratio: 3, index: 200, decay: 0.35 });
+        this.fm(midi, time + 0.006, dur * 0.6, vel * 0.4, { out: dest, ratio: 3, index: 140, decay: 0.3, detune: 7 });
+        return;
+
+      // Ocarina and flute are the same idea at different mixes: a nearly pure
+      // tone plus breath noise, with vibrato that arrives late the way a
+      // player's does.
+      case 'ocarina':
+      case 'flute': {
+        if (!this._budget()) return;
+        const breathy = name === 'flute';
+        const o = ctx.createOscillator();
+        o.type = breathy ? 'triangle' : 'sine';
+        o.frequency.value = f;
+        const vib = ctx.createOscillator();
+        vib.frequency.value = 5.2;
+        const vibAmt = ctx.createGain();
+        vibAmt.gain.setValueAtTime(0, time);
+        vibAmt.gain.linearRampToValueAtTime(breathy ? 9 : 6, time + Math.min(0.5, dur));
+        vib.connect(vibAmt).connect(o.detune);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(vel * 0.3, time + 0.05);
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
+        o.connect(g).connect(dest);
+        const air = this._noiseSource(time, dur + 0.1);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = f * 2;
+        bp.Q.value = 1.2;
+        const ag = ctx.createGain();
+        ag.gain.setValueAtTime(0.0001, time);
+        ag.gain.linearRampToValueAtTime(vel * (breathy ? 0.1 : 0.045), time + 0.06);
+        ag.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
+        air.connect(bp).connect(ag).connect(dest);
+        o.start(time); vib.start(time);
+        o.stop(time + dur + 0.4); vib.stop(time + dur + 0.4);
+        this._release(dur + 0.4);
+        return;
+      }
+
+      // Piano, the BOTW voice. Two operators at a 1:1 ratio with a fast index
+      // decay give the struck-string bite; a detuned second partial and a
+      // long tail do the rest. Not a Steinway, but it reads as a piano.
+      case 'piano': {
+        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002 });
+        this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4 });
+        return;
+      }
+
+      case 'musicbox':
+        this.fm(midi, time, dur * 0.9, vel, { out: dest, ratio: 5.1, index: 420, decay: 0.45 });
+        return;
+
+      // Fender Rhodes: the classic 2:1 bell-ish FM electric piano.
+      case 'rhodes':
+        this.fm(midi, time, dur, vel, { out: dest, ratio: 2, index: 190, decay: 0.5, attack: 0.004 });
+        return;
+
+      // Garson's Moog: one oscillator, portamento, and a resonant filter
+      // sweep. Monophonic by nature, which is why it is a lead and not a pad.
+      case 'moog':
+      case 'whistle': {
+        if (!this._budget()) return;
+        const whistle = name === 'whistle';
+        const o = ctx.createOscillator();
+        o.type = whistle ? 'triangle' : 'sawtooth';
+        if (opts.glide) {
+          o.frequency.setValueAtTime(f * 0.75, time);
+          o.frequency.exponentialRampToValueAtTime(f, time + 0.09);
+        } else {
+          o.frequency.setValueAtTime(f, time);
+        }
+        const vib = ctx.createOscillator();
+        vib.frequency.value = 5.6;
+        const vibAmt = ctx.createGain();
+        vibAmt.gain.setValueAtTime(0, time);
+        vibAmt.gain.linearRampToValueAtTime(whistle ? 12 : 5, time + Math.min(0.6, dur));
+        vib.connect(vibAmt).connect(o.detune);
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = whistle ? 8 : 11;
+        lp.frequency.setValueAtTime(Math.min(9000, f * 7), time);
+        lp.frequency.exponentialRampToValueAtTime(Math.max(220, f * 1.6), time + Math.max(0.12, dur * 0.8));
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(vel * (whistle ? 0.22 : 0.2), time + 0.014);
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.75, 0.1);
+        o.connect(lp).connect(g).connect(dest);
+        o.start(time); vib.start(time);
+        o.stop(time + dur + 0.5); vib.stop(time + dur + 0.5);
+        this._release(dur + 0.5);
+        return;
+      }
+
+      // Eno's voices: three detuned saws, heavily filtered, arriving slowly.
+      case 'choir': {
+        if (!this._budget()) return;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(700, time);
+        lp.frequency.linearRampToValueAtTime(1500, time + dur * 0.5);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(vel * 0.16, time + Math.min(1.4, dur * 0.45));
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, dur * 0.3 + 0.3);
+        for (const cents of [-9, 0, 11]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.value = f;
+          o.detune.value = cents;
+          o.connect(lp);
+          o.start(time);
+          o.stop(time + dur + 1.8);
+        }
+        lp.connect(g).connect(dest);
+        this._release(dur + 1.8);
+        return;
+      }
+
+      case 'sine': {
+        if (!this._budget()) return;
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = f;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(vel * 0.24, time + Math.min(0.5, dur * 0.3));
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.25);
+        o.connect(g).connect(dest);
+        o.start(time);
+        o.stop(time + dur + 1);
+        this._release(dur + 1);
+        return;
+      }
+
+      case 'moogpad':
+        this.pad([midi], time, dur, vel, dest);
+        return;
+
+      default:
+        this.pluck(midi, time, dur, vel, name);
     }
   }
 

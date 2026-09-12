@@ -66,6 +66,14 @@ function buildTrack(name, notes, channel, extraHeadEvents = []) {
   return chunk('MTrk', data);
 }
 
+// numerator, denominator as a power of two, clocks per click, 32nds per beat
+function timeSignature(stepsPerBar) {
+  if (stepsPerBar === 12) return [6, 3, 24, 8];   // 6/8
+  if (stepsPerBar === 20) return [5, 2, 24, 8];   // 5/4
+  if (stepsPerBar === 14) return [7, 3, 24, 8];   // 7/8
+  return [4, 2, 24, 8];                            // 4/4
+}
+
 export function patternToMidi(pattern, { repeats = 1 } = {}) {
   const spec = pattern.spec;
   const ticksPerStep = PPQ / 4;
@@ -76,7 +84,7 @@ export function patternToMidi(pattern, { repeats = 1 } = {}) {
   const tempoUs = Math.round(60000000 / spec.bpm);
   const tempoTrack = chunk('MTrk', [
     ...varLen(0), 0xff, 0x51, 0x03, (tempoUs >> 16) & 255, (tempoUs >> 8) & 255, tempoUs & 255,
-    ...varLen(0), 0xff, 0x58, 0x04, 4, 2, 24, 8,
+    ...varLen(0), 0xff, 0x58, 0x04, ...timeSignature(spec.stepsPerBar || 16),
     ...varLen(0), 0xff, 0x03, spec.name.length, ...str(spec.name),
     ...varLen(loopTicks * repeats), 0xff, 0x2f, 0x00,
   ]);

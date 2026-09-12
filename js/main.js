@@ -14,6 +14,7 @@ const state = {
   pattern: null,
   currentId: null,
   bar: -1,
+  gridSteps: 16,
   lite: false,
   media: null,
   history: [],            // array of specs (max 5)

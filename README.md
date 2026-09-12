@@ -47,6 +47,31 @@ pass and never written back.
 so the notes can go to a DAW, a groovebox, or anything with a MIDI in.
 Whatever the browser synth sounds like, the composition itself travels.
 
+## Characters
+
+One generator making one kind of music gets samey however good the randomness
+is, because the *shape* never changes. A character moves tempo, scale pool,
+instruments, density, metre and form together, so two loops can differ in kind
+rather than only in detail. Each is built from how the real thing works:
+
+| | |
+|---|---|
+| **Tape** | the original lo-fi voice, still the most common draw |
+| **Hyrule** | Kondo. Modes sharing a lowered 7th so bVII-to-I is available, which ends a phrase without finishing it. Harp, ocarina, flute, often 6/8 |
+| **Field** | Breath of the Wild. Sparse piano, long silence, lines that leap octaves, quartal chords, and loops that drop a step so you lose count |
+| **Postcard** | Yoshimura. Rhodes and a hushed pad, no percussion, very slow, Japanese pentatonics, deliberately dry |
+| **Plantasia** | Garson. Monophonic Moog lead with portamento through a resonant filter. Bright and quick |
+| **Airports** | Eno. Layer cycles of coprime lengths that never resynchronise |
+
+Roughly half of all loops have percussion; the rest are ambient by design.
+Metre is 4/4 about three quarters of the time, 6/8 a fifth, occasionally 5/4.
+
+Two ideas came out of a set of handwritten theory sheets (see
+`docs/theory-sheets.md`): every chord being an extended 13th rather than a
+triad, and the bass sitting on a note that is *not* the chord root. About two
+thirds of loops now use a slash bass. It is the cheapest way to stop harmony
+from settling.
+
 ## How it works
 
 A loop is a **spec**: a tempo, a key, a mode, a swing amount, three tone

@@ -8,6 +8,7 @@
 
 import { Rng, randomSeed, seedName } from './rng.js';
 import { SCALES, scalePitch, buildChord, voiceInRange, nearestChordTone } from './theory.js';
+import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES } from './characters.js';
 
 export const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 export const LAYER_LABELS = {
@@ -18,39 +19,30 @@ export const LAYER_LABELS = {
   texture: 'Air',
 };
 
+// Kept as the default and as the export other modules still import, but the
+// real value now lives on the spec: 16 is 4/4, 12 is 6/8, 20 is 5/4.
 export const STEPS_PER_BAR = 16;
 
 // ---------------------------------------------------------------- spec
 
 export function newSpec(seed = randomSeed()) {
   const r = new Rng(seed);
-  // Keep the existing dreamy/modal character, but deliberately make
-  // bright, uncomplicated scales more common. This gives the generator
-  // more of the gentle, happy nostalgia of old game soundtracks without
-  // turning every loop into a major-key tune.
-  const scale = r.weighted([
-    ['dorian', 2.5],
-    ['aeolian', 2.2],
-    ['minorPent', 1.8],
-    ['majorPent', 3.2],
-    ['kumoi', 2.2],
-    ['ionian', 2.8],
-    ['mixolydian', 1.8],
-    ['lydian', 2.2],
-    ['hirajoshi', 1.0],
-    ['insen', 0.8],
-    ['phrygian', 0.55],
-    ['harmonicMinor', 0.45],
-    ['wholeTone', 0.15],
-  ]);
-  return {
+  const characterKey = r.weighted(CHARACTER_WEIGHTS);
+  const c = CHARACTERS[characterKey];
+
+  const stepsPerBar = r.weighted(c.stepsPerBar);
+  const bars = r.weighted(c.bars);
+
+  const spec = {
     seed,
     name: seedName(seed),
-    bpm: Math.round(r.range(61, 88)),
+    character: characterKey,
+    bpm: Math.round(r.range(c.bpm[0], c.bpm[1])),
     root: r.int(0, 11),
-    scale,
-    bars: r.weighted([[4, 7], [2, 2], [8, 2]]),
-    swing: r.range(0.04, 0.3),
+    scale: r.weighted(c.scales),
+    bars,
+    stepsPerBar,
+    swing: r.range(c.swing[0], c.swing[1]),
     layerSeeds: {
       drums: r.seed32(),
       bass: r.seed32(),
@@ -60,11 +52,36 @@ export function newSpec(seed = randomSeed()) {
     },
     mutes: { drums: false, bass: false, chords: false, melody: false, texture: false },
     tone: {
-      warmth: r.range(0.35, 0.9),
-      space: r.range(0.25, 0.8),
-      wobble: r.range(0.1, 0.7),
+      warmth: r.range(c.tone.warmth[0], c.tone.warmth[1]),
+      space: r.range(c.tone.space[0], c.tone.space[1]),
+      wobble: r.range(c.tone.wobble[0], c.tone.wobble[1]),
     },
   };
+
+  // Eno's trick: give each layer its own loop length, chosen so they do not
+  // share factors. Nothing ever changes, and it never repeats.
+  if (c.polymeter) {
+    const pool = r.shuffle(POLY_CYCLES);
+    spec.cycles = {
+      drums: null,
+      bass: pool[0] * stepsPerBar,
+      chords: pool[1] * stepsPerBar,
+      melody: pool[2] * stepsPerBar,
+      texture: pool[3] * stepsPerBar,
+    };
+  }
+  return spec;
+}
+
+export function characterOf(spec) {
+  return CHARACTERS[spec.character] || CHARACTERS.tape;
+}
+
+// The longest thing that has to happen before the piece could repeat.
+export function patternSteps(spec) {
+  const base = spec.bars * (spec.stepsPerBar || STEPS_PER_BAR);
+  if (!spec.cycles) return base;
+  return Math.max(base, ...Object.values(spec.cycles).filter(Boolean));
 }
 
 export function rerollLayer(spec, layer) {
@@ -118,6 +135,8 @@ const CHORD_RHYTHMS = {
 
 function genHarmony(spec) {
   const r = new Rng(spec.layerSeeds.chords);
+  const c = characterOf(spec);
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
   const pentatonic = scale.length <= 5;
   const shapePool = pentatonic ? SHAPES_PENT : SHAPES_7;
@@ -130,12 +149,20 @@ function genHarmony(spec) {
     if (shape[i] < 0) shape[i] += scale.length;
   }
 
-  const chordsPerBar = r.chance(0.18) ? 2 : 1;
-  const slotLen = STEPS_PER_BAR / chordsPerBar;
+  // bVII is the Kondo move: it ends a phrase without ending it.
+  if (c.flatSeven && !pentatonic && r.chance(c.flatSeven)) {
+    shape[shape.length - 1] = 6;
+  }
+
+  const chordsPerBar = r.chance(0.18) && spb % 2 === 0 ? 2 : 1;
+  const slotLen = Math.floor(spb / chordsPerBar);
   const slotCount = spec.bars * chordsPerBar;
 
-  const size = r.weighted([[3, 3], [4, 4], [2, 1]]);
-  const voice = r.weighted([['keys', 5], ['pad', 3], ['both', 2]]);
+  const size = r.weighted(c.chordSize);
+  const voice = r.weighted(c.chordVoices);
+  // Stacking fourths instead of thirds removes the major/minor question
+  // altogether, which is most of why the BOTW piano sounds placeless.
+  const quartal = c.quartal ? r.chance(c.quartal) : false;
   const rhythmName = r.weighted([
     ['pad', 3],
     ['breathe', 2],
@@ -146,6 +173,7 @@ function genHarmony(spec) {
     ['stutter', 0.8],
   ]);
   const arpeggiate = r.chance(0.22);
+  const slashChance = { field: 0.5, airports: 0.45, postcard: 0.3, hyrule: 0.25 }[spec.character] || 0.12;
 
   const slots = [];
   const events = [];
@@ -153,7 +181,9 @@ function genHarmony(spec) {
 
   for (let s = 0; s < slotCount; s++) {
     const degree = shape[s % shape.length];
-    let notes = buildChord(spec.root, scale, degree, size, 0);
+    let notes = quartal
+      ? [0, 3, 6, 9].slice(0, size).map((step) => scalePitch(spec.root, scale, degree + step, 0))
+      : buildChord(spec.root, scale, degree, size, 0);
     // Occasionally colour the chord with a ninth.
     if (!pentatonic && r.chance(0.28)) notes.push(scalePitch(spec.root, scale, degree + 8, 0));
     notes = voiceInRange(notes, 55, 79);
@@ -173,24 +203,32 @@ function genHarmony(spec) {
 
     const startStep = s * slotLen;
     const rootMidi = scalePitch(spec.root, scale, degree, 0);
-    slots.push({ startStep, lengthSteps: slotLen, degree, notes, rootMidi });
+    // A bass note that disagrees with the chord is the one idea from the
+    // theory sheets that transfers directly: every chord there is a slash
+    // chord (Amaj13/B, Fm13/D). It is what stops harmony from settling.
+    const pedalDegree = r.chance(slashChance) ? degree + r.pick([1, 2, 4, 6]) : degree;
+    slots.push({
+      startStep, lengthSteps: slotLen, degree, notes, rootMidi,
+      bassDegree: pedalDegree,
+      bassMidi: scalePitch(spec.root, scale, pedalDegree, 0),
+    });
 
     // Hit positions are written relative to the chord's own slot, so a
     // half-bar change gets its own attack instead of borrowing the bar's.
     const hits = chordsPerBar === 2
       ? [[0, slotLen], [4, slotLen - 4]].slice(0, r.chance(0.5) ? 1 : 2)
-      : CHORD_RHYTHMS[rhythmName];
+      : CHORD_RHYTHMS[rhythmName].filter(([st]) => st < spb);
 
     for (const [hitStep, dur] of hits) {
       const step = startStep + hitStep;
-      if (step >= spec.bars * STEPS_PER_BAR) continue;
+      if (step >= spec.bars * spb) continue;
       // Sometimes leave a hole. Space is an instrument.
       if (r.chance(0.08)) continue;
 
       if (arpeggiate) {
         notes.forEach((n, i) => {
           events.push({
-            step: (step + i * 2) % (spec.bars * STEPS_PER_BAR),
+            step: (step + i * 2) % (spec.bars * spb),
             dur: Math.max(2, dur),
             notes: [n],
             vel: 0.45 + r.f() * 0.2,
@@ -209,29 +247,38 @@ function genHarmony(spec) {
     }
   }
 
-  return { slots, events, shape };
+  return { slots, events, shape, cycleSteps: spec.bars * spb };
 }
 
-function slotAt(slots, step) {
+function slotAt(slots, step, cycleSteps) {
+  // Wrap, because with polymeter a layer can run past the end of the chord
+  // cycle and still needs to know what harmony it is sitting on.
+  let q = cycleSteps ? ((step % cycleSteps) + cycleSteps) % cycleSteps : step;
   for (let i = slots.length - 1; i >= 0; i--) {
-    if (step >= slots[i].startStep) return slots[i];
+    if (q >= slots[i].startStep) return slots[i];
   }
   return slots[0];
+}
+
+// With polymeter each layer is generated as though the piece were as long as
+// that layer's own cycle. Everything downstream stays unchanged.
+function layerSpec(spec, layer) {
+  const cyc = spec.cycles && spec.cycles[layer];
+  if (!cyc) return spec;
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  return { ...spec, bars: Math.max(1, Math.round(cyc / spb)) };
 }
 
 // --------------------------------------------------------------- bass
 
 function genBass(spec, harmony) {
   const r = new Rng(spec.layerSeeds.bass);
+  const c = characterOf(spec);
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
-  const total = spec.bars * STEPS_PER_BAR;
-  const style = r.weighted([
-    ['held', 3],
-    ['pulse', 3],
-    ['dub', 2.5],
-    ['walk', 1.5],
-    ['sparse', 2],
-  ]);
+  const total = spec.bars * spb;
+  const style = r.weighted(c.bassStyles);
+  const glideChance = c.glide || 0;
   const octaveShift = r.chance(0.25) ? -12 : 0;
   const events = [];
 
@@ -243,25 +290,29 @@ function genBass(spec, harmony) {
   };
 
   for (const slot of harmony.slots) {
-    const base = slot.rootMidi - 24;
+    // Follow the slash note, not the chord root.
+    const base = (slot.bassMidi != null ? slot.bassMidi : slot.rootMidi) - 24;
     const len = slot.lengthSteps;
     if (r.chance(0.06)) continue; // leave one slot empty now and then
 
     if (style === 'held') {
-      place(slot.startStep, len - 1, base, 0.62 + r.f() * 0.15);
+      place(slot.startStep, len - 1, base, 0.62 + r.f() * 0.15, r.chance(glideChance));
       if (r.chance(0.3)) place(slot.startStep + len - 2, 2, base + 7, 0.4);
     } else if (style === 'pulse') {
-      const grid = r.pick([[0, 8], [0, 6, 10], [0, 4, 8, 12], [0, 7, 10]]);
+      const grid = spb === 12
+        ? r.pick([[0, 6], [0, 3, 6, 9], [0, 4, 8], [0, 6, 9]])
+        : r.pick([[0, 8], [0, 6, 10], [0, 4, 8, 12], [0, 7, 10]]);
       for (const g of grid) {
         if (g >= len) continue;
-        place(slot.startStep + g, r.pick([2, 3, 4]), base, g === 0 ? 0.7 : 0.45 + r.f() * 0.2);
+        place(slot.startStep + g, r.pick([2, 3, 4]), base, g === 0 ? 0.7 : 0.45 + r.f() * 0.2,
+          g > 0 && r.chance(glideChance));
       }
     } else if (style === 'dub') {
       place(slot.startStep, 6, base, 0.72);
       if (r.chance(0.7)) place(slot.startStep + 10, 4, base, 0.5, r.chance(0.4));
       if (r.chance(0.35)) place(slot.startStep + 14, 2, base + r.pick([3, 5, 7]), 0.4);
     } else if (style === 'walk') {
-      const steps = [0, 4, 8, 12].filter((s) => s < len);
+      const steps = (spb === 12 ? [0, 3, 6, 9] : [0, 4, 8, 12]).filter((s) => s < len);
       steps.forEach((s, i) => {
         const deg = slot.degree + (i === 0 ? 0 : r.pick([0, 1, -1, 2, 4]));
         const midi = scalePitch(spec.root, scale, deg, -2);
@@ -280,9 +331,11 @@ function genBass(spec, harmony) {
 
 function genMelody(spec, harmony) {
   const r = new Rng(spec.layerSeeds.melody);
+  const c = characterOf(spec);
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
-  const total = spec.bars * STEPS_PER_BAR;
-  const voice = r.weighted([['pluck', 3], ['bell', 3.5], ['keys', 3], ['saw', 0.7]]);
+  const total = spec.bars * spb;
+  const voice = r.weighted(c.melodyVoices);
   const brightScale = ['majorPent', 'ionian', 'lydian', 'mixolydian'].includes(spec.scale);
   const silent = r.chance(brightScale ? 0.05 : 0.09);
   if (silent) return { events: [], voice, motif: [] };
@@ -298,7 +351,10 @@ function genMelody(spec, harmony) {
     [0, 4, 6, 10, 12, 14],
     [2, 4, 8, 10, 14],
   ];
-  const grid = r.pick(rhythmPool);
+  const grid = r.pick(spb === 12
+    ? [[0, 3, 6, 9], [0, 2, 4, 6, 8, 10], [0, 3, 4, 7, 9], [0, 2, 6, 8, 11], [1, 3, 6, 10]]
+    : rhythmPool).filter((x) => x < spb);
+  if (!grid.length) grid.push(0);
   const motif = [];
   let deg = 0;
   for (let i = 0; i < motifLen; i++) {
@@ -314,12 +370,16 @@ function genMelody(spec, harmony) {
 
   const events = [];
   const octave = r.pick([0, 0, 1]);
-  const restBarChance = brightScale ? 0.16 : 0.20;
+  const restBarChance = c.restBar;
+  const pointillist = c.pointillist || 0;
+  // Kataoka's Lost Woods loop appears to skip a beat, which knocks it out of
+  // phase and makes you lose count. One dropped step does the same here.
+  const slip = c.skipStep && r.chance(c.skipStep) ? r.int(1, 2) : 0;
 
   for (let bar = 0; bar < spec.bars; bar++) {
     if (r.chance(restBarChance)) continue;
-    const barStart = bar * STEPS_PER_BAR;
-    const slot = slotAt(harmony.slots, barStart);
+    const barStart = bar * spb - slip * bar;
+    const slot = slotAt(harmony.slots, barStart, harmony.cycleSteps);
     const transpose = bar === 0 ? 0 : r.weighted([[0, 4], [1, 1.5], [-1, 1.5], [2, 1]]);
     const trim = r.chance(0.3) ? r.int(1, 2) : 0;
 
@@ -330,10 +390,13 @@ function genMelody(spec, harmony) {
       // Land on a chord tone at the start of a phrase so it feels anchored.
       if (i === 0) midi = nearestChordTone(midi, slot.notes);
       if (r.chance(0.07)) midi += 12;
-      while (midi < 62) midi += 12;
-      while (midi > 92) midi -= 12;
+      // Pointillism: leap an octave instead of stepping, so the line reads
+      // as colour rather than tune.
+      if (pointillist && r.chance(pointillist)) midi += r.pick([-12, 12, 12]);
+      while (midi < 55) midi += 12;
+      while (midi > 95) midi -= 12;
       events.push({
-        step: (barStart + m.offset) % total,
+        step: ((barStart + m.offset) % total + total) % total,
         dur: m.dur,
         midi,
         vel: m.vel * (bar === 0 ? 1 : 0.9),
@@ -357,23 +420,33 @@ const KICK_PATTERNS = [
   [0, 6, 11],
 ];
 const SNARE_PATTERNS = [[4, 12], [12], [4, 12], [4, 12, 14], [8]];
+// 6/8: two dotted-crotchet beats, so the accents fall on 0 and 6.
+const KICK_12 = [[0, 6], [0], [0, 7], [0, 6, 9], [0, 4]];
+const SNARE_12 = [[6], [3, 9], [6], [6, 10]];
+// 5/4: group as 3+2 rather than 2+3, which is the friendlier of the two.
+const KICK_20 = [[0, 12], [0], [0, 8, 12], [0, 12, 16]];
+const SNARE_20 = [[8], [8, 16], [12]];
 
 function genDrums(spec) {
   const r = new Rng(spec.layerSeeds.drums);
-  const total = spec.bars * STEPS_PER_BAR;
+  const c = characterOf(spec);
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const total = spec.bars * spb;
   const events = [];
-  const kit = r.weighted([['tape', 4], ['brush', 2], ['machine', 3], ['none', 1.1]]);
-  if (kit === 'none') return { events, kit, hatDensity: 0 };
+  if (!r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
+  const kit = r.weighted([['tape', 4], ['brush', 2], ['machine', 3]]);
 
-  const kick = r.pick(KICK_PATTERNS);
-  const snare = r.pick(SNARE_PATTERNS);
+  // A bar of 6/8 is not a bar of 4/4 with four steps missing; it needs its
+  // own patterns or the backbeat lands in the wrong place.
+  const kick = spb === 12 ? r.pick(KICK_12) : spb === 20 ? r.pick(KICK_20) : r.pick(KICK_PATTERNS);
+  const snare = spb === 12 ? r.pick(SNARE_12) : spb === 20 ? r.pick(SNARE_20) : r.pick(SNARE_PATTERNS);
   const snareVoice = r.weighted([['snare', 3], ['rim', 2], ['clap', 1.5]]);
-  const hatDensity = r.range(0.15, 0.85);
+  const hatDensity = r.range(c.hatDensity[0], c.hatDensity[1]);
   const hatGrid = r.chance(0.55) ? 2 : 1; // eighths or sixteenths
   const useShaker = r.chance(0.4);
 
   for (let bar = 0; bar < spec.bars; bar++) {
-    const b = bar * STEPS_PER_BAR;
+    const b = bar * spb;
     const lastBar = bar === spec.bars - 1;
 
     for (const s of kick) {
@@ -384,9 +457,9 @@ function genDrums(spec) {
       events.push({ step: b + s, inst: snareVoice, vel: 0.58 + r.f() * 0.18 });
     }
     // Ghost notes give the groove its lean.
-    if (r.chance(0.4)) events.push({ step: b + r.pick([3, 7, 11, 15]), inst: 'rim', vel: 0.22 });
+    if (r.chance(0.4)) events.push({ step: b + r.int(1, spb - 1), inst: 'rim', vel: 0.22 });
 
-    for (let s = 0; s < STEPS_PER_BAR; s += hatGrid) {
+    for (let s = 0; s < spb; s += hatGrid) {
       if (!r.chance(hatDensity)) continue;
       const open = r.chance(0.08);
       events.push({
@@ -396,14 +469,14 @@ function genDrums(spec) {
       });
     }
     if (useShaker) {
-      for (let s = 2; s < STEPS_PER_BAR; s += 4) {
+      for (let s = 2; s < spb; s += 4) {
         if (r.chance(0.6)) events.push({ step: b + s, inst: 'shaker', vel: 0.18 + r.f() * 0.15 });
       }
     }
     // A small fill to mark the turnaround.
     if (lastBar && r.chance(0.35)) {
-      const from = r.pick([12, 13, 14]);
-      for (let s = from; s < STEPS_PER_BAR; s++) {
+      const from = spb - r.int(2, 4);
+      for (let s = from; s < spb; s++) {
         events.push({ step: b + s, inst: r.pick(['rim', 'snare', 'shaker']), vel: 0.3 + r.f() * 0.3 });
       }
     }
@@ -415,16 +488,17 @@ function genDrums(spec) {
 
 function genTexture(spec, harmony) {
   const r = new Rng(spec.layerSeeds.texture);
-  const total = spec.bars * STEPS_PER_BAR;
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const total = spec.bars * spb;
   const kind = r.weighted([['bells', 3], ['swell', 3], ['wind', 2], ['drops', 2], ['none', 1.5]]);
   const events = [];
   if (kind === 'none') return { events, kind };
 
   if (kind === 'swell') {
     for (let bar = 0; bar < spec.bars; bar += 2) {
-      const slot = slotAt(harmony.slots, bar * STEPS_PER_BAR);
+      const slot = slotAt(harmony.slots, bar * spb, harmony.cycleSteps);
       events.push({
-        step: bar * STEPS_PER_BAR,
+        step: bar * spb,
         dur: 32,
         notes: slot.notes.slice(0, 2).map((n) => n + 12),
         vel: 0.16 + r.f() * 0.1,
@@ -435,7 +509,7 @@ function genTexture(spec, harmony) {
     const count = r.int(2, 5);
     for (let i = 0; i < count; i++) {
       const step = r.int(0, total - 1);
-      const slot = slotAt(harmony.slots, step);
+      const slot = slotAt(harmony.slots, step, harmony.cycleSteps);
       events.push({
         step,
         dur: 8,
@@ -457,16 +531,26 @@ function genTexture(spec, harmony) {
 // --------------------------------------------------------------- render
 
 export function render(spec) {
-  const harmony = genHarmony(spec);
-  const bass = genBass(spec, harmony);
-  const melody = genMelody(spec, harmony);
-  const drums = genDrums(spec);
-  const texture = genTexture(spec, harmony);
+  const harmony = genHarmony(layerSpec(spec, 'chords'));
+  const bass = genBass(layerSpec(spec, 'bass'), harmony);
+  const melody = genMelody(layerSpec(spec, 'melody'), harmony);
+  const drums = genDrums(layerSpec(spec, 'drums'));
+  const texture = genTexture(layerSpec(spec, 'texture'), harmony);
 
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
   return {
     spec,
-    totalSteps: spec.bars * STEPS_PER_BAR,
-    stepsPerBar: STEPS_PER_BAR,
+    totalSteps: spec.bars * spb,
+    stepsPerBar: spb,
+    // Per-layer loop lengths. Null means "same as the pattern"; the Eno
+    // character gives each layer a coprime length so they drift apart.
+    cycles: {
+      drums: (spec.cycles && spec.cycles.drums) || spec.bars * spb,
+      bass: (spec.cycles && spec.cycles.bass) || spec.bars * spb,
+      chords: (spec.cycles && spec.cycles.chords) || spec.bars * spb,
+      melody: (spec.cycles && spec.cycles.melody) || spec.bars * spb,
+      texture: (spec.cycles && spec.cycles.texture) || spec.bars * spb,
+    },
     harmony,
     tracks: {
       drums: drums.events,

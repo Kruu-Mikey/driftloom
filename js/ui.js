@@ -1,14 +1,18 @@
 import { LAYERS, LAYER_LABELS, STEPS_PER_BAR } from './generator.js';
+import { CHARACTERS } from './characters.js';
 import { NOTE_NAMES, SCALES } from './theory.js';
 
 export const el = (id) => document.getElementById(id);
 
 // ------------------------------------------------------------- readout
 
-export function buildPlayhead() {
+// The grid is rebuilt whenever the metre changes, because a bar of 6/8 is
+// twelve cells, not sixteen with four dead ones on the end.
+export function buildPlayhead(steps = STEPS_PER_BAR) {
   const host = el('playhead');
   host.innerHTML = '';
-  for (let i = 0; i < STEPS_PER_BAR; i++) {
+  host.style.gridTemplateColumns = `repeat(${steps}, 1fr)`;
+  for (let i = 0; i < steps; i++) {
     const light = document.createElement('i');
     if (i % 4 === 0) light.className = 'beat';
     host.appendChild(light);
@@ -16,11 +20,16 @@ export function buildPlayhead() {
   return host.children;
 }
 
+const METER = { 12: '6/8', 16: '4/4', 20: '5/4', 14: '7/8' };
+
 export function renderReadout(spec, pattern) {
   el('loopName').textContent = spec.name;
+  const character = CHARACTERS[spec.character];
   const key = `${NOTE_NAMES[spec.root]} ${SCALES[spec.scale].label}`;
-  const kit = pattern.meta.kit === 'none' ? 'no drums' : `${pattern.meta.kit} kit`;
-  el('loopDetail').textContent = `${key} · ${spec.bpm} bpm · ${spec.bars} bars · ${kit}`;
+  const meter = METER[spec.stepsPerBar || 16] || `${spec.stepsPerBar}/16`;
+  const bits = [character ? character.label : 'Tape', key, `${spec.bpm} bpm`, meter];
+  if (spec.cycles) bits.push('drifting');
+  el('loopDetail').textContent = bits.join(' · ');
   el('bpmVal').textContent = spec.bpm;
 }
 
@@ -29,7 +38,7 @@ export function renderReadout(spec, pattern) {
 // Each layer shows one bar at sixteenth resolution. Showing the whole loop
 // at once would squash a four-bar pattern into unreadable slivers on a
 // phone, so the view follows the playhead bar by bar instead.
-export function buildLayers(handlers) {
+export function buildLayers(handlers, steps = STEPS_PER_BAR) {
   const host = el('layerList');
   host.innerHTML = '';
   const cells = {};
@@ -45,8 +54,9 @@ export function buildLayers(handlers) {
 
     const grid = document.createElement('div');
     grid.className = 'grid';
+    grid.style.gridTemplateColumns = `repeat(${steps}, 1fr)`;
     const boxes = [];
-    for (let i = 0; i < STEPS_PER_BAR; i++) {
+    for (let i = 0; i < steps; i++) {
       const b = document.createElement('b');
       grid.appendChild(b);
       boxes.push(b);
@@ -72,12 +82,16 @@ export function buildLayers(handlers) {
 }
 
 function stepsForBar(pattern, layer, bar) {
-  const out = new Array(STEPS_PER_BAR).fill(0);
-  const start = bar * STEPS_PER_BAR;
+  const spb = pattern.stepsPerBar || STEPS_PER_BAR;
+  const out = new Array(spb).fill(0);
+  // With polymeter a layer wraps on its own cycle, so ask where it actually
+  // is rather than assuming it shares the pattern's bar lines.
+  const cycle = (pattern.cycles && pattern.cycles[layer]) || pattern.totalSteps;
+  const start = (bar * spb) % cycle;
   for (const e of pattern.tracks[layer]) {
     if (!e.vel) continue;
-    const idx = e.step - start;
-    if (idx < 0 || idx >= STEPS_PER_BAR) continue;
+    const idx = ((e.step - start) % cycle + cycle) % cycle;
+    if (idx >= spb) continue;
     out[idx] = Math.max(out[idx], e.vel);
   }
   return out;
@@ -87,7 +101,7 @@ export function renderGrids(cells, pattern, bar, mutes) {
   for (const layer of LAYERS) {
     const vels = stepsForBar(pattern, layer, bar);
     const boxes = cells[layer];
-    for (let i = 0; i < STEPS_PER_BAR; i++) {
+    for (let i = 0; i < boxes.length; i++) {
       const v = vels[i];
       boxes[i].className = v ? (v > 0.55 ? 'hit strong' : 'hit') : '';
     }

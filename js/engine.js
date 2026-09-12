@@ -8,6 +8,7 @@
 import { render, drift } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
 import { Clock } from './clock.js';
+import { CHARACTERS } from './characters.js';
 
 // While you are looking at it, a short lookahead keeps mutes and re-rolls
 // feeling immediate. Once the page is hidden the timer may be throttled to
@@ -27,6 +28,10 @@ export class Engine {
     this.base = null; // the pattern as composed
     this.live = null; // the pattern as currently being played
     this.step = 0;
+    // Never resets. Layers with different cycle lengths index off this, so
+    // they keep drifting instead of resynchronising every time the pattern
+    // wraps -- which is the whole point of the Eno character.
+    this.absStep = 0;
     this.nextStepTime = 0;
     this.clock = new Clock(() => this._tick());
     this.driftOn = false;
@@ -47,12 +52,18 @@ export class Engine {
     this.base = render(spec);
     this.live = this.driftOn ? drift(this.base, this.driftRng, this.driftAmount) : this.base;
     this.synth.setTone(spec.tone);
+    const character = CHARACTERS[spec.character];
+    this.synth.setCharacterLevel(character ? (character.level ?? 1) : 1);
     this.synth.setEchoTime((60 / spec.bpm) * 0.75);
     for (const [layer, muted] of Object.entries(spec.mutes || {})) {
       this.synth.setMute(layer, muted);
     }
-    if (!keepPosition) this.step = 0;
-    else this.step = this.step % this.base.totalSteps;
+    if (!keepPosition) {
+      this.step = 0;
+      this.absStep = 0;
+    } else {
+      this.step = this.step % this.base.totalSteps;
+    }
     return this.base;
   }
 
@@ -109,6 +120,7 @@ export class Engine {
 
   reset() {
     this.step = 0;
+    this.absStep = 0;
     this.loopCount = 0;
     this.synth.setTone(this.spec.tone);
   }
@@ -137,6 +149,7 @@ export class Engine {
   _advance() {
     this.nextStepTime += this.stepDur;
     this.step++;
+    this.absStep++;
     if (this.step >= this.live.totalSteps) {
       this.step = 0;
       this.loopCount++;
@@ -149,26 +162,36 @@ export class Engine {
 
   _scheduleStep(step, time) {
     const p = this.live;
+    const cyc = p.cycles || {};
+    const abs = this.absStep;
+    // Where each layer is inside its own loop.
+    const at = (layer) => {
+      const len = cyc[layer] || p.totalSteps;
+      return len === p.totalSteps ? step : ((abs % len) + len) % len;
+    };
     const swing = step % 2 === 1 ? this.spec.swing * this.stepDur : 0;
     const t = time + swing;
     const sd = this.stepDur;
     const mutes = this.spec.mutes || {};
 
     if (!mutes.drums) {
+      const s = at('drums');
       for (const e of p.tracks.drums) {
-        if (e.step !== step || !e.vel) continue;
+        if (e.step !== s || !e.vel) continue;
         this.synth.drum(e.inst, t + (Math.random() - 0.5) * 0.008, e.vel);
       }
     }
     if (!mutes.bass) {
+      const s = at('bass');
       for (const e of p.tracks.bass) {
-        if (e.step !== step || !e.vel) continue;
+        if (e.step !== s || !e.vel) continue;
         this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide);
       }
     }
     if (!mutes.chords) {
+      const s = at('chords');
       for (const e of p.tracks.chords) {
-        if (e.step !== step || !e.vel) continue;
+        if (e.step !== s || !e.vel) continue;
         if (e.voice === 'pad') {
           this.synth.pad(e.notes, t, e.dur * sd, e.vel);
         } else {
@@ -178,24 +201,24 @@ export class Engine {
           e.notes.forEach((n, i) => {
             // Spread the notes of a chord by a few milliseconds so it
             // sounds like fingers rather than a switch closing.
-            this.synth.fm(n, t + i * 0.011, e.dur * sd, e.vel * spread, {
-              ratio: 2,
-              index: 200,
-              decay: e.dur * sd * 0.6,
-            });
+            this.synth.voice(e.voice, n, t + i * 0.011, e.dur * sd, e.vel * spread,
+              this.synth.channels.chords.gain);
           });
         }
       }
     }
     if (!mutes.melody) {
+      const s = at('melody');
       for (const e of p.tracks.melody) {
-        if (e.step !== step || !e.vel) continue;
-        this.synth.pluck(e.midi, t, e.dur * sd, e.vel, e.voice);
+        if (e.step !== s || !e.vel) continue;
+        this.synth.voice(e.voice, e.midi, t, e.dur * sd, e.vel,
+          this.synth.channels.melody.gain, { glide: e.glide });
       }
     }
     if (!mutes.texture) {
+      const s = at('texture');
       for (const e of p.tracks.texture) {
-        if (e.step !== step || !e.vel) continue;
+        if (e.step !== s || !e.vel) continue;
         this.synth.texture(e.kind, e.notes, t, e.dur * sd, e.vel);
       }
     }

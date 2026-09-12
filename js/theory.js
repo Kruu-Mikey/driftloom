@@ -18,6 +18,18 @@ export const SCALES = {
   hirajoshi: { steps: [0, 2, 3, 7, 8], label: 'Hirajoshi' },
   insen: { steps: [0, 1, 5, 7, 10], label: 'Insen' },
   wholeTone: { steps: [0, 2, 4, 6, 8, 10], label: 'Whole tone' },
+
+  // Kondo leans on modes that share a lowered seventh, which is what makes
+  // the bVII-to-I move available and why Hyrule never sounds like it has
+  // cadenced properly.
+  lydianDominant: { steps: [0, 2, 4, 6, 7, 9, 10], label: 'Lydian dominant' },
+  phrygianDominant: { steps: [0, 1, 4, 5, 7, 8, 10], label: 'Phrygian dominant' },
+  dorianSharp4: { steps: [0, 2, 3, 6, 7, 9, 10], label: 'Dorian #4' },
+
+  // Further Japanese pentatonics, for the Yoshimura and Hisaishi colours.
+  yo: { steps: [0, 2, 5, 7, 9], label: 'Yo' },
+  ritusen: { steps: [0, 2, 5, 7, 10], label: 'Ritusen' },
+  akebono: { steps: [0, 2, 3, 7, 9], label: 'Akebono' },
 };
 
 export function midiToFreq(m) {
