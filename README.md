@@ -68,13 +68,18 @@ you get things like an ocarina over an Eno drift, or a Moog lead on a tape
 beat. The blend is stored as two names and a number, and rebuilt
 deterministically, so it still costs nothing to save.
 
-A **mood** value, sombre to joyful, is sampled per loop and steers scale
-choice, melodic register, the direction of the melodic walk, and whether
-chords take an added ninth -- so those things agree with each other instead
-of pulling apart. It is skewed upward on purpose: the app was reliably
-wistful and almost never glad. Mean scale brightness now sits around 0.67,
-with roughly 79% of loops warm or bright. Birdsong appears as a texture on
-about a quarter of them, more often the brighter the loop.
+A **character axis** is sampled per loop and steers scale choice, melodic
+register, the direction of the melodic walk, and whether chords take an
+added ninth -- so those agree with each other instead of pulling apart.
+
+It runs from settled to lifted: reflective, soothing and peaceful at one
+end, happy and joyful at the other. Neither end is a sad end. The framing is
+sukha to piti, comfort to brightness, rather than gloom to joy. Loops come
+out roughly 40% joyful, 36% happy, 20% peaceful, 4% reflective.
+
+There is deliberately no birdsong or other nature mimicry. Wherever this
+gets played there are already real birds; the job is to complement what is
+outside, not imitate it.
 
 Rolling a layer always produces that layer. A character that almost never
 has drums will still give you drums when you roll the drum track -- silence
@@ -183,12 +188,23 @@ scheduler wake-ups that arrived too late to place a note — which is what a
 stutter looks like from the inside. Play with the screen off for a minute,
 come back, and read `lateTicks` and `worstLateMs`.
 
+## A note on the tape saturator
+
+It is easy to write this stage as `tanh(x * drive) / tanh(drive)`, because
+that maps 1 to 1 and looks like the right normalisation. It is not. The
+slope at zero becomes `drive / tanh(drive)`, which reached 3.2, so every
+quiet detail got hauled up while the peaks were clamped. That is a
+distortion pedal wearing a tape machine's name, and it was audible as
+clipping even though the output never came near full scale.
+
+Dividing by `drive` instead makes the slope at zero exactly 1. Quiet
+passages pass through untouched and only loud ones round off, which is what
+tape does.
+
 ## Known rough edges
 
-- The bass/drums balance is fixed (was 3.3x, now 1.06x) and there are six
-  bass timbres rather than one. Raw mix peaks still reach about 1.3, so the
-  output limiter is doing more work than it should; the remaining excess is
-  in the chord layer on dense loops.
+- Output now peaks between about 0.46 and 0.84 with no full-scale samples
+  across long multi-pass renders, and the crest factor survives the bus.
 - Loops are always 4/4. No odd meters yet.
 - There's no way to edit a pattern by hand — you can only re-roll.
 - Saves live in this browser on this device. "Back up all" downloads a file;

@@ -39,9 +39,10 @@ export function newSpec(seed = randomSeed()) {
   }
   const c = blendCharacters(characterKey, secondKey, blend);
 
-  // Mood runs sombre to joyful and steers scale, register and contour
-  // together. Skewed upward: the app was reliably wistful and almost never
-  // glad, and it should be able to be both.
+  // The character axis runs from settled to lifted -- reflective, soothing,
+  // peaceful at one end, happy and joyful at the other. Both ends are
+  // wholesome; there is no sombre pole. Skewed upward because the app was
+  // reliably wistful and almost never glad, and it should be able to be both.
   const mood = c.mood[0] + (c.mood[1] - c.mood[0]) * Math.pow(r.f(), 0.62);
 
   const stepsPerBar = r.weighted(c.stepsPerBar);
@@ -401,8 +402,8 @@ function genMelody(spec, harmony) {
       dur: r.pick([2, 2, 3, 4, 6]),
       vel: 0.4 + r.f() * 0.3,
     });
-    // A rising line reads as glad, a falling one as wistful. Mood tilts the
-    // random walk rather than dictating it.
+    // A rising line reads as glad, a falling one as settled. The axis tilts
+    // the random walk rather than dictating it.
     const up = 1 + mood * 2.2;
     const down = 1 + (1 - mood) * 2.2;
     deg += r.weighted([
@@ -535,21 +536,14 @@ function genTexture(spec, harmony) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const total = spec.bars * spb;
   const mood = moodOf(spec);
-  // Birdsong earns its keep at the bright end: this is meant to sit happily
-  // next to actual wind and actual birds on a hillside.
+  // No birdsong. Wherever this gets played there are already real birds, and
+  // the job is to complement what is outside rather than imitate it.
   const kind = r.weighted([
     ['bells', 3], ['swell', 3], ['wind', 2], ['drops', 2],
-    ['birds', 1 + mood * 4],
     ['none', forced(spec, 'texture') ? 0 : 1.5],
   ]);
   const events = [];
   if (kind === 'none') return { events, kind };
-  if (kind === 'birds') {
-    for (let i = 0; i < r.int(3, 7); i++) {
-      events.push({ step: r.int(0, total - 1), dur: 3, notes: [], vel: 0.18 + r.f() * 0.18, kind: 'birds' });
-    }
-    return { events, kind };
-  }
 
   if (kind === 'swell') {
     for (let bar = 0; bar < spec.bars; bar += 2) {

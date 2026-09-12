@@ -6,11 +6,22 @@ import { midiToFreq } from './theory.js';
 
 const MAX_VOICES = 28;
 
-function tanhCurve(drive = 2.2, n = 1024) {
+// Tape saturation, not a maximizer.
+//
+// Dividing by tanh(drive) -- the obvious normalisation, since it maps x=1 to
+// y=1 -- gives a small-signal gain of drive/tanh(drive), which reaches 3.2x.
+// That hauls up every quiet detail while clamping the peaks, which is a
+// distortion pedal, and it is what was audible as "clipping" even though
+// nothing ever reached full scale.
+//
+// Dividing by drive instead makes the slope at zero exactly 1: quiet passages
+// pass through untouched and only loud ones round off. Peaks land around
+// -3 to -6 dB depending on drive, which is what tape actually does.
+function tanhCurve(drive = 1.0, n = 2048) {
   const curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const x = (i / (n - 1)) * 2 - 1;
-    curve[i] = Math.tanh(x * drive) / Math.tanh(drive);
+    curve[i] = Math.tanh(x * drive) / drive;
   }
   return curve;
 }
@@ -58,11 +69,11 @@ export class Synth {
     this.ceiling.release.value = 0.08;
 
     this.comp = ctx.createDynamicsCompressor();
-    this.comp.threshold.value = -20;
-    this.comp.knee.value = 18;
-    this.comp.ratio.value = 6;
-    this.comp.attack.value = 0.005;
-    this.comp.release.value = 0.2;
+    this.comp.threshold.value = -10;
+    this.comp.knee.value = 10;
+    this.comp.ratio.value = 3;
+    this.comp.attack.value = 0.006;
+    this.comp.release.value = 0.25;
 
     this.hp = ctx.createBiquadFilter();
     this.hp.type = 'highpass';
@@ -74,7 +85,7 @@ export class Synth {
     this.tone.Q.value = 0.6;
 
     this.sat = ctx.createWaveShaper();
-    this.sat.curve = tanhCurve(2.0);
+    this.sat.curve = tanhCurve(1.0);
     this.sat.oversample = this.quality === 'full' ? '2x' : 'none';
 
     // Tape wobble: a very short delay whose time is modulated. Slow wow,
@@ -191,7 +202,7 @@ export class Synth {
     const wobble = tone.wobble ?? 0.4;
 
     this.tone.frequency.setTargetAtTime(2600 + (1 - warmth) * 9000, t, 0.2);
-    this.sat.curve = tanhCurve(1.4 + warmth * 2.2);
+    this.sat.curve = tanhCurve(0.55 + warmth * 1.25);
     this.reverbOut.gain.setTargetAtTime(0.4 + space * 0.9, t, 0.2);
     // Cap room feedback to prevent resonant high-frequency feedback at large room sizes.
     const fb = Math.min(0.74, 0.66 + space * 0.2);
@@ -798,28 +809,6 @@ export class Synth {
       g.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
       src.connect(bp).connect(g).connect(out);
       this._release(0.15);
-    } else if (kind === 'birds') {
-      // Two or three quick rising chirps: a narrow resonant band swept
-      // upward, which is roughly what a small bird is.
-      if (!this._budget()) return;
-      const n = 2 + Math.floor(Math.random() * 2);
-      for (let i = 0; i < n; i++) {
-        const t0 = time + i * (0.07 + Math.random() * 0.06);
-        const o = ctx.createOscillator();
-        o.type = 'sine';
-        const base = 2100 + Math.random() * 1700;
-        o.frequency.setValueAtTime(base, t0);
-        o.frequency.exponentialRampToValueAtTime(base * (1.25 + Math.random() * 0.5), t0 + 0.035);
-        o.frequency.exponentialRampToValueAtTime(base * 0.92, t0 + 0.07);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(vel * 0.16, t0 + 0.008);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.075);
-        o.connect(g).connect(out);
-        o.start(t0);
-        o.stop(t0 + 0.09);
-      }
-      this._release(0.4);
     } else if (kind === 'wind') {
       if (!this._budget()) return;
       const src = ctx.createBufferSource();

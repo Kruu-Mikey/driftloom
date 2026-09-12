@@ -88,9 +88,11 @@ export function nearestChordTone(midi, chordNotes) {
 }
 
 
-// How bright each mode sounds, 0 sombre to 1 joyful. Used to steer scale
-// choice from a single mood value, so a loop's harmony, register and contour
-// all agree about what kind of day it is.
+// Where each mode sits on the character axis: 0 is settled and reflective,
+// 1 is lifted and glad. Neither end is a sad end -- this runs from the
+// comfort of sukha to the brightness of piti, not from gloom to joy. Used to
+// steer scale choice from one value, so a loop's harmony, register and
+// contour all agree about what kind of day it is.
 export const SCALE_BRIGHTNESS = {
   lydian: 1.0,
   ionian: 0.92,
