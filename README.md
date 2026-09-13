@@ -75,18 +75,33 @@ it can still reach for an ocarina.
 
 ## Feeling
 
-Three dials, not one slider:
+A loop's feeling is a **mixture of named moods**, not a position between two
+poles. A readout of `60% peaceful · 30% reflective · 10% happy` means what it
+says.
+
+Averaging those would land on one middling value that is none of them. But a
+piece really can be glad and inward at once -- a bright line over a low,
+sparse accompaniment -- and that is not a midpoint, it is different layers
+carrying different feeling. So the loop has a centre, and **each layer draws
+its own mood from the mixture** and is pulled part-way back toward that
+centre by the loop's *coherence*. Low coherence lets the melody be happy
+while the harmony stays soothing; high coherence keeps everyone agreeing.
+
+The moods are joyful, happy, enthusiastic, refreshing, soothing, peaceful,
+comforting and reflective -- the bright quickened wing and the settled
+comforted one, plus two inward. No sad pole. Roughly 76% of loops carry two
+or three, and each mood takes between 10% and 15% of all emotional weight.
+
+Which layer carries which mood is keyed off the loop seed rather than any
+layer seed, so re-rolling the bass does not reshuffle the feeling.
+
+Underneath, each mood is a point on three dials:
 
 - **lift** -- settled to lifted. Steers scale choice, register, the
   direction of the melodic walk, added ninths.
 - **energy** -- still to animated. Steers tempo, hat density, how often bars
   rest.
 - **warmth** -- glassy to warm. Steers saturation and timbre.
-
-Independent axes let a loop be glad and unhurried at once, or hushed and
-restless, rather than sliding along one line between two moods. The word in
-the readout comes from their combination: serene, exuberant, wistful,
-bustling, reflective, peaceful, happy, easy, restless.
 
 Neither end of any axis is a sad end. The framing is sukha to piti, comfort
 to brightness, rather than gloom to joy.

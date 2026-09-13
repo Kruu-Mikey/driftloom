@@ -80,9 +80,14 @@ body {
 
 .loop-detail {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12.5px;
+  line-height: 1.55;
   color: var(--haze);
-  margin: 4px 0 14px;
+  margin: 6px 0 14px;
+  white-space: pre-line;
+}
+.loop-detail::first-line {
+  color: var(--sand);
 }
 
 .playhead {

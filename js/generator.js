@@ -53,13 +53,48 @@ export function newSpec(seed = randomSeed()) {
   // Feeling is three dials, not one slider. Independent axes let a loop be
   // glad and unhurried at once, or hushed and restless, instead of sliding
   // along a single line between two moods.
-  const axis = (range, skew) =>
-    +(range[0] + (range[1] - range[0]) * Math.pow(r.f(), skew)).toFixed(3);
-  const feel = {
-    lift: axis(c.feel.lift, 0.62),     // settled to lifted, skewed bright
-    energy: axis(c.feel.energy, 1),    // still to animated
-    warmth: axis(c.feel.warmth, 0.85), // glassy to warm
+  // Draw a mixture of named moods, weighted toward the ones this profile
+  // blend can actually reach, then take the loop's centre as their weighted
+  // average. Individual layers stray back out toward their own mood later.
+  const fit = (m) => {
+    let d = 0;
+    for (const axisName of ['lift', 'energy', 'warmth']) {
+      const [lo, hi] = c.feel[axisName];
+      const v = m[axisName];
+      if (v < lo) d += lo - v;
+      else if (v > hi) d += v - hi;
+    }
+    return 1 / (1 + d * 3.5);
   };
+  const moodPool = Object.entries(MOODS).map(([k, m]) => [k, fit(m)]);
+  const moodCount = r.weighted([[1, 2], [2, 4], [3, 2.4]]);
+  const feelMix = {};
+  const takenMoods = moodPool.slice();
+  for (let i = 0; i < moodCount && takenMoods.length; i++) {
+    const key = r.weighted(takenMoods);
+    const idx = takenMoods.findIndex(([k]) => k === key);
+    if (idx >= 0) takenMoods.splice(idx, 1);
+    feelMix[key] = -Math.log(1 - r.f() * 0.999) * (i === 0 ? 1.7 : 1);
+  }
+  const moodTotal = Object.values(feelMix).reduce((a, b) => a + b, 0);
+  for (const k of Object.keys(feelMix)) {
+    const w = feelMix[k] / moodTotal;
+    // A trace below half a percent is not a colour, it is rounding noise.
+    if (w < 0.005) delete feelMix[k];
+    else feelMix[k] = +w.toFixed(3);
+  }
+
+  const feel = { lift: 0, energy: 0, warmth: 0 };
+  for (const [k, w] of Object.entries(feelMix)) {
+    for (const axisName of ['lift', 'energy', 'warmth']) feel[axisName] += MOODS[k][axisName] * w;
+  }
+  for (const axisName of ['lift', 'energy', 'warmth']) {
+    const [lo, hi] = c.feel[axisName];
+    feel[axisName] = +Math.max(lo, Math.min(hi, feel[axisName])).toFixed(3);
+  }
+  // How closely the layers agree with the loop's centre. Low values let a
+  // bright melody sit over a settled accompaniment.
+  const coherence = +r.range(0.42, 0.82).toFixed(3);
 
   const stepsPerBar = r.weighted(c.stepsPerBar);
   const bars = r.weighted(c.bars);
@@ -69,6 +104,8 @@ export function newSpec(seed = randomSeed()) {
     name: seedName(seed),
     mix,
     feel,
+    feelMix,
+    coherence,
     mood: feel.lift, // kept so older code and saves still read something
     // Clamped to the range the tempo control can actually represent, so the
     // slider and the readout can never disagree.
@@ -126,6 +163,56 @@ export function characterOf(spec) {
   mix[resolveKey(spec.character || 'dust')] = 1 - (spec.blend || 0);
   if (spec.character2 && spec.blend) mix[resolveKey(spec.character2)] = spec.blend;
   return blendMix(mix);
+}
+
+// Named regions of the feeling space, in (lift, energy, warmth).
+//
+// Both wings of the axis are wholesome: the bright, quickened side and the
+// settled, comforted side, plus two inward ones. Nothing here is a sad end.
+export const MOODS = {
+  joyful: { lift: 0.92, energy: 0.72, warmth: 0.72 },
+  happy: { lift: 0.82, energy: 0.52, warmth: 0.78 },
+  enthusiastic: { lift: 0.88, energy: 0.9, warmth: 0.66 },
+  refreshing: { lift: 0.72, energy: 0.62, warmth: 0.42 },
+  soothing: { lift: 0.62, energy: 0.18, warmth: 0.82 },
+  peaceful: { lift: 0.58, energy: 0.28, warmth: 0.6 },
+  comforting: { lift: 0.54, energy: 0.36, warmth: 0.86 },
+  reflective: { lift: 0.3, energy: 0.22, warmth: 0.46 },
+};
+
+const LAYER_SALT = {
+  drums: 0x1f3b, bass: 0x2c5d, chords: 0x3a71, melody: 0x4d93, texture: 0x5e17,
+};
+
+const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// A loop's feeling is a *mixture* of those regions, not a point among them.
+//
+// Averaging 60% peaceful with 30% reflective would land on one middling
+// value that is neither. But a piece really can be glad and inward at the
+// same time -- a bright line over a low, sparse accompaniment -- and that is
+// not a midpoint, it is different layers carrying different feeling. So each
+// layer draws its own mood from the mixture and is pulled part-way back
+// toward the loop's centre by its coherence. The weights then mean what you
+// would expect: 60% peaceful really is most of the material.
+//
+// Keyed off the loop seed rather than any layer seed, so re-rolling the bass
+// does not reshuffle which layer is carrying which feeling.
+export function feelForLayer(spec, layer) {
+  const base = feelOf(spec);
+  const mix = spec.feelMix;
+  if (!mix || !Object.keys(mix).length) return base;
+  const r = new Rng(((spec.seed ^ (LAYER_SALT[layer] || 0x77)) >>> 0) || 3);
+  const key = r.weighted(Object.entries(mix));
+  const m = MOODS[key];
+  if (!m) return base;
+  const stray = 1 - (spec.coherence ?? 0.6);
+  return {
+    lift: clamp01(base.lift + (m.lift - base.lift) * stray),
+    energy: clamp01(base.energy + (m.energy - base.energy) * stray),
+    warmth: clamp01(base.warmth + (m.warmth - base.warmth) * stray),
+    mood: key,
+  };
 }
 
 export function feelOf(spec) {
@@ -254,7 +341,7 @@ function genHarmony(spec) {
       ? [0, 3, 6, 9].slice(0, size).map((step) => scalePitch(spec.root, scale, degree + step, 0))
       : buildChord(spec.root, scale, degree, size, 0);
     // Occasionally colour the chord with a ninth.
-    const mood = moodOf(spec);
+    const mood = feelForLayer(spec, 'chords').lift;
     if (!pentatonic && r.chance(0.18 + mood * 0.3)) {
       // The added ninth is most of what separates glad from merely pleasant.
       notes.push(scalePitch(spec.root, scale, degree + 8, 0));
@@ -413,7 +500,8 @@ function genMelody(spec, harmony) {
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
   const voice = r.weighted(c.melodyVoices);
-  const mood = moodOf(spec);
+  const lf = feelForLayer(spec, 'melody');
+  const mood = lf.lift;
   if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [] };
 
   // Build a short motif in scale-degree offsets, then quote it across the
@@ -453,10 +541,9 @@ function genMelody(spec, harmony) {
 
   const events = [];
   const octave = r.chance(0.25 + mood * 0.5) ? 1 : 0;
-  const feel = feelOf(spec);
   // Energy trades silence for activity: a still loop rests far more often
   // than an animated one built from the same material.
-  const restBarChance = Math.max(0.02, Math.min(0.7, c.restBar * (1.7 - feel.energy * 1.4)));
+  const restBarChance = Math.max(0.02, Math.min(0.7, c.restBar * (1.7 - lf.energy * 1.4)));
   const pointillist = c.pointillist || 0;
   // Kataoka's Lost Woods loop appears to skip a beat, which knocks it out of
   // phase and makes you lose count. One dropped step does the same here.
@@ -532,7 +619,7 @@ function genDrums(spec) {
     : spb === 12 ? r.pick(KICK_12) : spb === 20 ? r.pick(KICK_20) : r.pick(KICK_PATTERNS);
   const snare = spb === 12 ? r.pick(SNARE_12) : spb === 20 ? r.pick(SNARE_20) : r.pick(SNARE_PATTERNS);
   const snareVoice = r.weighted([['snare', 3], ['rim', 2], ['clap', 1.5]]);
-  const feel = feelOf(spec);
+  const feel = feelForLayer(spec, 'drums');
   const hatDensity = Math.min(1,
     r.range(c.hatDensity[0], c.hatDensity[1]) * (0.55 + feel.energy * 0.9));
   const hatGrid = r.chance(0.55) ? 2 : 1; // eighths or sixteenths
@@ -606,7 +693,7 @@ function genTexture(spec, harmony) {
   const r = new Rng(spec.layerSeeds.texture);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const total = spec.bars * spb;
-  const mood = moodOf(spec);
+  const mood = feelForLayer(spec, 'texture').lift;
   // No birdsong. Wherever this gets played there are already real birds, and
   // the job is to complement what is outside rather than imitate it.
   const c = characterOf(spec);
