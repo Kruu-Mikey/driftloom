@@ -290,6 +290,25 @@ export class Synth {
     g.linearRampToValueAtTime(1, when + 0.02);
   }
 
+  // Rebuilding the graph (the quality toggle does) used to abandon the old
+  // one still wired to the speakers, with its LFOs running and its combs
+  // ringing. Tear it down properly instead.
+  dispose() {
+    for (const osc of [this.wowLfo, this.flutterLfo]) {
+      try { osc.stop(); } catch { /* already stopped */ }
+      try { osc.disconnect(); } catch { /* already detached */ }
+    }
+    for (const c of this.combs) {
+      try { c.fb.disconnect(); } catch { /* already detached */ }
+      try { c.d.disconnect(); } catch { /* already detached */ }
+      try { c.lp.disconnect(); } catch { /* already detached */ }
+    }
+    try { this.echoFb.disconnect(); } catch { /* already detached */ }
+    try { this.ceiling.disconnect(); } catch { /* already detached */ }
+    try { this.master.disconnect(); } catch { /* already detached */ }
+    this._releases = [];
+  }
+
   setVolume(v) {
     this.userVolume = v;
     this._applyGain();

@@ -101,6 +101,17 @@ export class MediaBridge {
 
   // ------------------------------------------------------------ session
 
+  // The element is in the document, so dropping the reference is not enough
+  // to stop it: every rebuild left another keepalive loop in the DOM.
+  dispose() {
+    if (!this.audio) return;
+    try { this.audio.pause(); } catch { /* nothing playing */ }
+    try { this.audio.removeAttribute('src'); this.audio.load(); } catch { /* fine */ }
+    try { this.audio.remove(); } catch { /* already gone */ }
+    this.audio = null;
+    this.mode = 'disposed';
+  }
+
   setHandlers({ onPlay, onPause, onNext, onPrev }) {
     if (!('mediaSession' in navigator)) return;
     const set = (action, fn) => {

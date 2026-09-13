@@ -41,6 +41,11 @@ function ensureAudio() {
 function buildAudio() {
   const wasPlaying = state.engine ? state.engine.playing : false;
   if (state.engine) state.engine.stop();
+  // Tear the previous graph down before replacing it, or each rebuild
+  // leaves a whole synth wired to the speakers and another keepalive
+  // element in the DOM.
+  if (state.media) state.media.dispose();
+  if (state.synth) state.synth.dispose();
   state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full');
   // Route the mix through a media element so the phone gives us lock-screen
   // controls and stops treating us as an idle tab.
@@ -61,7 +66,15 @@ function buildAudio() {
   state.synth.setVolume(parseFloat(ui.el('volume').value));
   if (state.spec) {
     state.pattern = state.engine.load(state.spec);
-    if (wasPlaying) state.engine.start();
+    if (wasPlaying) {
+      // The new bridge has to take over the media session too, otherwise
+      // the lock-screen controls stay attached to the graph we just binned.
+      state.media.start();
+      state.engine.start();
+      syncMediaMetadata();
+      state.media.setPlaybackState(true);
+      if (!state.frameHandle) state.frameHandle = requestAnimationFrame(frameLoop);
+    }
   }
 }
 

@@ -277,6 +277,15 @@ behind it:
   note arrived next, possibly the melody. Cap raised above the measured
   peak, with pads and textures hitting a lower one first so the background
   yields before the tune does.
+- **The tempo slider could not reach most tempos.** It spanned 52-104 while
+  the profiles now generate 36-183, so on 30% of loops it sat pinned at an
+  end while the readout showed the real figure, and touching it threw the
+  tempo by up to 80bpm. Range widened and generation clamped to match.
+- **Rebuilding the graph leaked it.** The quality toggle built a new synth
+  and abandoned the old one still wired to the speakers, LFOs running and
+  combs ringing, plus another keepalive element in the DOM each time: six
+  after five toggles. Both now have a dispose path, and the new bridge takes
+  over the media session instead of leaving it on the discarded graph.
 - **Breath noise stopped mid-note.** The shared noise buffer is two seconds;
   a longer flute or ocarina note simply ran out of air. It loops now.
 

@@ -70,9 +70,11 @@ export function newSpec(seed = randomSeed()) {
     mix,
     feel,
     mood: feel.lift, // kept so older code and saves still read something
-    bpm: Math.round(
+    // Clamped to the range the tempo control can actually represent, so the
+    // slider and the readout can never disagree.
+    bpm: Math.max(32, Math.min(190, Math.round(
       r.range(c.bpm[0], c.bpm[1]) + (feel.lift - 0.5) * 5 + (feel.energy - 0.5) * 10
-    ),
+    ))),
     root: r.int(0, 11),
     scale: r.weighted(moodWeighted(c.scales, feel.lift)),
     bars,
