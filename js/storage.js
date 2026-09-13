@@ -138,6 +138,24 @@ export function setAlbumIds(id, ids) {
   return persistAlbums(list);
 }
 
+export function renameAlbum(id, title) {
+  const list = loadAlbums();
+  const album = list.find((a) => a.id === id);
+  if (!album) return false;
+  album.title = (title || 'Untitled').slice(0, 40);
+  return persistAlbums(list);
+}
+
+// Replace one entry in place, keeping its position in the running order.
+export function replaceSpec(id, spec) {
+  const list = loadAll();
+  const entry = list.find((e) => e.id === id);
+  if (!entry) return false;
+  entry.spec = JSON.parse(JSON.stringify(spec));
+  entry.savedAt = new Date().toISOString();
+  return persist(list);
+}
+
 export function removeAlbum(id) {
   return persistAlbums(loadAlbums().filter((a) => a.id !== id));
 }

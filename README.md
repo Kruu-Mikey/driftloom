@@ -178,7 +178,12 @@ keyboard over successive bars.
 ## Track length
 
 Off by default: a loop machine should loop until you say stop. Set it and a
-track hands over after that many passes, to the next loop in the album if
+track hands over after that many passes, from one up to 9999 -- a two-bar
+loop set to the top runs for the better part of a week. The control is a
+slider of curated stops rather than a linear range, because 0 to 9999
+linear gives no useful control at the short end, and short lengths are what
+anyone actually sets. The readout shows both the passes and what they come
+to in time at this tempo, to the next loop in the album if
 one is playing, otherwise onward through the history. It is stored per loop
 and carried in the share code, so an album can have genuinely varied song
 lengths rather than one global setting.
@@ -231,6 +236,12 @@ another Driftloom.
 A song code is about 111 characters:
 
     DL1-0405P-0020G-80BBK-BG48Y-8PAG3-A9R7D-QQJEX-14P70-S3BEK-...
+
+Albums open to show their tracks. **Adding the current loop to an album
+saves it** -- making someone press Save first was a rule the app imposed for
+its own convenience. Tracks can be replaced in place with whatever is
+playing (keeping their position in the running order), removed, or played
+from. Albums can be renamed.
 
 An album is a named list of loops and shares the same way, at roughly 110
 characters per loop, and **plays as a playlist** -- the skip buttons walk the

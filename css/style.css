@@ -83,7 +83,7 @@ body {
 
 .album {
   display: grid;
-  grid-template-columns: 48px 1fr auto auto auto;
+  grid-template-columns: 48px 1fr auto;
   align-items: center;
   gap: 8px;
   padding: 10px 0;
@@ -518,3 +518,29 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
   word-break: break-word;
   overflow-x: auto;
 }
+
+/* ---------------------------------------------------- album contents */
+
+.album-open {
+  padding: 4px 0 10px 56px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.album-track {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.track-name {
+  font-family: var(--mono);
+  font-size: 13.5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--sand);
+}
+.track-name:hover { color: var(--mint); }

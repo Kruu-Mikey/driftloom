@@ -4,6 +4,13 @@ import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
 import * as share from './share.js';
+// Curated stops rather than a linear range: 0 to 9999 on a slider gives you
+// no useful control at the short end, and short lengths are what anyone
+// actually sets. The top end still reaches well past a day on a two-bar loop.
+const TRACK_LENGTHS = [
+  0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
+  192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 9999,
+];
 import { drawCover, albumCoverSpec } from './cover.js';
 import * as store from './storage.js';
 import * as ui from './ui.js';
@@ -18,6 +25,7 @@ const state = {
   bar: -1,
   gridSteps: 16,
   playlist: null,
+  openAlbum: null,
   frameHandle: null,
   lite: false,
   media: null,
@@ -178,6 +186,28 @@ function syncMediaMetadata() {
   state.media.setMetadata(state.spec.name, `${state.spec.bpm} bpm · Driftloom`);
 }
 
+// Passes are the honest unit -- a track ends on a whole loop -- but nobody
+// thinks in passes, so show the time it comes to at this tempo as well.
+function describeLength(passes, spec) {
+  if (!passes) return 'off';
+  if (!spec) return `${passes} passes`;
+  const spb = spec.stepsPerBar || 16;
+  const secs = passes * spec.bars * spb * (60 / spec.bpm / 4);
+  let time;
+  if (secs < 90) time = `${Math.round(secs)}s`;
+  else if (secs < 5400) time = `${Math.round(secs / 60)}m`;
+  else if (secs < 86400) {
+    const h = Math.floor(secs / 3600);
+    const m = Math.round((secs % 3600) / 60);
+    time = m ? `${h}h ${m}m` : `${h}h`;
+  } else {
+    const d = Math.floor(secs / 86400);
+    const h = Math.round((secs % 86400) / 3600);
+    time = h ? `${d}d ${h}h` : `${d}d`;
+  }
+  return `${passes} ${passes === 1 ? 'pass' : 'passes'} · ~${time}`;
+}
+
 function drawCoverFor(spec) {
   const canvas = ui.el('cover');
   if (!canvas || !spec) return;
@@ -196,89 +226,169 @@ function refreshAlbums() {
   if (!albums.length) {
     const p = document.createElement('p');
     p.className = 'empty';
-    p.textContent = 'No albums yet. Make one, then add saved loops to it.';
+    p.textContent = 'No albums yet. Make one, then add the loop you are playing.';
     host.appendChild(p);
     return;
   }
   const saved = store.loadAll();
+  const specOf = (id) => (saved.find((e) => e.id === id) || {}).spec;
+
   for (const album of albums) {
+    const present = album.ids.filter((id) => specOf(id));
+    const open = state.openAlbum === album.id;
+
     const row = document.createElement('div');
     row.className = 'album';
 
     const art = document.createElement('canvas');
     art.className = 'album-art';
-    const memberSpecs = album.ids
-      .map((id) => saved.find((e) => e.id === id))
-      .filter(Boolean)
-      .map((e) => e.spec);
     try {
-      drawCover(art, memberSpecs.length
-        ? albumCoverSpec(album.title, memberSpecs)
-        : albumCoverSpec(album.title, [{ seed: 1, feel: { lift: 0.5, energy: 0.3, warmth: 0.6 }, mix: { dust: 1 } }]),
-      96);
+      const specs = present.map(specOf);
+      drawCover(art, albumCoverSpec(album.title, specs.length ? specs : [
+        { seed: 1, feel: { lift: 0.5, energy: 0.3, warmth: 0.6 }, mix: { dust: 1 } },
+      ]), 96);
     } catch (err) {
       console.warn('Could not draw album art', err);
     }
-
-    const play = document.createElement('button');
-    play.className = 'ghost tiny';
-    play.textContent = 'play';
-    play.addEventListener('click', () => {
-      const ids = album.ids.filter((id) => saved.some((e) => e.id === id));
-      if (!ids.length) { ui.toast('That album is empty'); return; }
-      state.playlist = { albumId: album.id, title: album.title, ids, index: -1 };
-      advancePlaylist(1);
-    });
 
     const name = document.createElement('button');
     name.className = 'album-name';
     name.appendChild(document.createTextNode(album.title));
     const meta = document.createElement('span');
     meta.className = 'album-meta';
-    const present = album.ids.filter((id) => saved.some((e) => e.id === id));
-    meta.textContent = `${present.length} loop${present.length === 1 ? '' : 's'} · tap to add the current one`;
+    meta.textContent = `${present.length} loop${present.length === 1 ? '' : 's'} · tap to ${open ? 'close' : 'open'}`;
     name.appendChild(meta);
     name.addEventListener('click', () => {
-      if (!state.currentId) {
-        ui.toast('Save this loop first, then add it');
-        return;
-      }
-      if (album.ids.includes(state.currentId)) {
-        ui.toast('Already in that album');
-        return;
-      }
-      store.setAlbumIds(album.id, [...album.ids, state.currentId]);
+      state.openAlbum = open ? null : album.id;
       refreshAlbums();
+    });
+
+    const play = document.createElement('button');
+    play.className = 'ghost tiny';
+    play.textContent = 'play';
+    play.addEventListener('click', () => {
+      if (!present.length) { ui.toast('That album is empty'); return; }
+      state.playlist = { albumId: album.id, title: album.title, ids: present.slice(), index: -1 };
+      advancePlaylist(1);
+    });
+
+    row.append(art, name, play);
+    host.appendChild(row);
+    if (!open) continue;
+
+    const panel = document.createElement('div');
+    panel.className = 'album-open';
+
+    present.forEach((id, i) => {
+      const spec = specOf(id);
+      const t = document.createElement('div');
+      t.className = 'album-track';
+
+      const label = document.createElement('button');
+      label.className = 'track-name';
+      label.textContent = `${i + 1}. ${spec.name}`;
+      label.addEventListener('click', () => {
+        state.playlist = { albumId: album.id, title: album.title, ids: present.slice(), index: i - 1 };
+        advancePlaylist(1);
+      });
+
+      // Overwrite this entry with whatever is playing now, so a loop can be
+      // tweaked and put back without losing its place in the running order.
+      const update = document.createElement('button');
+      update.className = 'ghost tiny';
+      update.textContent = 'replace';
+      update.addEventListener('click', () => {
+        if (!state.spec) return;
+        if (!store.replaceSpec(id, state.spec)) {
+          ui.toast('Could not save that change');
+          return;
+        }
+        refreshAlbums();
+        refreshSaved();
+        ui.toast(`Replaced track ${i + 1}`);
+      });
+
+      const drop = document.createElement('button');
+      drop.className = 'ghost tiny';
+      drop.textContent = 'remove';
+      drop.addEventListener('click', () => {
+        store.setAlbumIds(album.id, album.ids.filter((x) => x !== id));
+        refreshAlbums();
+        ui.toast('Removed from album');
+      });
+
+      t.append(label, update, drop);
+      panel.appendChild(t);
+    });
+
+    if (!present.length) {
+      const p = document.createElement('p');
+      p.className = 'empty';
+      p.textContent = 'Nothing in here yet.';
+      panel.appendChild(p);
+    }
+
+    const tools = document.createElement('div');
+    tools.className = 'row wrap';
+
+    const add = document.createElement('button');
+    add.className = 'ghost';
+    add.textContent = 'Add current loop';
+    add.addEventListener('click', () => {
+      if (!state.spec) return;
+      // Adding to an album IS saving it. Making someone press Save first was
+      // a rule the app imposed for its own convenience, not the user's.
+      let id = state.currentId;
+      const known = id && store.loadAll().some((e) => e.id === id);
+      if (!known) {
+        const entry = store.save(state.spec);
+        if (!entry) { ui.toast('Could not save this loop'); return; }
+        id = entry.id;
+        state.currentId = id;
+      }
+      if (album.ids.includes(id)) { ui.toast('Already in this album'); return; }
+      store.setAlbumIds(album.id, [...album.ids, id]);
+      refreshAlbums();
+      refreshSaved();
       ui.toast(`Added to ${album.title}`);
     });
 
-    const code = document.createElement('button');
-    code.className = 'ghost tiny';
-    code.textContent = 'code';
-    code.addEventListener('click', async () => {
-      const specs = album.ids
-        .map((id) => saved.find((e) => e.id === id))
-        .filter(Boolean)
-        .map((e) => e.spec);
-      if (!specs.length) {
-        ui.toast('That album is empty');
+    const rename = document.createElement('button');
+    rename.className = 'ghost';
+    rename.textContent = 'Rename';
+    rename.addEventListener('click', () => {
+      const title = prompt('Rename album', album.title);
+      if (!title) return;
+      if (!store.renameAlbum(album.id, title.trim())) {
+        ui.toast('Could not rename');
         return;
       }
-      await offerCode(share.encodeAlbum(album.title, specs),
-        `${album.title} · ${specs.length} loops`);
+      refreshAlbums();
+    });
+
+    const code = document.createElement('button');
+    code.className = 'ghost';
+    code.textContent = 'Share code';
+    code.addEventListener('click', async () => {
+      const specs = present.map(specOf);
+      if (!specs.length) { ui.toast('That album is empty'); return; }
+      await offerCode(share.encodeAlbum(album.title, specs), `${album.title} · ${specs.length} loops`);
     });
 
     const del = document.createElement('button');
-    del.className = 'ghost tiny';
-    del.textContent = 'delete';
+    del.className = 'ghost';
+    del.textContent = 'Delete album';
     del.addEventListener('click', () => {
       store.removeAlbum(album.id);
+      if (state.openAlbum === album.id) state.openAlbum = null;
+      if (state.playlist && state.playlist.albumId === album.id) state.playlist = null;
       refreshAlbums();
       ui.toast('Album deleted');
     });
 
-    row.append(art, name, play, code, del);
-    host.appendChild(row);
+    tools.append(add, rename, code, del);
+    panel.appendChild(tools);
+    host.appendChild(panel);
   }
 }
 
@@ -299,8 +409,13 @@ async function offerCode(code, label) {
 function syncToneInputs(spec) {
   ui.el('bpm').value = spec.bpm;
   const len = spec.playFor || 0;
-  ui.el('trackLen').value = len;
-  ui.el('lenVal').textContent = len ? `${len} passes` : 'off';
+  let idx = TRACK_LENGTHS.indexOf(len);
+  if (idx < 0) {
+    idx = TRACK_LENGTHS.reduce((best, v, i) =>
+      Math.abs(v - len) < Math.abs(TRACK_LENGTHS[best] - len) ? i : best, 0);
+  }
+  ui.el('trackLen').value = idx;
+  ui.el('lenVal').textContent = describeLength(len, spec);
   ui.el('warmth').value = spec.tone.warmth;
   ui.el('space').value = spec.tone.space;
   ui.el('wobble').value = spec.tone.wobble;
@@ -522,10 +637,10 @@ function wire() {
     if (state.engine) state.engine.driftAmount = parseFloat(e.target.value);
   });
   ui.el('trackLen').addEventListener('input', (e) => {
-    const v = parseInt(e.target.value, 10);
-    ui.el('lenVal').textContent = v ? `${v} passes` : 'off';
-    if (state.spec) state.spec.playFor = v || null;
+    const passes = TRACK_LENGTHS[parseInt(e.target.value, 10)] || 0;
+    if (state.spec) state.spec.playFor = passes || null;
     if (state.engine) state.engine.loopCount = 0;
+    ui.el('lenVal').textContent = describeLength(passes, state.spec);
   });
 
   ui.el('bpm').addEventListener('input', (e) => {

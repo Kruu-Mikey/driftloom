@@ -30,7 +30,7 @@ const DECODE_MAP = (() => {
   return m;
 })();
 
-export const FORMAT = 2;
+export const FORMAT = 3;
 
 // Frozen orderings. These must never be reordered or codes already written
 // down stop meaning what they meant; append only.
@@ -145,11 +145,12 @@ function writeSpec(w, spec) {
   } else {
     w.u8(0);
   }
-  // Format 2: track length, so a shared album keeps its pacing.
-  w.u8(Math.max(0, Math.min(255, spec.playFor || 0)));
+  // Track length, so a shared album keeps its pacing. Two bytes since
+  // format 3: a two-bar loop can now be set to run for more than a day.
+  w.u16(Math.max(0, Math.min(65535, spec.playFor || 0)));
 }
 
-function readSpec(r) {
+function readSpec(r, version = FORMAT) {
   const spec = {};
   const hasName = r.u8();
   const customName = hasName ? r.str() : null;
@@ -202,8 +203,10 @@ function readSpec(r) {
       spec.cycles[layer] = v || null;
     }
   }
-  // Format 1 codes simply end here; they get the default.
-  spec.playFor = r.done ? null : (r.u8() || null);
+  // Format 1 codes end here and get the default; format 2 wrote one byte.
+  if (r.done) spec.playFor = null;
+  else if (version < 3) spec.playFor = r.u8() || null;
+  else spec.playFor = r.u16() || null;
   return spec;
 }
 
@@ -292,7 +295,7 @@ export function decodeSong(code) {
   const r = new Reader(bytes);
   const version = r.u8();
   if (version > FORMAT) throw new Error('that code was made by a newer version');
-  return readSpec(r);
+  return readSpec(r, version);
 }
 
 export function encodeAlbum(title, specs) {
@@ -312,7 +315,7 @@ export function decodeAlbum(code) {
   const title = r.str();
   const count = r.u16();
   const specs = [];
-  for (let i = 0; i < count; i++) specs.push(readSpec(r));
+  for (let i = 0; i < count; i++) specs.push(readSpec(r, version));
   return { title, specs };
 }
 
