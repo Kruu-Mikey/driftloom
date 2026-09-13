@@ -63,6 +63,8 @@ density, metre, form -- that move together.
 | **Halcyon** | warm analogue nostalgia. Fat detuned pads, soft breakbeat, long dub delays |
 | **Clockwork** | prepared piano. Felt-damped, faintly out of tune, the mechanism audible |
 | **Shatter** | fast and fractured. Chopped breaks, stutter rolls, chromatic turns |
+| **Grove** | wooden mallets. Kalimba tines and marimba bars: dry pitched percussion, which nothing else here provides |
+| **Hollow** | voices. Synthetic vowels and humming, wordless and unhurried |
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 
 These are not ten boxes. Every loop draws a **weight across several of
@@ -72,6 +74,13 @@ and spreads weight far more naturally than picking fractions by hand. About
 even ones, so a loop still sounds like it is *about* something. Pools are
 unioned rather than replaced, so a mostly-Dust loop with a little Glade in
 it can still reach for an ocarina.
+
+New voices go into **new profiles**, never into existing pools. Voices are
+drawn at render time from the blended pool, so adding one entry to an
+existing pool shifts that weighted draw and every random decision after it --
+every share code already in circulation would quietly render as different
+music. Verified: 2000 codes referencing only pre-existing profiles decode
+identically after `grove` and `hollow` were added.
 
 ## Feeling
 

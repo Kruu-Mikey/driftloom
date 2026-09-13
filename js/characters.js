@@ -273,6 +273,63 @@ export const CHARACTERS = {
     feel: { lift: [0.15, 0.7], energy: [0.75, 1], warmth: [0.25, 0.6] },
   },
 
+  // Wooden mallets. Kalimba tines and marimba bars: dry, pitched percussion,
+  // which nothing else here provides. Bright, unhurried, a bit handmade.
+  grove: {
+    level: 0.72,
+    label: 'Grove',
+    weight: 1.6,
+    bpm: [68, 104],
+    stepsPerBar: [[16, 3], [12, 2]],
+    bars: [[4, 4], [8, 3], [2, 1], [16, 1]],
+    airy: 0.3,
+    swing: [0, 0.18],
+    scales: [
+      ['majorPent', 3], ['ionian', 2.5], ['lydian', 2], ['mixolydian', 2],
+      ['yo', 2], ['ritusen', 1.5], ['dorian', 1.5], ['kumoi', 1.2],
+    ],
+    drums: 0.5,
+    hatDensity: [0.1, 0.5],
+    chordVoices: [['kalimba', 3], ['marimba', 2.5], ['harp', 2], ['pad', 1.5]],
+    melodyVoices: [['kalimba', 4], ['marimba', 3], ['musicbox', 1.5], ['whistle', 1.5]],
+    bassStyles: [['pulse', 3], ['held', 2.5], ['sparse', 2]],
+    bassVoices: [['pluckbass', 3], ['round', 3], ['sub', 1.5]],
+    textures: [['chime', 3], ['bells', 2.5], ['drops', 1.5], ['swell', 1.5], ['none', 2]],
+    restBar: 0.18,
+    chordSize: [[3, 4], [4, 2]],
+    tone: { warmth: [0.4, 0.75], space: [0.35, 0.7], wobble: [0.05, 0.35] },
+    feel: { lift: [0.5, 1], energy: [0.35, 0.8], warmth: [0.45, 0.85] },
+  },
+
+  // Voices. Synthetic vowels and humming rather than words: a wordless
+  // voice never sounds dated or foreign, and words would make a loop be
+  // *about* something, which is the opposite of what this is for.
+  hollow: {
+    level: 0.62,
+    label: 'Hollow',
+    weight: 1.4,
+    bpm: [46, 74],
+    stepsPerBar: [[16, 3], [12, 1]],
+    bars: [[4, 2], [8, 3], [16, 2.5], [24, 1]],
+    airy: 0.65,
+    swing: [0, 0.06],
+    scales: [
+      ['aeolian', 2.5], ['dorian', 2.5], ['lydian', 2], ['ionian', 2],
+      ['kumoi', 1.5], ['majorPent', 1.5], ['minorPent', 1.2],
+    ],
+    drums: 0.12,
+    hatDensity: [0.05, 0.3],
+    chordVoices: [['vowel', 3], ['hum', 3], ['choir', 2.5], ['pad', 2]],
+    melodyVoices: [['vowel', 4], ['hum', 3], ['choir', 2], ['sine', 1.5]],
+    bassStyles: [['sparse', 4], ['held', 3]],
+    bassVoices: [['round', 3], ['fifths', 3], ['rhodesbass', 1.5]],
+    textures: [['swell', 3], ['chime', 2], ['bells', 1.5], ['none', 2]],
+    restBar: 0.38,
+    chordSize: [[3, 3], [4, 2]],
+    tone: { warmth: [0.35, 0.7], space: [0.6, 0.95], wobble: [0.05, 0.3] },
+    feel: { lift: [0.3, 0.9], energy: [0.05, 0.45], warmth: [0.4, 0.8] },
+  },
+
   // Hypnotic pulse. A steady four, very short looping fragments, and the
   // whole mix breathing against the kick. Change arrives by accumulation.
   undertow: {

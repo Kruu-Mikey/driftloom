@@ -4,14 +4,49 @@
 
 import { midiToFreq } from './theory.js';
 
-// Busy loops genuinely want up to 38 voices at once, so a cap of 28 was
-// dropping notes on about 1% of them -- and dropping whichever note happened
-// to arrive next, which could be the melody. The cap is now above the
-// measured peak, and pads and textures hit a lower one first, so when
-// something has to give it is the sustained background rather than the tune.
-const MAX_VOICES = 44;
-const SOFT_VOICES = 30;
-const LITE_VOICES = 26;
+// A voice budget in *cost units*, not a count of voices.
+//
+// Earlier versions capped a flat count of active voices (28, then 44). That
+// treats a hi-hat and a fat three-oscillator analogue pad as costing the
+// same "one voice", which measured render time across every voice type
+// shows is wrong by a lot: an analogpad note costs roughly 36x what a hat
+// does, a choir note 34x, an FM piano note 28x. A flat cap is either far too
+// loose for a chord of pads or far too tight for a busy hat pattern -- there
+// is no single number that is right for both.
+//
+// The weights below are ratios from OfflineAudioContext render-time
+// measurements taken on a development machine, not a real phone, and that
+// distinction is not close enough to ignore: a desktop CPU core is commonly
+// five to ten times faster per cycle than the efficiency cores a low-end
+// Android phone actually schedules audio work onto. The *relative* costs
+// between voices should hold regardless of hardware, since they come from
+// node counts and filter complexity, not clock speed -- but the absolute
+// BUDGET figures below are a reasoned starting point, not a measurement of
+// any real device. If Diagnostics shows dropouts on a specific phone, this
+// is the number to revisit first.
+const VOICE_COST = {
+  hat: 1, ohat: 1, shaker: 1, rim: 1, kick: 1, snare: 1.5, clap: 1.5,
+  drop: 1.5, bell: 4, chime: 4, celeste: 4, musicbox: 4,
+  sub: 8, round: 8, fifths: 8, pluckbass: 9, rhodesbass: 10, moogbass: 7,
+  stab: 4, sine: 4, pluck: 11, saw: 8,
+  rhodes: 15, moog: 18, whistle: 14, harp: 20,
+  keys: 25, prepared: 25, piano: 26,
+  pad: 25, moogpad: 25,
+  choir: 32, analogpad: 32,
+  kalimba: 11, marimba: 9, vowel: 20, hum: 14,
+};
+const DEFAULT_COST = 12; // any voice not listed above
+
+// Total budget, in the same units. Calibrated so a genuinely dense passage
+// (a four-note analogpad chord plus a busy kit plus a melody note: roughly
+// 4*32 + 6*1 + 15 = 149) fits comfortably, while a wall of the heaviest
+// voice alone still hits a ceiling well before it could bog down a weak
+// device. The "soft" budget is what pads and textures see, so when
+// something has to give it is the sustained background yielding, not drums
+// or the tune.
+const MAX_BUDGET = 260;
+const SOFT_BUDGET = 170;
+const LITE_BUDGET = 140;
 
 // Tape saturation, not a maximizer.
 //
@@ -361,19 +396,20 @@ export class Synth {
     }
   }
 
-  _budget(time = this.ctx.currentTime, soft = false) {
-    while (this._releases.length && this._releases[0] <= time) this._releases.shift();
-    const ceiling = this.quality === 'lite' ? LITE_VOICES : MAX_VOICES;
-    const cap = soft ? Math.min(SOFT_VOICES, ceiling) : ceiling;
-    if (this._releases.length > cap) return false;
+  _budget(time = this.ctx.currentTime, soft = false, cost = DEFAULT_COST) {
+    while (this._releases.length && this._releases[0].at <= time) this._releases.shift();
+    const spent = this._releases.reduce((sum, r) => sum + r.cost, 0);
+    const ceiling = this.quality === 'lite' ? LITE_BUDGET : MAX_BUDGET;
+    const cap = soft ? Math.min(SOFT_BUDGET, ceiling) : ceiling;
+    if (spent + cost > cap) return false;
     return true;
   }
 
-  _release(time, dur) {
+  _release(time, dur, cost = DEFAULT_COST) {
     const at = (typeof dur === 'number' ? time + dur : this.ctx.currentTime + time) + 0.12;
     let i = this._releases.length;
-    while (i > 0 && this._releases[i - 1] > at) i--;
-    this._releases.splice(i, 0, at);
+    while (i > 0 && this._releases[i - 1].at > at) i--;
+    this._releases.splice(i, 0, { at, cost });
   }
 
   _noiseSource(time, dur) {
@@ -388,7 +424,8 @@ export class Synth {
   // ------------------------------------------------------------- drums
 
   drum(inst, time, vel = 0.8) {
-    if (!this._budget(time)) return;
+    const cost = VOICE_COST[inst] ?? 1.5;
+    if (!this._budget(time, false, cost)) return;
     const ctx = this.ctx;
     const out = this.channels.drums.gain;
     const v = Math.max(0, Math.min(1, vel));
@@ -414,7 +451,7 @@ export class Synth {
       cg.gain.setValueAtTime(v * 0.28, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
       click.connect(cf).connect(cg).connect(out);
-      this._release(time, 0.45);
+      this._release(time, 0.45, cost);
       return;
     }
 
@@ -440,7 +477,7 @@ export class Synth {
       body.connect(bg).connect(out);
       body.start(time);
       body.stop(time + 0.12);
-      this._release(time, dur);
+      this._release(time, dur, cost);
       return;
     }
 
@@ -455,7 +492,7 @@ export class Synth {
       g.gain.exponentialRampToValueAtTime(v * (inst === 'shaker' ? 0.3 : 0.42), time + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
       src.connect(hpf).connect(g).connect(out);
-      this._release(time, dur);
+      this._release(time, dur, cost);
       return;
     }
 
@@ -475,10 +512,10 @@ export class Synth {
       osc.connect(bp).connect(g).connect(out);
       osc.start(time);
       osc.stop(time + 0.09);
-      this._release(time, 0.1);
+      this._release(time, 0.1, cost);
       return;
     }
-    this._release(time, 0.05);
+    this._release(time, 0.05, cost);
   }
 
   // -------------------------------------------------------------- bass
@@ -487,7 +524,8 @@ export class Synth {
   // and the most monotonous. Each of these keeps the low end clear a
   // different way: less sub, a steeper filter, or no sawtooth at all.
   bass(midi, time, dur, vel = 0.7, glide = false, voice = 'sub') {
-    if (!this._budget(time)) return;
+    const cost = VOICE_COST[voice] ?? 8;
+    if (!this._budget(time, false, cost)) return;
     const ctx = this.ctx;
     const out = this.channels.bass.gain;
     const f = midiToFreq(midi);
@@ -546,7 +584,9 @@ export class Synth {
         o.start(time); o.stop(stop + 0.4);
       }
     } else if (voice === 'rhodesbass') {
-      this.fm(midi, time, dur, vel * 0.85, { out, ratio: 1, index: 130, decay: 0.4, attack: 0.006 });
+      this.fm(midi, time, dur, vel * 0.85, {
+        out, ratio: 1, index: 130, decay: 0.4, attack: 0.006, skipBudget: true,
+      });
     } else if (voice === 'pluckbass') {
       // Short and woody, with a little noise for the finger. Leaves space
       // between notes instead of filling the whole bar with low end.
@@ -610,7 +650,7 @@ export class Synth {
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
     }
-    this._release(time, dur + 0.8);
+    this._release(time, dur + 0.8, cost);
   }
 
   // ------------------------------------------------------------- tuned
@@ -619,7 +659,11 @@ export class Synth {
   // index envelope is an electric piano, 3.5:1 is a bell, 1:1 is a soft
   // reed. One tiny voice covering most of a mid-80s digital keyboard.
   fm(midi, time, dur, vel, opts = {}) {
-    if (!this._budget(time)) return;
+    // rhodesbass calls this from inside bass(), which has already checked
+    // and will release its own budget for the whole note; checking again
+    // here would charge the same sound twice.
+    const cost = opts.cost ?? 12;
+    if (!opts.skipBudget && !this._budget(time, !!opts.soft, cost)) return;
     const ctx = this.ctx;
     const out = opts.out || this.channels.chords.gain;
     const f = midiToFreq(midi);
@@ -655,14 +699,17 @@ export class Synth {
     car.start(time);
     mod.start(time);
     this._stopClean(g, [car, mod], stop);
-    this._release(time, dur + 1.2);
+    if (!opts.skipBudget) this._release(time, dur + 1.2, cost);
   }
 
   pad(notes, time, dur, vel, dest) {
     const ctx = this.ctx;
     const out = dest || this.channels.chords.gain;
+    // Two detuned triangles per note, so this is the same weight class as
+    // the fat analogue voices, not the plain plucks.
+    const cost = VOICE_COST.pad;
     for (const midi of notes) {
-      if (!this._budget(time, true)) return;
+      if (!this._budget(time, true, cost)) return;
       const f = midiToFreq(midi);
       const g = ctx.createGain();
       const stopAt = time + dur + 1.6;
@@ -686,16 +733,16 @@ export class Synth {
       }
       lp.connect(g).connect(out);
       this._stopClean(g, oscs, time + dur + 1.6);
-      this._release(time, dur + 1.6);
+      this._release(time, dur + 1.6, cost);
     }
   }
 
   pluck(midi, time, dur, vel, voice = 'pluck') {
     const out = this.channels.melody.gain;
     if (voice === 'bell') {
-      this.fm(midi, time, dur * 0.9, vel, { out, ratio: 3.51, index: 420, decay: 0.5 });
+      this.fm(midi, time, dur * 0.9, vel, { out, ratio: 3.51, index: 420, decay: 0.5, cost: VOICE_COST.bell });
     } else if (voice === 'keys') {
-      this.fm(midi, time, dur, vel, { out, ratio: 2, index: 260, decay: 0.4 });
+      this.fm(midi, time, dur, vel, { out, ratio: 2, index: 260, decay: 0.4, cost: VOICE_COST.keys });
     } else if (voice === 'saw') {
       if (!this._budget(time)) return;
       const ctx = this.ctx;
@@ -757,8 +804,10 @@ export class Synth {
       // Zelda's harp: bright, short, two-operator, with a second voice a
       // hair out of tune so it rings rather than beeps.
       case 'harp':
-        this.fm(midi, time, dur * 0.8, vel, { out: dest, ratio: 3, index: 200, decay: 0.35 });
-        this.fm(midi, time + 0.006, dur * 0.6, vel * 0.4, { out: dest, ratio: 3, index: 140, decay: 0.3, detune: 7 });
+        // Two fm() calls, no outer gate; measured harp end-to-end is ~20x a
+        // hat, split across the two layered strikes.
+        this.fm(midi, time, dur * 0.8, vel, { out: dest, ratio: 3, index: 200, decay: 0.35, cost: 13 });
+        this.fm(midi, time + 0.006, dur * 0.6, vel * 0.4, { out: dest, ratio: 3, index: 140, decay: 0.3, detune: 7, cost: 7 });
         return;
 
       // Ocarina and flute are the same idea at different mixes: a nearly pure
@@ -809,8 +858,10 @@ export class Synth {
       // decay give the struck-string bite; a detuned second partial and a
       // long tail do the rest. Not a Steinway, but it reads as a piano.
       case 'piano': {
-        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002 });
-        this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4 });
+        // Measured piano end-to-end is ~26x a hat, split across the two
+        // struck-string partials.
+        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002, cost: 19 });
+        this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4, cost: 7 });
         return;
       }
 
@@ -819,7 +870,7 @@ export class Synth {
       // against each other; that slow phasing is the whole sound, and it is
       // why one oscillator never sounds like this however it is filtered.
       case 'analogpad': {
-        if (!this._budget(time, true)) return;
+        if (!this._budget(time, true, VOICE_COST.analogpad)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 1.6;
@@ -842,12 +893,14 @@ export class Synth {
         }
         lp.connect(g).connect(dest);
         this._stopClean(g, oscs, time + dur + 1.6);
-        this._release(time, dur + 1.6);
+        this._release(time, dur + 1.6, VOICE_COST.analogpad);
         return;
       }
 
       case 'analoglead': {
-        if (!this._budget(time)) return;
+        // Two detuned saws through one resonant filter, no pad-scale energy
+        // building up: closer in weight to the moog lead than to analogpad.
+        if (!this._budget(time, false, VOICE_COST.moog)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 5;
@@ -867,7 +920,7 @@ export class Synth {
           o.stop(time + dur + 0.8);
         }
         lp.connect(g).connect(dest);
-        this._release(time, dur + 0.8);
+        this._release(time, dur + 0.8, VOICE_COST.moog);
         return;
       }
 
@@ -875,10 +928,12 @@ export class Synth {
       // loses its upper partials and shortens, and you hear the mechanism --
       // a wooden knock alongside the note rather than underneath it.
       case 'prepared': {
+        // Measured ~25x a hat, split across the strike, the knock, and the
+        // detuned second strike.
         this.fm(midi, time, dur * 0.7, vel * 0.85, {
-          out: dest, ratio: 1, index: 200, decay: 0.1, attack: 0.002,
+          out: dest, ratio: 1, index: 200, decay: 0.1, attack: 0.002, cost: 15,
         });
-        if (!this._budget(time)) return;
+        if (!this._budget(time, false, 3)) return;
         const knock = this._noiseSource(time, 0.05);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
@@ -890,14 +945,14 @@ export class Synth {
         knock.connect(bp).connect(kg).connect(dest);
         // A touch of detuning: nothing prepared stays in tune.
         this.fm(midi, time + 0.004, dur * 0.45, vel * 0.2, {
-          out: dest, ratio: 1, index: 90, decay: 0.08, detune: 9,
+          out: dest, ratio: 1, index: 90, decay: 0.08, detune: 9, cost: 7,
         });
-        this._release(time, dur + 0.4);
+        this._release(time, dur + 0.4, 3);
         return;
       }
 
       case 'celeste':
-        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 4, index: 200, decay: 0.5 });
+        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 4, index: 200, decay: 0.5, cost: VOICE_COST.celeste });
         return;
 
       // Short filtered chord stab. The repeating fragment that hypnotic
@@ -928,13 +983,99 @@ export class Synth {
         return;
       }
 
+      // Kalimba: a plucked metal tine. Bright inharmonic attack that dies
+      // away almost at once, over a soft wooden thump from the box. The
+      // shortness is the character -- a tine has almost no sustain.
+      case 'kalimba': {
+        this.fm(midi, time, Math.min(dur, 1.1), vel, {
+          out: dest, ratio: 3.7, index: 260, decay: 0.09, attack: 0.002, cost: 8,
+        });
+        if (!this._budget(time, false, 3)) return;
+        const body = ctx.createOscillator();
+        body.type = 'sine';
+        body.frequency.setValueAtTime(midiToFreq(midi - 12), time);
+        const bg = ctx.createGain();
+        bg.gain.setValueAtTime(0.0001, time);
+        bg.gain.exponentialRampToValueAtTime(vel * 0.12, time + 0.004);
+        bg.gain.exponentialRampToValueAtTime(0.0001, time + 0.16);
+        body.connect(bg).connect(dest);
+        body.start(time);
+        body.stop(time + 0.2);
+        this._release(time, 0.25, 3);
+        return;
+      }
+
+      // Marimba: wood rather than metal. The bar's fourth partial is what
+      // makes it read as wooden, and it decays slower and darker than a tine.
+      case 'marimba': {
+        this.fm(midi, time, Math.min(dur, 1.6), vel, {
+          out: dest, ratio: 4, index: 190, decay: 0.16, attack: 0.003, cost: 9,
+        });
+        return;
+      }
+
+      // A synthetic human vowel: a buzzing glottal source shaped by three
+      // resonances. Formants are what make a vowel a vowel -- the pitch is
+      // almost incidental, which is why one oscillator plus three bandpasses
+      // reads as a voice at all. Deliberately not lifelike: it should sound
+      // like a voice in the room, not like a person singing at you.
+      case 'vowel':
+      case 'hum': {
+        const humming = name === 'hum';
+        if (!this._budget(time, false, humming ? 14 : 20)) return;
+        const VOWELS = {
+          a: [800, 1150, 2900], e: [400, 1600, 2700],
+          o: [450, 800, 2830], u: [325, 700, 2530],
+        };
+        // Humming is a closed mouth: one low nasal resonance and nothing up
+        // top, which is most of the difference from an open vowel.
+        const formants = humming ? [280, 1100, 2200] : (VOWELS[opts.vowel] || VOWELS.a);
+        const src = ctx.createOscillator();
+        src.type = humming ? 'triangle' : 'sawtooth';
+        src.frequency.value = f;
+
+        // Vibrato that arrives late, the way a singer's does.
+        const vib = ctx.createOscillator();
+        vib.frequency.value = 4.6 + Math.random() * 1.2;
+        const vibAmt = ctx.createGain();
+        vibAmt.gain.setValueAtTime(0, time);
+        vibAmt.gain.linearRampToValueAtTime(humming ? 4 : 7, time + Math.min(0.8, dur * 0.6));
+        vib.connect(vibAmt).connect(src.detune);
+
+        const g = ctx.createGain();
+        const stopAt = time + dur + 0.9;
+        g.gain.setValueAtTime(0.0001, time);
+        // Three bandpasses in series throw away most of the source's energy,
+        // so this needs far more gain than an unfiltered voice to land at a
+        // comparable level. Measured against kalimba to match.
+        g.gain.linearRampToValueAtTime(vel * (humming ? 0.7 : 1.1), time + Math.min(0.35, dur * 0.25));
+        this._release2(g.gain, time + dur * 0.72, stopAt);
+
+        formants.forEach((hz, i) => {
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = hz;
+          bp.Q.value = 6 + i * 4;
+          const fg = ctx.createGain();
+          fg.gain.value = humming ? [1, 0.3, 0.08][i] : [1, 0.5, 0.22][i];
+          src.connect(bp).connect(fg).connect(g);
+        });
+
+        g.connect(dest);
+        src.start(time);
+        vib.start(time);
+        this._stopClean(g, [src, vib], stopAt);
+        this._release(time, dur + 0.9, humming ? 14 : 20);
+        return;
+      }
+
       case 'musicbox':
-        this.fm(midi, time, dur * 0.9, vel, { out: dest, ratio: 5.1, index: 420, decay: 0.45 });
+        this.fm(midi, time, dur * 0.9, vel, { out: dest, ratio: 5.1, index: 420, decay: 0.45, cost: VOICE_COST.musicbox });
         return;
 
       // Fender Rhodes: the classic 2:1 bell-ish FM electric piano.
       case 'rhodes':
-        this.fm(midi, time, dur, vel, { out: dest, ratio: 2, index: 190, decay: 0.5, attack: 0.004 });
+        this.fm(midi, time, dur, vel, { out: dest, ratio: 2, index: 190, decay: 0.5, attack: 0.004, cost: VOICE_COST.rhodes });
         return;
 
       // Garson's Moog: one oscillator, portamento, and a resonant filter
@@ -1049,9 +1190,9 @@ export class Synth {
         this._release(time, dur + 0.2);
       }
     } else if (kind === 'bell') {
-      this.fm(notes[0], time, dur, vel, { out, ratio: 5.1, index: 300, decay: 1.1 });
+      this.fm(notes[0], time, dur, vel, { out, ratio: 5.1, index: 300, decay: 1.1, cost: VOICE_COST.bell });
     } else if (kind === 'chime') {
-      this.fm(notes[0], time, dur, vel, { out, ratio: 2.76, index: 230, decay: 1.6, attack: 0.004 });
+      this.fm(notes[0], time, dur, vel, { out, ratio: 2.76, index: 230, decay: 1.6, attack: 0.004, cost: VOICE_COST.chime });
     } else if (kind === 'drop') {
       if (!this._budget(time)) return;
       const src = this._noiseSource(time, 0.12);

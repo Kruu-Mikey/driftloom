@@ -52,6 +52,8 @@ const STYLE_BIAS = {
   clockwork: ['cells', 'rings'],
   shatter: ['cells', 'plasma'],
   undertow: ['waves', 'water'],
+  grove: ['cells', 'strata'],
+  hollow: ['clouds', 'flow'],
 };
 
 // Compositions. This is the part that was missing: where the picture *is*,
