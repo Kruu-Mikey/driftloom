@@ -74,9 +74,16 @@ body {
   image-rendering: auto;
 }
 
+.album-art {
+  width: 48px;
+  height: 48px;
+  border-radius: 2px;
+  display: block;
+}
+
 .album {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 48px 1fr auto auto auto;
   align-items: center;
   gap: 8px;
   padding: 10px 0;

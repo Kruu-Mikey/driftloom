@@ -4,7 +4,7 @@ import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
 import * as share from './share.js';
-import { drawCover } from './cover.js';
+import { drawCover, albumCoverSpec } from './cover.js';
 import * as store from './storage.js';
 import * as ui from './ui.js';
 
@@ -17,6 +17,7 @@ const state = {
   currentId: null,
   bar: -1,
   gridSteps: 16,
+  playlist: null,
   frameHandle: null,
   lite: false,
   media: null,
@@ -62,6 +63,7 @@ function buildAudio() {
   state.engine = new Engine(state.ctx, state.synth);
   state.engine.onStep = onStep;
   state.engine.onLoop = onLoop;
+  state.engine.onTrackEnd = onTrackEnd;
   state.engine.visualOffset = (parseInt(ui.el('playheadSync').value, 10) || 0) / 1000;
   state.engine.driftOn = ui.el('driftToggle').checked;
   state.engine.driftAmount = parseFloat(ui.el('driftAmount').value);
@@ -94,6 +96,10 @@ function pushHistory(spec) {
 }
 
 function goBack() {
+  if (state.playlist && state.playlist.ids.length) {
+    advancePlaylist(-1);
+    return;
+  }
   if (state.historyIndex > 0) {
     state.historyIndex--;
     const spec = cloneSpec(state.history[state.historyIndex]);
@@ -104,6 +110,12 @@ function goBack() {
 }
 
 function goForward() {
+  // While an album is playing the skip buttons belong to the album, which is
+  // what anyone would expect them to do.
+  if (state.playlist && state.playlist.ids.length) {
+    advancePlaylist(1);
+    return;
+  }
   // At the end of the history, skipping forward makes something new. A skip
   // button that does nothing is worse than no skip button, and on a headset
   // there is no other way to ask for a fresh loop.
@@ -193,6 +205,31 @@ function refreshAlbums() {
     const row = document.createElement('div');
     row.className = 'album';
 
+    const art = document.createElement('canvas');
+    art.className = 'album-art';
+    const memberSpecs = album.ids
+      .map((id) => saved.find((e) => e.id === id))
+      .filter(Boolean)
+      .map((e) => e.spec);
+    try {
+      drawCover(art, memberSpecs.length
+        ? albumCoverSpec(album.title, memberSpecs)
+        : albumCoverSpec(album.title, [{ seed: 1, feel: { lift: 0.5, energy: 0.3, warmth: 0.6 }, mix: { dust: 1 } }]),
+      96);
+    } catch (err) {
+      console.warn('Could not draw album art', err);
+    }
+
+    const play = document.createElement('button');
+    play.className = 'ghost tiny';
+    play.textContent = 'play';
+    play.addEventListener('click', () => {
+      const ids = album.ids.filter((id) => saved.some((e) => e.id === id));
+      if (!ids.length) { ui.toast('That album is empty'); return; }
+      state.playlist = { albumId: album.id, title: album.title, ids, index: -1 };
+      advancePlaylist(1);
+    });
+
     const name = document.createElement('button');
     name.className = 'album-name';
     name.appendChild(document.createTextNode(album.title));
@@ -240,7 +277,7 @@ function refreshAlbums() {
       ui.toast('Album deleted');
     });
 
-    row.append(name, code, del);
+    row.append(art, name, play, code, del);
     host.appendChild(row);
   }
 }
@@ -261,6 +298,9 @@ async function offerCode(code, label) {
 
 function syncToneInputs(spec) {
   ui.el('bpm').value = spec.bpm;
+  const len = spec.playFor || 0;
+  ui.el('trackLen').value = len;
+  ui.el('lenVal').textContent = len ? `${len} passes` : 'off';
   ui.el('warmth').value = spec.tone.warmth;
   ui.el('space').value = spec.tone.space;
   ui.el('wobble').value = spec.tone.wobble;
@@ -321,7 +361,36 @@ function onStep(step) {
 }
 
 function onLoop(count) {
-  ui.el('loopCounter').textContent = `pass ${count}`;
+  const limit = state.spec && state.spec.playFor;
+  ui.el('loopCounter').textContent = limit ? `pass ${count} of ${limit}` : `pass ${count}`;
+}
+
+// A track that has run its length hands over: to the next loop in the album
+// if one is playing, otherwise onward through the history.
+function onTrackEnd() {
+  // Out of the scheduler's call stack before touching the graph.
+  setTimeout(() => {
+    if (state.playlist && state.playlist.ids.length) advancePlaylist(1);
+    else goForward();
+  }, 0);
+}
+
+function advancePlaylist(step) {
+  const pl = state.playlist;
+  if (!pl || !pl.ids.length) return;
+  pl.index = (pl.index + step + pl.ids.length) % pl.ids.length;
+  const entry = store.loadAll().find((e) => e.id === pl.ids[pl.index]);
+  if (!entry) {
+    // A loop was deleted out from under the album; drop it and carry on.
+    pl.ids.splice(pl.index, 1);
+    if (!pl.ids.length) { state.playlist = null; return; }
+    pl.index %= pl.ids.length;
+    advancePlaylist(0);
+    return;
+  }
+  loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
+  if (!state.engine.playing) togglePlay();
+  ui.toast(`${pl.title} · ${pl.index + 1}/${pl.ids.length}`);
 }
 
 // ------------------------------------------------------------- actions
@@ -353,6 +422,8 @@ function togglePlay() {
 }
 
 function newLoop() {
+  // Making something new is leaving the album.
+  state.playlist = null;
   // Save the current loop to history before creating a new one (if it exists)
   if (state.spec) {
     // Avoid duplicate if the current spec is already the last in history
@@ -450,6 +521,13 @@ function wire() {
   ui.el('driftAmount').addEventListener('input', (e) => {
     if (state.engine) state.engine.driftAmount = parseFloat(e.target.value);
   });
+  ui.el('trackLen').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value, 10);
+    ui.el('lenVal').textContent = v ? `${v} passes` : 'off';
+    if (state.spec) state.spec.playFor = v || null;
+    if (state.engine) state.engine.loopCount = 0;
+  });
+
   ui.el('bpm').addEventListener('input', (e) => {
     if (!state.spec) return;
     state.spec.bpm = parseInt(e.target.value, 10);

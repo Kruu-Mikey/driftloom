@@ -30,7 +30,7 @@ const DECODE_MAP = (() => {
   return m;
 })();
 
-export const FORMAT = 1;
+export const FORMAT = 2;
 
 // Frozen orderings. These must never be reordered or codes already written
 // down stop meaning what they meant; append only.
@@ -145,6 +145,8 @@ function writeSpec(w, spec) {
   } else {
     w.u8(0);
   }
+  // Format 2: track length, so a shared album keeps its pacing.
+  w.u8(Math.max(0, Math.min(255, spec.playFor || 0)));
 }
 
 function readSpec(r) {
@@ -200,6 +202,8 @@ function readSpec(r) {
       spec.cycles[layer] = v || null;
     }
   }
+  // Format 1 codes simply end here; they get the default.
+  spec.playFor = r.done ? null : (r.u8() || null);
   return spec;
 }
 

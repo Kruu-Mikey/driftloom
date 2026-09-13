@@ -175,6 +175,14 @@ they're structurally valid with no unreleased notes. This has already caught
 three real bugs, including chord voicings that walked off the bottom of the
 keyboard over successive bars.
 
+## Track length
+
+Off by default: a loop machine should loop until you say stop. Set it and a
+track hands over after that many passes, to the next loop in the album if
+one is playing, otherwise onward through the history. It is stored per loop
+and carried in the share code, so an album can have genuinely varied song
+lengths rather than one global setting.
+
 ## Playing it in your pocket
 
 Android will only give a web page lock-screen controls, a notification, and
@@ -225,7 +233,8 @@ A song code is about 111 characters:
     DL1-0405P-0020G-80BBK-BG48Y-8PAG3-A9R7D-QQJEX-14P70-S3BEK-...
 
 An album is a named list of loops and shares the same way, at roughly 110
-characters per loop -- long enough to copy and paste rather than read out,
+characters per loop, and **plays as a playlist** -- the skip buttons walk the
+album while one is playing -- long enough to copy and paste rather than read out,
 but still just text.
 
 Two decisions worth recording:
@@ -248,14 +257,46 @@ loops included: zero differences.
 
 ## Cover art
 
-Drawn from the same numbers as the music, so it travels inside a share code
-without an image ever being sent -- whoever pastes the code sees the same
-picture.
+Generated from the same numbers as the music, so artwork travels inside a
+share code without an image being sent.
 
-The mapping is not decorative: energy becomes turbulence, warmth picks the
-palette, lift sets brightness, and the dominant profile chooses the form. Six
-forms (plasma, clouds, water, cells, waves, rings) across nine palettes,
-each about equally likely.
+The first version drew one full-bleed noise field per cover. It was cheap
+and it was boring: same composition every time, uniform density, no empty
+space, so after about ten you had seen the trick. **Noise is not
+composition.**
+
+A cover is now built the way a picture is:
+
+- A **ground** that is a gradient, not a flat fill. Where a mask leaves the
+  frame bare, the ground *is* the picture, and a flat fill there reads as
+  unfinished canvas.
+- One to three **masked fields** combined with blend modes. Compositions are
+  horizon, orb, stack, split, aperture, drift, shard and full, so large
+  areas are deliberately left empty.
+- A **crop** that sometimes pushes into the detail, so covers do not all
+  read at the same distance.
+- **Geometry** set against the organic parts, and a posterising pass that
+  turns smooth gradients into something graphic.
+
+Tied to the music throughout: energy becomes turbulence, warmth picks the
+palette family, lift sets brightness, **the key rotates the hue** (twelve
+roots, twelve colourways), swing shears the field, bar count sets the number
+of strata, **the metre sets rotational order** (threes in 6/8, fives in 5/4),
+the number of profiles in the blend sets the number of layers, and coherence
+governs how unified the composition is -- the same number that governs how
+much the layers of the music agree.
+
+Two guarantees, because generative art fails by being blank rather than by
+being wrong. A field's **visible crop** is measured before use and re-rendered
+wider if it came out featureless, since no amount of levelling afterwards
+invents detail that was never drawn. And an **auto-levels** pass stretches to
+the 2nd and 98th percentiles, at full strength only when the picture really
+did come out flat, so deliberate restraint survives.
+
+About 25ms per cover.
+
+**Albums get their own artwork**, built from the loops inside them, so it
+changes when the album changes and travels in the album code.
 
 ## Diagnostics
 

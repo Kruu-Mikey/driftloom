@@ -125,6 +125,9 @@ export function newSpec(seed = randomSeed()) {
       texture: r.seed32(),
     },
     mutes: { drums: false, bass: false, chords: false, melody: false, texture: false },
+    // How many times round before moving on. Null means it never moves on,
+    // which is the default: a loop machine should loop until you say stop.
+    playFor: null,
     tone: {
       warmth: r.range(c.tone.warmth[0], c.tone.warmth[1]) * (0.6 + feel.warmth * 0.6),
       space: r.range(c.tone.space[0], c.tone.space[1]),

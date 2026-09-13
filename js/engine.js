@@ -39,6 +39,7 @@ export class Engine {
     this.driftRng = new Rng(randomSeed());
     this.onStep = null;
     this.onLoop = null;
+    this.onTrackEnd = null;
     // Dropout counters. A stutter you cannot measure is a stutter you
     // cannot fix, and this runs on a phone that is not in front of me.
     this.lateTicks = 0;
@@ -113,6 +114,7 @@ export class Engine {
     if (!keepPosition) {
       this.step = 0;
       this.absStep = 0;
+      this.loopCount = 0;
     } else {
       this.step = this.step % this.base.totalSteps;
     }
@@ -218,6 +220,9 @@ export class Engine {
       // touched, so the piece always returns to the version you saved.
       this.live = this.driftOn ? drift(this.base, this.driftRng, this.driftAmount) : this.base;
       if (this.onLoop) this.onLoop(this.loopCount);
+      // A track with a set length hands over once it has run its passes.
+      const limit = this.spec && this.spec.playFor;
+      if (limit && this.loopCount >= limit && this.onTrackEnd) this.onTrackEnd();
     }
   }
 
