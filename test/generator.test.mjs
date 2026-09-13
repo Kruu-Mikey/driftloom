@@ -84,9 +84,19 @@ check('re-rolling bass changes the bass', JSON.stringify(a.tracks.bass) !== JSON
 check('re-rolling bass leaves drums untouched', JSON.stringify(a.tracks.drums) === JSON.stringify(rolled.tracks.drums));
 check('re-rolling bass leaves melody untouched', JSON.stringify(a.tracks.melody) === JSON.stringify(rolled.tracks.melody));
 
-const reharmonised = render(rerollLayer(base, 'chords'));
-check('re-rolling chords carries the bass with it', JSON.stringify(a.tracks.bass) !== JSON.stringify(reharmonised.tracks.bass));
-check('re-rolling chords keeps the drum groove', JSON.stringify(a.tracks.drums) === JSON.stringify(reharmonised.tracks.drums));
+// A single re-roll can legitimately land on the same chord roots -- short
+// progressions repeat, and a sparse bass may place the same few notes
+// either way. The claim is that the bass *follows* the harmony, so test it
+// over several re-rolls rather than demanding one differ.
+let bassFollowed = false;
+let drumsHeld = true;
+for (let i = 0; i < 12; i++) {
+  const reharmonised = render(rerollLayer(base, 'chords'));
+  if (JSON.stringify(a.tracks.bass) !== JSON.stringify(reharmonised.tracks.bass)) bassFollowed = true;
+  if (JSON.stringify(a.tracks.drums) !== JSON.stringify(reharmonised.tracks.drums)) drumsHeld = false;
+}
+check('re-rolling chords carries the bass with it', bassFollowed);
+check('re-rolling chords keeps the drum groove', drumsHeld);
 
 check('drift never edits the pattern it was given', (() => {
   const before = JSON.stringify(a.tracks);
