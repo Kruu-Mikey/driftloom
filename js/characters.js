@@ -421,20 +421,40 @@ export function blendMix(mix) {
     .map((k) => CHARACTERS[k].label)
     .join('/');
 
+  // Numbers blend with the dominant profile weighted far more heavily than
+  // its share suggests.
+  //
+  // A plain weighted average is what a mix "should" be, and it was quietly
+  // destroying the thing profiles exist for. Averaging four tempo bands
+  // lands near the middle every time: measured, single-profile loops had a
+  // tempo spread of sd 29.7 while three- and four-profile loops had 20.5.
+  // Since most loops blend, most loops were being pulled toward a middling
+  // tempo, middling energy and middling density -- audible as everything
+  // sounding like a lullaby. Raising the weights to a power before
+  // normalising keeps a mostly-Shatter loop actually fast while still
+  // letting the other profiles colour it.
+  const sharp = {};
+  let sharpTotal = 0;
+  for (const key of keys) {
+    sharp[key] = Math.pow(w[key], 2.2);
+    sharpTotal += sharp[key];
+  }
+  for (const key of keys) sharp[key] /= sharpTotal;
+
   for (const k of NUM_RANGES) {
     let lo = 0;
     let hi = 0;
     for (const key of keys) {
       const v = CHARACTERS[key][k] || [0, 0];
-      lo += v[0] * w[key];
-      hi += v[1] * w[key];
+      lo += v[0] * sharp[key];
+      hi += v[1] * sharp[key];
     }
     out[k] = [lo, hi];
   }
 
   for (const k of NUM_SCALARS) {
     let v = 0;
-    for (const key of keys) v += (CHARACTERS[key][k] ?? 0) * w[key];
+    for (const key of keys) v += (CHARACTERS[key][k] ?? 0) * sharp[key];
     if (v) out[k] = v;
   }
 
@@ -467,8 +487,8 @@ export function blendMix(mix) {
     let hi = 0;
     for (const key of keys) {
       const range = CHARACTERS[key].feel[axis];
-      lo += range[0] * w[key];
-      hi += range[1] * w[key];
+      lo += range[0] * sharp[key];
+      hi += range[1] * sharp[key];
     }
     out.feel[axis] = [lo, hi];
   }

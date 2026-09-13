@@ -39,8 +39,23 @@ export function newSpec(seed = randomSeed()) {
   // produces everything from a single pure profile through to a genuine
   // four-way blur, with the lopsided mixes commoner than the even ones,
   // which is what keeps a loop sounding like it is *about* something.
+  // Decide how lively this loop wants to be BEFORE choosing profiles.
+  //
+  // Choosing profiles first and mood second cannot produce an adventurous
+  // loop, because the profile's own feel range then clamps the mood: pick
+  // three slow palettes and no amount of enthusiasm survives the clamp.
+  // Drive therefore steers both, and the profile draw is what actually
+  // decides whether a loop can be fast at all.
+  const drive = Math.pow(r.f(), 0.82) * 1.8 - 0.5;
+  const pool = CHARACTER_WEIGHTS.map(([k, wt]) => {
+    const fe = CHARACTERS[k].feel.energy;
+    const mid = (fe[0] + fe[1]) / 2;
+    // Floored well above zero so the quiet profiles stay genuinely
+    // reachable: the point is to make adventure possible, not to trade one
+    // narrow band of output for another.
+    return [k, wt * Math.max(0.28, 1 + drive * (mid - 0.45) * 2.5)];
+  });
   const howMany = r.weighted([[1, 2.2], [2, 4], [3, 2.6], [4, 1.2]]);
-  const pool = CHARACTER_WEIGHTS.slice();
   const mix = {};
   for (let i = 0; i < howMany && pool.length; i++) {
     const key = r.weighted(pool);
@@ -72,7 +87,15 @@ export function newSpec(seed = randomSeed()) {
     }
     return 1 / (1 + d * 3.5);
   };
-  const moodPool = Object.entries(MOODS).map(([k, m]) => [k, fit(m)]);
+  // Some loops want to be an adventure rather than a lullaby. Without this
+  // the mood pool averages to 0.475 energy every time, because that is
+  // simply the mean of the eight moods -- so nearly every loop came out
+  // gentle and the bright, quickened end of the axis was unreachable in
+  // practice. A per-loop drive bias tilts the whole pool one way or the
+  // other, skewed so that lively loops are genuinely common.
+  const moodPool = Object.entries(MOODS).map(([k, m]) => [
+    k, fit(m) * Math.max(0.08, 1 + drive * (m.energy - 0.47) * 2.4),
+  ]);
   const moodCount = r.weighted([[1, 2], [2, 4], [3, 2.4]]);
   const feelMix = {};
   const takenMoods = moodPool.slice();
@@ -531,7 +554,8 @@ function genMelody(spec, harmony) {
   // Build a short motif in scale-degree offsets, then quote it across the
   // loop with variations. Repetition with variation is most of what makes
   // a random line sound composed rather than sprayed.
-  const motifLen = r.int(3, 6);
+  // Longer phrases at high energy, so a driven melody has somewhere to go.
+  const motifLen = lf.energy > 0.6 ? r.int(5, 9) : r.int(3, 6);
   const rhythmPool = [
     [0, 2, 4, 6, 8, 10, 12, 14],
     [0, 3, 6, 8, 11, 14],
@@ -539,9 +563,17 @@ function genMelody(spec, harmony) {
     [0, 4, 6, 10, 12, 14],
     [2, 4, 8, 10, 14],
   ];
-  const grid = r.pick(spb === 12
-    ? [[0, 3, 6, 9], [0, 2, 4, 6, 8, 10], [0, 3, 4, 7, 9], [0, 2, 6, 8, 11], [1, 3, 6, 10]]
-    : rhythmPool).filter((x) => x < spb);
+  // At high energy prefer the busier grids: continuous motion is most of
+  // what makes a melody read as going somewhere rather than settling.
+  const driven = lf.energy > 0.6;
+  const gridPool = spb === 12
+    ? (driven
+        ? [[0, 2, 4, 6, 8, 10], [0, 1, 3, 4, 6, 7, 9, 10], [0, 2, 3, 5, 6, 8, 9, 11]]
+        : [[0, 3, 6, 9], [0, 2, 4, 6, 8, 10], [0, 3, 4, 7, 9], [0, 2, 6, 8, 11], [1, 3, 6, 10]])
+    : (driven
+        ? [[0, 2, 4, 6, 8, 10, 12, 14], [0, 2, 3, 5, 6, 8, 10, 12, 14], [0, 1, 3, 4, 6, 8, 11, 12, 14]]
+        : rhythmPool);
+  const grid = r.pick(gridPool).filter((x) => x < spb);
   if (!grid.length) grid.push(0);
   const motif = [];
   let deg = 0;
@@ -585,7 +617,10 @@ function genMelody(spec, harmony) {
 
     for (let i = 0; i < motif.length - trim; i++) {
       const m = motif[i];
-      if (r.chance(0.12)) continue; // drop a note
+      // An animated loop keeps moving; a still one leaves holes. Dropping
+      // a fixed one note in eight regardless of energy was part of why
+      // everything sounded becalmed.
+      if (r.chance(0.2 - lf.energy * 0.15)) continue;
       let midi = scalePitch(spec.root, scale, m.degree + transpose + slot.degree, octave) + 12;
       // Land on a chord tone at the start of a phrase so it feels anchored.
       if (i === 0) midi = nearestChordTone(midi, slot.notes);
@@ -806,6 +841,7 @@ export function render(spec) {
 
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const form = genForm(spec);
+  const gaps = genGaps(spec);
   const raw = {
     drums: drums.events,
     bass: bass.events,
@@ -825,9 +861,21 @@ export function render(spec) {
     // can be scheduled in and still have nothing to play that bar.
     for (let bar = 0; bar < spec.bars; bar++) if (!counts[bar]) quiet.push(bar);
   }
+  // Short gaps silence every layer for a beat or two. Applied after the
+  // entry schedules and after the repair pass, so they are never undone.
+  if (gaps.length) {
+    for (const layer of LAYERS) {
+      tracks[layer] = tracks[layer].map((e) => {
+        const inGap = gaps.some((g) => e.step >= g.start && e.step < g.start + g.len);
+        return inGap ? { ...e, vel: 0 } : e;
+      });
+    }
+  }
+
   return {
     spec,
     form,
+    gaps,
     silentBars: quiet,
     totalSteps: spec.bars * spb,
     stepsPerBar: spb,
@@ -893,8 +941,11 @@ function runSchedule(r, bars, [inLo, inHi], [outLo, outHi], startIn) {
     // Quantise every entry and exit to a two-bar boundary. Music stopping
     // on bar three and a half is what reads as "it just stopped for no
     // reason"; stopping where a phrase would end reads as a breath.
+    // Entries still land on two-bar boundaries, but a rest no longer has to
+    // be two whole bars: forcing that minimum is why an eight-bar loop so
+    // often lost a quarter of itself.
     const raw = on ? r.int(inLo, inHi) : r.int(outLo, outHi);
-    const len = Math.max(2, Math.round(raw / 2) * 2);
+    const len = on ? Math.max(2, Math.round(raw / 2) * 2) : Math.max(1, raw);
     for (let k = 0; k < len && i < bars; k++, i += 1) out[i] = on;
     on = !on;
   }
@@ -904,6 +955,34 @@ function runSchedule(r, bars, [inLo, inHi], [outLo, outHi], startIn) {
     for (let k = 0; k < Math.min(bars, 4); k++) out[k] = true;
   }
   return out;
+}
+
+// Short gaps: a beat or two of nothing, not a whole bar.
+//
+// Bar-level entry schedules only ever produce long rests, and a long rest is
+// a big commitment -- on an eight-bar loop it costs a quarter of the piece.
+// A caught breath before a phrase lands is a different gesture entirely, it
+// is cheap, and several of them in a long loop reads as playing rather than
+// as stopping. These are independent of the entry schedules, so a loop can
+// have one, the other, both or neither.
+export function genGaps(spec) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const total = spec.bars * spb;
+  const r = new Rng(((spec.seed ^ 0x3c6ef372) >>> 0) || 13);
+  const c = characterOf(spec);
+  // Busier profiles want fewer of these; still ones want more.
+  if (!r.chance(0.18 + (c.airy ?? 0.2) * 0.5)) return [];
+  const count = r.weighted([[1, 4], [2, 3], [3, 1.5]]);
+  const gaps = [];
+  for (let i = 0; i < count; i++) {
+    // A quarter, a half or a whole bar, landing on a beat.
+    const len = r.pick([spb / 4, spb / 4, spb / 2, spb / 2, spb]);
+    const beats = Math.max(1, Math.floor(total / (spb / 4)));
+    const start = r.int(1, beats - 1) * (spb / 4);
+    if (start + len > total) continue;
+    gaps.push({ start: Math.round(start), len: Math.round(len) });
+  }
+  return gaps;
 }
 
 export function genForm(spec) {
