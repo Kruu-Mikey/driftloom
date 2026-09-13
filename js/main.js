@@ -174,14 +174,24 @@ function syncToneInputs(spec) {
 function refreshSaved() {
   ui.renderSaved(store.loadAll(), state.currentId, {
     onOpen: (entry) => {
-      resetHistory(cloneSpec(entry.spec));
-      loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
+      // One unreadable save should not take the app down with it.
+      try {
+        resetHistory(cloneSpec(entry.spec));
+        loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
+      } catch (err) {
+        console.warn('Could not open saved loop', err);
+        ui.toast('That saved loop could not be opened');
+        return;
+      }
       if (!state.engine.playing) togglePlay();
       ui.toast(`Loaded ${entry.spec.name}`);
     },
     onMidi: (entry) => exportMidi(cloneSpec(entry.spec)),
     onDelete: (entry) => {
-      store.remove(entry.id);
+      if (!store.remove(entry.id)) {
+        ui.toast('Could not delete - this browser is refusing to store data');
+        return;
+      }
       if (state.currentId === entry.id) state.currentId = null;
       refreshSaved();
       ui.toast('Deleted');
@@ -283,6 +293,10 @@ function reroll(layer) {
 
 function toggleMute(layer) {
   if (!state.spec) return;
+  // Saves predating the mutes field would otherwise throw here.
+  if (!state.spec.mutes) {
+    state.spec.mutes = { drums: false, bass: false, chords: false, melody: false, texture: false };
+  }
   state.spec.mutes[layer] = !state.spec.mutes[layer];
   state.synth.setMute(layer, state.spec.mutes[layer]);
   ui.renderGrids(cells, state.engine.live || state.pattern, Math.max(0, state.bar), state.spec.mutes);
@@ -291,6 +305,10 @@ function toggleMute(layer) {
 function saveCurrent() {
   if (!state.spec) return;
   const entry = store.save(state.spec);
+  if (!entry) {
+    ui.toast('Could not save - this browser is refusing to store data');
+    return;
+  }
   state.currentId = entry.id;
   refreshSaved();
   ui.toast(`Saved ${state.spec.name}`);
@@ -423,9 +441,11 @@ function wire() {
     }
     if (!text.trim()) return;
     try {
-      const added = store.importAll(text);
+      const res = store.importAll(text);
       refreshSaved();
-      ui.toast(added ? `Restored ${added} loops` : 'Nothing new in that backup');
+      if (res.failed) ui.toast('Could not save the restored loops');
+      else if (res.added) ui.toast(`Restored ${res.added} loops${res.rejected ? `, skipped ${res.rejected}` : ''}`);
+      else ui.toast(res.rejected ? `Skipped ${res.rejected} unreadable loops` : 'Nothing new in that backup');
     } catch {
       ui.toast('That does not look like a Driftloom backup');
     }
@@ -434,9 +454,11 @@ function wire() {
     const file = e.target.files[0];
     if (!file) return;
     try {
-      const added = store.importAll(await file.text());
+      const res = store.importAll(await file.text());
       refreshSaved();
-      ui.toast(added ? `Restored ${added} loops` : 'Nothing new in that file');
+      if (res.failed) ui.toast('Could not save the restored loops');
+      else if (res.added) ui.toast(`Restored ${res.added} loops${res.rejected ? `, skipped ${res.rejected}` : ''}`);
+      else ui.toast(res.rejected ? `Skipped ${res.rejected} unreadable loops` : 'Nothing new in that file');
     } catch {
       ui.toast('That file could not be read');
     }

@@ -286,6 +286,18 @@ behind it:
   combs ringing, plus another keepalive element in the DOM each time: six
   after five toggles. Both now have a dispose path, and the new bridge takes
   over the media session instead of leaving it on the discarded graph.
+- **Saves could fail silently.** `save()` ignored whether the write
+  succeeded, so a full quota, private browsing or disabled storage produced
+  "Saved <name>" and no loop. For an app whose whole point is keeping the
+  one you liked, that is the worst failure available. Save, delete and
+  restore now report honestly.
+- **Restore accepted anything.** A malformed entry would throw on open and
+  look like the app breaking rather than one bad loop. Imports are now
+  validated against what `render()` needs, missing fields from very old
+  saves are defaulted, and opening a save is wrapped so one bad entry cannot
+  take the app down.
+- **Export filenames were unsanitised.** Loop names are user-editable, and a
+  slash or colon in one breaks the download.
 - **Breath noise stopped mid-note.** The shared noise buffer is two seconds;
   a longer flute or ocarina note simply ran out of air. It loops now.
 

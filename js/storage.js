@@ -34,14 +34,17 @@ export function save(spec) {
     spec: JSON.parse(JSON.stringify(spec)),
   };
   list.unshift(entry);
-  persist(list);
+  // Returns null if the write failed -- full quota, private browsing,
+  // storage disabled. Telling someone their loop is saved when it is not is
+  // the worst failure this app has: the loop is unrecoverable the moment
+  // they move on.
+  if (!persist(list)) return null;
   return entry;
 }
 
 export function remove(id) {
   const list = loadAll().filter((e) => e.id !== id);
-  persist(list);
-  return list;
+  return persist(list) ? list : null;
 }
 
 export function rename(id, name) {
@@ -60,19 +63,37 @@ export function exportAll() {
   });
 }
 
+// A loop is only restorable if it has the pieces render() needs. Anything
+// missing them would throw the moment it was opened, which from the outside
+// looks like the app breaking rather than one bad entry.
+function usable(entry) {
+  const s = entry && entry.spec;
+  if (!s || typeof s !== 'object') return false;
+  if (typeof s.scale !== 'string' || !Number.isFinite(s.root)) return false;
+  if (!Number.isFinite(s.bpm) || !Number.isFinite(s.bars) || s.bars < 1) return false;
+  if (!s.layerSeeds || typeof s.layerSeeds !== 'object') return false;
+  return ['drums', 'bass', 'chords', 'melody', 'texture']
+    .every((k) => Number.isFinite(s.layerSeeds[k]));
+}
+
 export function importAll(json) {
   const parsed = typeof json === 'string' ? JSON.parse(json) : json;
   const incoming = parsed.loops || (Array.isArray(parsed) ? parsed : []);
   const list = loadAll();
   const have = new Set(list.map((e) => e.id));
   let added = 0;
+  let rejected = 0;
   for (const e of incoming) {
-    if (!e || !e.spec || have.has(e.id)) continue;
+    if (!e || have.has(e.id)) continue;
+    if (!usable(e)) { rejected++; continue; }
+    // Defaults for anything a very old save predates.
+    e.spec.mutes = e.spec.mutes || { drums: false, bass: false, chords: false, melody: false, texture: false };
+    e.spec.stepsPerBar = e.spec.stepsPerBar || 16;
     list.push(e);
     added++;
   }
-  persist(list);
-  return added;
+  if (!persist(list)) return { added: 0, rejected, failed: true };
+  return { added, rejected, failed: false };
 }
 
 export function getPrefs() {

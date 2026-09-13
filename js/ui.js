@@ -235,10 +235,17 @@ export function toast(message) {
 }
 
 export function download(blob, filename) {
+  // Loop names are user-editable, and a slash or colon in one either breaks
+  // the download or silently writes somewhere unexpected.
+  const safe = filename
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/^[.\s]+/, '')
+    .slice(0, 120) || 'driftloom.dat';
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = safe;
   document.body.appendChild(a);
   a.click();
   a.remove();
