@@ -3,6 +3,33 @@
 Things deliberately deferred, with enough reasoning attached that picking one
 up later does not mean rediscovering why it matters.
 
+## Working on this
+
+Run `node test/generator.test.mjs` before and after any change; it checks
+5000 seeds for out-of-range notes, confirms re-rolling a layer leaves the
+others byte-identical, and parses 500 exported MIDI files. It uses random
+seeds, so run it a few times.
+
+Four invariants worth knowing before changing anything:
+
+1. **New voices go in new profiles, never into existing pools.** Voices are
+   drawn at render time from the blended pool, so one added entry shifts that
+   draw and every random decision after it, and every share code in
+   circulation renders as different music.
+2. **`PROFILE_IDS`, `SCALE_IDS` and `MOOD_IDS` in `share.js` are append-only**
+   for the same reason. Reordering them silently rewrites codes already
+   written down.
+3. **Generation is quantised to a 1/255 grid** (`q8` in `generator.js`) so
+   share codes are lossless by construction. Weights feed weighted random
+   picks, and a rounding difference of 0.004 is enough to select a different
+   scale.
+4. **Measure, do not assume.** Nearly every real bug in this project was
+   found by rendering audio offline and measuring it, and several confident
+   fixes made things worse until re-measured. The harnesses used are not
+   committed, but they are all the same shape: render through
+   `OfflineAudioContext`, then check peak, RMS, tonal range, or the amplitude
+   at the moment a node stops.
+
 ## Sound
 
 **An articulation layer.** The highest-leverage item here. Every voice
@@ -19,6 +46,17 @@ and on a phone notes would start dropping. If this is built, it has to be a
 single voice with internal detuning and per-partial timing offsets. The
 `choir` voice already works this way; the idea is to push it further rather
 than to stack real voices.
+
+**A more human whistle.** Agreed as worth doing and never started, so it is
+recorded here rather than lost. The existing `whistle` shares its
+implementation with `moog` -- a triangle through a resonant filter with
+vibrato -- and it sounds synthetic in a way that does not suit it. The target
+is someone quietly whistling outside, not a cartoon whistle: slight pitch
+instability, vibrato that varies between notes rather than being identical
+every time, a soft breath component, imperfect attacks, occasional slides
+between notes, and notes left out. Most of that is the articulation layer
+above, which is the argument for doing that first and then revisiting this.
+It should stay slightly synthetic; fully realistic would suit it worse.
 
 **More of the bell family.** Deprioritised on purpose: there are already six
 bell-adjacent voices (bell, bells, chime, musicbox, celeste, harp) and the
