@@ -34,4 +34,9 @@ Done. `accept="application/json"` was hiding backups from Android's picker;
 the filter is gone. There is also a clipboard route now that avoids the file
 system entirely, which is the one to reach for if the picker misbehaves.
 
+**Also completed since:** a choir that is three singers sharing one formant
+chain rather than three separate voices (34 cost units against a single
+vowel's 22, not triple), and temple and church bells in the `shrine`
+profile.
+
 Everything still outstanding lives in `ROADMAP.md`.

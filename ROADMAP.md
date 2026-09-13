@@ -1,130 +1,166 @@
 # Roadmap
 
-Things deliberately deferred, with enough reasoning attached that picking one
-up later does not mean rediscovering why it matters.
+Open work, ordered. Everything here has a size and a test that would prove it
+done. Decisions already made are at the bottom so they stop being reopened.
 
-## Working on this
+Sizes: **S** under an hour, **M** a session, **L** more than a session.
 
-Run `node test/generator.test.mjs` before and after any change; it checks
-5000 seeds for out-of-range notes, confirms re-rolling a layer leaves the
-others byte-identical, and parses 500 exported MIDI files. It uses random
-seeds, so run it a few times.
+---
 
-Four invariants worth knowing before changing anything:
+## 1. Commit the measurement harnesses — **S**, blocking
+
+Four items below say "measure first" and the tools to do it are not in the
+repo. They were written inline in throwaway scripts against a local server
+and never cleaned up, which is the only reason they are missing; they are not
+low quality, they are the things that found the envelope clicks, the
+saturator, the voice-budget miscount and the melody bug. Every later task is
+slower without them.
+
+Ship `tools/measure.mjs` with: render a spec offline, report peak, RMS,
+amplitude at node-stop, per-layer balance, and per-voice marginal cost.
+
+**Done when** `node tools/measure.mjs --voice templebell` prints peak, RMS,
+ring time and cut-off dB without a browser tab being opened by hand.
+
+## 2. Articulation, v1: dropped notes and velocity by phrase position — **M**
+
+The biggest single improvement available, and it improves every pitched voice
+at once. It is four features and shipping all four at once is why it has
+stalled twice.
+
+**v1 is exactly two things:** notes omitted mid-phrase at a rate that follows
+energy, and velocity shaped by position within the phrase (stronger on the
+first and last note of a phrase, weaker in the middle). Slid attacks and
+breath-before-entry are v2 and v3 and are explicitly out of scope.
+
+**Done when** velocity variance within a phrase is at least 3x what it is
+today, and two loops from the same seed with different energy differ in note
+count by at least 25%.
+
+## 3. Melodic range — **M**
+
+Melodies average 9.6 semitones. **Target: 14, roughly an octave and a half**,
+which is an ordinary range for a tune and clearly wider than now.
+
+Widening the contour arc changed the figure by nothing at all, so the arc is
+not the constraint and the cause is unknown. Three suspects, in order:
+`nearestChordTone` pulling phrase edges inward, the degree random walk rarely
+approaching its own -5..10 limits, and the octave wrapping folding wide leaps
+back into the window.
+
+**Done when** the average is 14 semitones or more and distinct-shapes-per-bar
+stays above 0.9, so range is not bought with repetition.
+
+## 4. Keys and melody register — **S**
+
+Both layers currently land in the same narrow band by accident. The decision,
+not a coin flip:
+
+- **Same drawn voice → force unison register.** This is the case that already
+  sounds good by luck and should be deliberate.
+- **Different voices → force a minimum separation** of 5 semitones between
+  layer centroids, moving keys down rather than melody up.
+
+**Done when** no loop has two different pitched voices whose centroids are
+within 5 semitones, and same-voice loops sit within 2.
+
+## 5. Real-hardware budget calibration — **S**
+
+Nothing is stopping this except that it needs a phone, and the phone is not
+mine. The totals (260 / 170 / 140) are reasoned, not measured. Diagnostics
+already reports `lateTicks` and `worstLateMs`.
+
+**Done when** a twenty-minute run on the target phone, on the densest profile
+mix available, reports zero late ticks — or the totals are lowered until it
+does, and the number that worked is written down here.
+
+## 6. Cover art floor — **M**
+
+"Occasionally amateurish" is not testable. The specific failure is the sparse
+compositions (`drift`, `orb`, `aperture`) where the gradient ground carries
+most of the frame and the result reads as a background rather than a picture.
+
+**Done when** no cover in a 100-cover contact sheet has more than 70% of its
+pixels within one palette stop of the ground colour.
+
+## 7. Interface: three standalone tickets — **S each**
+
+The old "revisit when the feature set stops moving" had no trigger, which
+meant never. These stand on their own:
+
+- **7a.** Reorder tracks within an album.
+- **7b.** Duplicate a loop before editing, so a saved version survives.
+- **7c.** Search or filter the saved list once it passes ~30 entries.
+
+**Done when** each works from the album or saved panel without a page reload.
+
+## 8. Album code length — **S to decide, M to build**
+
+The real complaint is not size, it is that a 1300-character code is not
+tappable the way a link is. Compression does not fix that; it makes an
+untappable thing slightly shorter.
+
+**Decide first:** if the goal is tappability, the answer is a file export or a
+QR code, not deflate. **Ship compression only if it clears 35%** — below that
+it adds an async path and a fallback for no felt benefit. Album payloads are
+mostly high-entropy seeds, so measure before building.
+
+**Done when** either a measurement below 35% is recorded here and the item is
+closed, or codes are 35%+ shorter with a working no-compression fallback.
+
+## 9. Articulation v2 and v3 — **M each**
+
+Only after item 2 ships. v2: slid attacks into some notes. v3: breath before
+phrase entries. Most of what makes a whistle sound human is articulation, so
+these subsume the old "human whistle" item rather than sitting beside it.
+
+## 10. Vowel movement within a note — **M**
+
+Vowels are chosen per phrase and shared across a chord. The remaining step is
+movement *within* a long note -- "ah" opening into "oh" across a sustained bar
+-- which is the difference between a formant filter and something sung.
+
+---
+
+## Decided against
+
+**More of the FM bell family.** There were already five FM bell voices (bell,
+chime, musicbox, celeste, harp) differing mainly in ratio and decay, and a
+sixth would have been a sixth setting of the same instrument.
+
+This was wrongly used to defer temple and church bells too, which are a
+different object rather than another setting: struck metal is inharmonic, and
+a bowl's character is *beating* between partials a few cents apart, which a
+single FM voice cannot produce however inharmonic its ratio. `templebell` and
+`tubular` now exist in the `shrine` profile.
+
+**Vocaloid-style sung words.** Words would make a loop be *about* something,
+which fights the use case. A wordless voice also never sounds dated or
+foreign; a synthesised word always does.
+
+**Speech-synthesis dependencies** (Klattsch, Pink Trombone, Qlatt). They
+optimise for intelligibility, which is the opposite of the goal, and each
+brings a build step or a worklet, breaking "works offline from a folder".
+
+---
+
+## Contribution rules
+
+Not roadmap items; the things that are not obvious from reading the code.
+
+Run `node test/generator.test.mjs` before and after any change, a few times,
+since it uses random seeds.
 
 1. **New voices go in new profiles, never into existing pools.** Voices are
    drawn at render time from the blended pool, so one added entry shifts that
    draw and every random decision after it, and every share code in
-   circulation renders as different music.
-2. **`PROFILE_IDS`, `SCALE_IDS` and `MOOD_IDS` in `share.js` are append-only**
-   for the same reason. Reordering them silently rewrites codes already
-   written down.
+   circulation renders as different music. `grove`, `hollow` and `shrine`
+   were all added this way.
+2. **`PROFILE_IDS`, `SCALE_IDS` and `MOOD_IDS` in `share.js` are append-only.**
+   Reordering them silently rewrites codes already written down.
 3. **Generation is quantised to a 1/255 grid** (`q8` in `generator.js`) so
-   share codes are lossless by construction. Weights feed weighted random
-   picks, and a rounding difference of 0.004 is enough to select a different
-   scale.
-4. **Measure, do not assume.** Nearly every real bug in this project was
-   found by rendering audio offline and measuring it, and several confident
-   fixes made things worse until re-measured. The harnesses used are not
-   committed, but they are all the same shape: render through
-   `OfflineAudioContext`, then check peak, RMS, tonal range, or the amplitude
-   at the moment a node stops.
-
-## Sound
-
-**An articulation layer.** The highest-leverage item here. Every voice
-currently attacks identically and plays every note of its motif. Real playing
-does neither: notes get left out mid-phrase, some attacks slide in, velocity
-follows phrase position, a breath lands before an entry. Building this once
-improves all eighteen existing voices at the same time and makes every future
-one land better. More valuable than making any individual oscillator more
-realistic.
-
-**A choir as one voice, not many.** Done. Three singers share a single
-formant chain, since the filters are the expensive part and extra
-oscillators into the same chain cost little. Each singer has its own detune,
-its own vibrato rate and its own jitter, which is what makes a group read as
-a group rather than as one voice through a chorus pedal. Cost is 34 units
-against a single vowel's 22, not triple.
-
-**Melodic range is still narrow.** After rebuilding melodic development the
-average melody spans about 9.6 semitones, and widening the contour arc did
-not change that figure at all -- so the arc is not what constrains it and the
-real cause is still unidentified. Suspects: `nearestChordTone` pulling phrase
-edges inward, the degree random walk rarely reaching its own limits, or the
-octave wrapping folding wide leaps back. Measure before changing anything.
-
-**A more human whistle.** Agreed as worth doing and never started, so it is
-recorded here rather than lost. The existing `whistle` shares its
-implementation with `moog` -- a triangle through a resonant filter with
-vibrato -- and it sounds synthetic in a way that does not suit it. The target
-is someone quietly whistling outside, not a cartoon whistle: slight pitch
-instability, vibrato that varies between notes rather than being identical
-every time, a soft breath component, imperfect attacks, occasional slides
-between notes, and notes left out. Most of that is the articulation layer
-above, which is the argument for doing that first and then revisiting this.
-It should stay slightly synthetic; fully realistic would suit it worse.
-
-**More of the bell family.** Deprioritised on purpose: there are already six
-bell-adjacent voices (bell, bells, chime, musicbox, celeste, harp) and the
-distinctions between adding tubular, handbell and templebell are thinner than
-the distinctions already in place.
-
-**Vowel movement within a note.** Vowels are now chosen per phrase and held,
-and shared across the notes of a chord. The remaining step is movement
-*within* a long note -- "ah" opening into "oh" across a sustained bar -- which
-is the difference between a formant filter and something that sounds sung.
-
-**Keys and melody share a register.** Noticed from a real export: both
-layers sat in 56-66 with the same seven pitches. When they happen to draw
-the same voice it blends into one convincing ensemble, which is worth
-engineering on purpose rather than leaving to chance; when they draw
-different voices they mask each other. Worth giving the two layers
-deliberately different registers, or deliberately the same one.
-
-## Cover art
-
-Still occasionally amateurish and rough. Noted as likeable in its own way, so
-this is about raising the floor rather than changing the character. The known
-weak spots are the sparser compositions, where the ground gradient carries
-too much of the frame.
-
-## Voice budget
-
-Migrated from a flat voice count to cost units, since a hi-hat and a
-three-oscillator analogue pad plainly do not cost the same. Two things remain:
-
-- Eight call sites still fall back to `DEFAULT_COST` rather than declaring a
-  measured weight. Functional, just imprecise: ocarina, flute, moog, whistle,
-  sine, stab, choir, and the texture swell/drop/wind cases.
-- **The absolute budget figures are not measured on real hardware.** The
-  relative costs between voices come from render-time measurements and should
-  hold anywhere, since they follow node counts rather than clock speed. The
-  totals (260/170/140) are reasoned, not observed. If a phone drops notes,
-  this is the first number to revisit, and Diagnostics reports `lateTicks`
-  for exactly that purpose.
-
-## Interface
-
-Everything lives on one screen, which is wanted for now. Worth revisiting
-once the feature set stops moving. Known gaps: no reordering of tracks within
-an album, no way to duplicate a loop before editing it, and the saved list
-grows without any grouping or search.
-
-## Sharing
-
-Album codes run roughly 110 characters per loop, so a twelve-track album is
-about 1300 characters. Fine to copy and paste, unwieldy to send in a message.
-Compression via `CompressionStream` would help, but album payloads are mostly
-high-entropy seeds, so the gain is probably modest -- worth measuring before
-building.
-
-## A standing constraint
-
-New voices go into **new profiles**, not into existing pools. Voices are drawn
-at render time from the blended pool, so adding one entry to an existing pool
-shifts that weighted draw and every random decision after it: every share code
-already in circulation would quietly render as different music. `grove` and
-`hollow` were added this way, and 2000 old-profile-only codes were verified to
-decode identically afterwards. `PROFILE_IDS` in `share.js` is append-only for
-the same reason.
+   share codes are lossless. Weights feed weighted random picks and a
+   rounding difference of 0.004 selects a different scale.
+4. **A declared cost that is not passed is worse than no cost.** `VOICE_COST`
+   only applies where the call site passes it; several weights sat declared
+   and ignored for a while, charging the default instead.

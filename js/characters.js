@@ -330,6 +330,35 @@ export const CHARACTERS = {
     feel: { lift: [0.3, 0.9], energy: [0.05, 0.45], warmth: [0.4, 0.8] },
   },
 
+  // Struck metal left to ring. Temple bowls and church bells, long decays,
+  // a lot of space between strikes. Slow enough that a single bell is an
+  // event rather than a note.
+  shrine: {
+    level: 0.66,
+    label: 'Shrine',
+    weight: 1.4,
+    bpm: [42, 70],
+    stepsPerBar: [[16, 3], [12, 1]],
+    bars: [[4, 2], [8, 3], [16, 2.5], [24, 1]],
+    airy: 0.34,
+    swing: [0, 0.05],
+    scales: [
+      ['kumoi', 2.5], ['hirajoshi', 2], ['insen', 2], ['minorPent', 2],
+      ['aeolian', 2], ['dorian', 1.5], ['majorPent', 1.5], ['akebono', 1.5],
+    ],
+    drums: 0.1,
+    hatDensity: [0.02, 0.2],
+    chordVoices: [['templebell', 3], ['tubular', 2.5], ['pad', 2], ['softpad', 1.5]],
+    melodyVoices: [['templebell', 3.5], ['tubular', 3], ['kalimba', 1.5], ['sine', 1.5]],
+    bassStyles: [['sparse', 5], ['held', 2]],
+    bassVoices: [['fifths', 3], ['round', 2.5], ['sub', 1.5]],
+    textures: [['chime', 3], ['swell', 2.5], ['bells', 2], ['none', 2]],
+    restBar: 0.4,
+    chordSize: [[2, 3], [3, 3]],
+    tone: { warmth: [0.25, 0.55], space: [0.7, 1], wobble: [0, 0.2] },
+    feel: { lift: [0.35, 0.85], energy: [0.02, 0.35], warmth: [0.3, 0.7] },
+  },
+
   // Hypnotic pulse. A steady four, very short looping fragments, and the
   // whole mix breathing against the kick. Change arrives by accumulation.
   undertow: {

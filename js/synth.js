@@ -34,6 +34,8 @@ const VOICE_COST = {
   pad: 25, moogpad: 25,
   choir: 34, analogpad: 32, softpad: 25,
   kalimba: 11, marimba: 9, vowel: 22, hum: 16,
+  ocarina: 15, flute: 16,
+  templebell: 12, tubular: 12,
 };
 const DEFAULT_COST = 12; // any voice not listed above
 
@@ -662,7 +664,7 @@ export class Synth {
     // rhodesbass calls this from inside bass(), which has already checked
     // and will release its own budget for the whole note; checking again
     // here would charge the same sound twice.
-    const cost = opts.cost ?? 12;
+    const cost = opts.cost ?? DEFAULT_COST;
     if (!opts.skipBudget && !this._budget(time, !!opts.soft, cost)) return;
     const ctx = this.ctx;
     const out = opts.out || this.channels.chords.gain;
@@ -744,7 +746,7 @@ export class Synth {
     } else if (voice === 'keys') {
       this.fm(midi, time, dur, vel, { out, ratio: 2, index: 260, decay: 0.4, cost: VOICE_COST.keys });
     } else if (voice === 'saw') {
-      if (!this._budget(time)) return;
+      if (!this._budget(time, false, VOICE_COST.saw)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
@@ -761,10 +763,10 @@ export class Synth {
       o.connect(lp).connect(g).connect(out);
       o.start(time);
       o.stop(time + dur + 0.6);
-      this._release(time, dur + 0.6);
+      this._release(time, dur + 0.6, VOICE_COST.saw);
     } else {
       // Square-wave beep with a touch of vibrato. The Adventure Time voice.
-      if (!this._budget(time)) return;
+      if (!this._budget(time, false, VOICE_COST.pluck)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -786,7 +788,7 @@ export class Synth {
       vib.start(time);
       o.stop(time + dur + 0.5);
       vib.stop(time + dur + 0.5);
-      this._release(time, dur + 0.5);
+      this._release(time, dur + 0.5, VOICE_COST.pluck);
     }
   }
 
@@ -815,8 +817,8 @@ export class Synth {
       // player's does.
       case 'ocarina':
       case 'flute': {
-        if (!this._budget(time)) return;
         const breathy = name === 'flute';
+        if (!this._budget(time, false, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = breathy ? 'triangle' : 'sine';
         o.frequency.value = f;
@@ -850,7 +852,7 @@ export class Synth {
         air.connect(bp).connect(ag).connect(dest);
         o.start(time); vib.start(time);
         o.stop(time + dur + 0.4); vib.stop(time + dur + 0.4);
-        this._release(time, dur + 0.4);
+        this._release(time, dur + 0.4, VOICE_COST[name]);
         return;
       }
 
@@ -1151,6 +1153,87 @@ export class Synth {
         return;
       }
 
+      // A struck bowl or temple bell. The defining feature is not brightness
+      // but *beating*: two partials a few cents apart drifting in and out of
+      // phase, which is the slow shimmer you hear standing next to a real
+      // bowl. A single FM voice cannot do that however inharmonic it is,
+      // which is why the existing bell voices all sound like the same object.
+      case 'templebell': {
+        if (!this._budget(time, false, VOICE_COST.templebell)) return;
+        const hold = Math.max(dur, 6.5);
+        const stopAt = time + hold + 1.4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.006);
+        this._release2(g.gain, time + 0.02, stopAt);
+        g.connect(dest);
+
+        // Struck metal is inharmonic: these ratios are roughly a bowl's.
+        const partials = [[1, 1], [2.02, 0.5], [2.76, 0.32], [5.4, 0.14]];
+        const oscs = [];
+        for (const [ratio, amp] of partials) {
+          // Each partial is a close pair, and the pair is what beats.
+          for (const cents of [-4, 4]) {
+            const o = ctx.createOscillator();
+            o.type = 'sine';
+            o.frequency.value = f * ratio;
+            o.detune.value = cents + (Math.random() - 0.5) * 3;
+            const pg = ctx.createGain();
+            pg.gain.setValueAtTime(vel * amp * 0.5, time);
+            // Higher partials die first, as they do on real metal.
+            pg.gain.exponentialRampToValueAtTime(0.0001, time + hold / (0.55 + ratio * 0.3));
+            o.connect(pg).connect(g);
+            o.start(time);
+            oscs.push(o);
+          }
+        }
+        const strike = this._noiseSource(time, 0.03);
+        const sf = ctx.createBiquadFilter();
+        sf.type = 'bandpass';
+        sf.frequency.value = f * 6;
+        sf.Q.value = 1.2;
+        const sg = ctx.createGain();
+        sg.gain.setValueAtTime(vel * 0.18, time);
+        sg.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+        strike.connect(sf).connect(sg).connect(g);
+
+        this._stopClean(g, oscs, stopAt);
+        this._release(time, hold + 1.4, VOICE_COST.templebell);
+        return;
+      }
+
+      // Church or orchestral tubular bell. Brighter and more pitched than a
+      // bowl, with the strong minor-third partial that gives chimes their
+      // particular sourness, and a long even decay.
+      case 'tubular': {
+        if (!this._budget(time, false, VOICE_COST.tubular)) return;
+        const hold = Math.max(dur, 5);
+        const stopAt = time + hold + 1.2;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(vel * 0.26, time + 0.004);
+        this._release2(g.gain, time + 0.02, stopAt);
+        g.connect(dest);
+
+        const partials = [[1, 0.8], [1.19, 0.6], [1.56, 0.4], [2, 0.5], [2.71, 0.22]];
+        const oscs = [];
+        for (const [ratio, amp] of partials) {
+          const o = ctx.createOscillator();
+          o.type = 'sine';
+          o.frequency.value = f * ratio;
+          o.detune.value = (Math.random() - 0.5) * 6;
+          const pg = ctx.createGain();
+          pg.gain.setValueAtTime(vel * amp * 0.62, time);
+          pg.gain.exponentialRampToValueAtTime(0.0001, time + hold / (0.5 + ratio * 0.28));
+          o.connect(pg).connect(g);
+          o.start(time);
+          oscs.push(o);
+        }
+        this._stopClean(g, oscs, stopAt);
+        this._release(time, hold + 1.2, VOICE_COST.tubular);
+        return;
+      }
+
       case 'musicbox':
         this.fm(midi, time, dur * 0.9, vel, { out: dest, ratio: 5.1, index: 420, decay: 0.45, cost: VOICE_COST.musicbox });
         return;
@@ -1164,8 +1247,8 @@ export class Synth {
       // sweep. Monophonic by nature, which is why it is a lead and not a pad.
       case 'moog':
       case 'whistle': {
-        if (!this._budget(time)) return;
         const whistle = name === 'whistle';
+        if (!this._budget(time, false, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = whistle ? 'triangle' : 'sawtooth';
         if (opts.glide) {
@@ -1192,7 +1275,7 @@ export class Synth {
         o.connect(lp).connect(g).connect(dest);
         o.start(time); vib.start(time);
         o.stop(time + dur + 0.5); vib.stop(time + dur + 0.5);
-        this._release(time, dur + 0.5);
+        this._release(time, dur + 0.5, VOICE_COST[name]);
         return;
       }
 

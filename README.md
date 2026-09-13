@@ -65,6 +65,7 @@ density, metre, form -- that move together.
 | **Shatter** | fast and fractured. Chopped breaks, stutter rolls, chromatic turns |
 | **Grove** | wooden mallets. Kalimba tines and marimba bars: dry pitched percussion, which nothing else here provides |
 | **Hollow** | voices. Synthetic vowels and humming, wordless and unhurried |
+| **Shrine** | struck metal left to ring. Temple bowls and church bells, long decays, a lot of space between strikes |
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 
 These are not ten boxes. Every loop draws a **weight across several of
