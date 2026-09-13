@@ -40,12 +40,12 @@ improves all eighteen existing voices at the same time and makes every future
 one land better. More valuable than making any individual oscillator more
 realistic.
 
-**A choir as one voice, not many.** GPT's sketch was three to five virtual
-singers per note. On a four-note chord that is twenty voices for one layer,
-and on a phone notes would start dropping. If this is built, it has to be a
-single voice with internal detuning and per-partial timing offsets. The
-`choir` voice already works this way; the idea is to push it further rather
-than to stack real voices.
+**A choir as one voice, not many.** Done. Three singers share a single
+formant chain, since the filters are the expensive part and extra
+oscillators into the same chain cost little. Each singer has its own detune,
+its own vibrato rate and its own jitter, which is what makes a group read as
+a group rather than as one voice through a chorus pedal. Cost is 34 units
+against a single vowel's 22, not triple.
 
 **A more human whistle.** Agreed as worth doing and never started, so it is
 recorded here rather than lost. The existing `whistle` shares its

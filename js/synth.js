@@ -32,8 +32,8 @@ const VOICE_COST = {
   rhodes: 15, moog: 18, whistle: 14, harp: 20,
   keys: 25, prepared: 25, piano: 26,
   pad: 25, moogpad: 25,
-  choir: 32, analogpad: 32,
-  kalimba: 11, marimba: 9, vowel: 20, hum: 14,
+  choir: 34, analogpad: 32, softpad: 25,
+  kalimba: 11, marimba: 9, vowel: 22, hum: 16,
 };
 const DEFAULT_COST = 12; // any voice not listed above
 
@@ -1014,58 +1014,137 @@ export class Synth {
         return;
       }
 
-      // A synthetic human vowel: a buzzing glottal source shaped by three
-      // resonances. Formants are what make a vowel a vowel -- the pitch is
-      // almost incidental, which is why one oscillator plus three bandpasses
-      // reads as a voice at all. Deliberately not lifelike: it should sound
-      // like a voice in the room, not like a person singing at you.
+      // A synthetic human vowel.
+      //
+      // The first version ran a sawtooth through three parallel bandpass
+      // filters. That is the obvious way to build formants and it is why it
+      // sounded like a synth: bandpasses keep only the formant bands and
+      // throw away everything between them, leaving a thin, hollow buzz. A
+      // vocal tract does the opposite -- it resonates a full glottal
+      // spectrum, lifting some regions and leaving the rest present. So the
+      // filters are now *peaking* filters in series, and the whole harmonic
+      // series survives.
+      //
+      // The other half of sounding human is instability. A perfectly steady
+      // pitch is the single most synthetic thing a voice can do, so every
+      // note gets jitter (small random pitch drift), a scoop into the note,
+      // vibrato whose rate and depth differ per note, and a breath at the
+      // onset.
       case 'vowel':
-      case 'hum': {
+      case 'hum':
+      case 'choir': {
         const humming = name === 'hum';
-        if (!this._budget(time, false, humming ? 14 : 20)) return;
+        const choral = name === 'choir';
+        const cost = choral ? 34 : humming ? 16 : 22;
+        if (!this._budget(time, choral, cost)) return;
+
+        // [centre Hz, bandwidth Hz, boost dB]. Bandwidth matters as much as
+        // centre: too wide and the vowel blurs into a filter sweep.
         const VOWELS = {
-          a: [800, 1150, 2900], e: [400, 1600, 2700],
-          o: [450, 800, 2830], u: [325, 700, 2530],
+          a: [[800, 80, 16], [1150, 90, 13], [2900, 130, 9]],
+          e: [[400, 60, 16], [1600, 80, 13], [2700, 130, 9]],
+          o: [[450, 70, 17], [800, 80, 12], [2830, 120, 7]],
+          u: [[325, 50, 17], [700, 60, 11], [2530, 170, 6]],
         };
-        // Humming is a closed mouth: one low nasal resonance and nothing up
-        // top, which is most of the difference from an open vowel.
-        const formants = humming ? [280, 1100, 2200] : (VOWELS[opts.vowel] || VOWELS.a);
-        const src = ctx.createOscillator();
-        src.type = humming ? 'triangle' : 'sawtooth';
-        src.frequency.value = f;
+        const keys = Object.keys(VOWELS);
+        const vowelKey = opts.vowel || keys[Math.abs(midi + (choral ? 2 : 0)) % keys.length];
+        // A closed mouth: one low nasal resonance, nothing up top.
+        const formants = humming
+          ? [[280, 60, 18], [1100, 100, 8], [2200, 160, 3]]
+          : VOWELS[vowelKey] || VOWELS.a;
 
-        // Vibrato that arrives late, the way a singer's does.
-        const vib = ctx.createOscillator();
-        vib.frequency.value = 4.6 + Math.random() * 1.2;
-        const vibAmt = ctx.createGain();
-        vibAmt.gain.setValueAtTime(0, time);
-        vibAmt.gain.linearRampToValueAtTime(humming ? 4 : 7, time + Math.min(0.8, dur * 0.6));
-        vib.connect(vibAmt).connect(src.detune);
-
-        const g = ctx.createGain();
+        const amp = ctx.createGain();
         const stopAt = time + dur + 0.9;
-        g.gain.setValueAtTime(0.0001, time);
-        // Three bandpasses in series throw away most of the source's energy,
-        // so this needs far more gain than an unfiltered voice to land at a
-        // comparable level. Measured against kalimba to match.
-        g.gain.linearRampToValueAtTime(vel * (humming ? 0.7 : 1.1), time + Math.min(0.35, dur * 0.25));
-        this._release2(g.gain, time + dur * 0.72, stopAt);
+        amp.gain.setValueAtTime(0.0001, time);
+        // Levels measured, not guessed. The humming tract puts an 18dB boost
+        // at 280Hz, which lands directly on a triangle wave's fundamental
+        // and made it four times louder than every other voice.
+        amp.gain.linearRampToValueAtTime(vel * (choral ? 0.16 : humming ? 0.085 : 0.26),
+          time + Math.min(0.3, dur * 0.25));
+        this._release2(amp.gain, time + dur * 0.72, stopAt);
+        amp.connect(dest);
 
-        formants.forEach((hz, i) => {
-          const bp = ctx.createBiquadFilter();
-          bp.type = 'bandpass';
-          bp.frequency.value = hz;
-          bp.Q.value = 6 + i * 4;
-          const fg = ctx.createGain();
-          fg.gain.value = humming ? [1, 0.3, 0.08][i] : [1, 0.5, 0.22][i];
-          src.connect(bp).connect(fg).connect(g);
-        });
+        // Series peaking filters, then a lowpass standing in for the steeper
+        // rolloff of a glottal pulse: a raw sawtooth is far too bright and
+        // reads as buzz rather than voice.
+        let head = null;
+        let tail = null;
+        for (const [hz, bw, gainDb] of formants) {
+          const bq = ctx.createBiquadFilter();
+          bq.type = 'peaking';
+          bq.frequency.value = hz;
+          bq.Q.value = hz / bw;
+          bq.gain.value = gainDb;
+          if (!head) head = bq; else tail.connect(bq);
+          tail = bq;
+        }
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = 0.7;
+        lp.frequency.value = humming ? 1700 : 3400;
+        tail.connect(lp).connect(amp);
 
-        g.connect(dest);
-        src.start(time);
-        vib.start(time);
-        this._stopClean(g, [src, vib], stopAt);
-        this._release(time, dur + 0.9, humming ? 14 : 20);
+        // A choir is several of these sharing one tract: the filters are the
+        // expensive part, so extra singers cost little. Each gets its own
+        // detune and its own vibrato rate, which is what makes a group read
+        // as a group rather than as one voice through a chorus pedal.
+        const singers = choral ? 3 : 1;
+        const sources = [];
+        for (let i = 0; i < singers; i++) {
+          const src = ctx.createOscillator();
+          src.type = humming ? 'triangle' : 'sawtooth';
+          src.frequency.value = f;
+
+          const spread = choral ? (i - 1) * (7 + Math.random() * 6) : 0;
+          // Scoop into the note. Singers arrive at a pitch, they do not
+          // start on it.
+          src.detune.setValueAtTime(spread - 22 - Math.random() * 14, time);
+          src.detune.linearRampToValueAtTime(spread, time + 0.06 + Math.random() * 0.05);
+          // Jitter: small random drift for the rest of the note, scheduled
+          // straight onto the param so it costs no extra nodes.
+          let t = time + 0.12;
+          while (t < time + dur) {
+            src.detune.linearRampToValueAtTime(spread + (Math.random() - 0.5) * 11, t);
+            t += 0.09 + Math.random() * 0.08;
+          }
+
+          const vib = ctx.createOscillator();
+          vib.frequency.value = 4.3 + Math.random() * 1.8;
+          const vibAmt = ctx.createGain();
+          vibAmt.gain.setValueAtTime(0, time);
+          vibAmt.gain.linearRampToValueAtTime(
+            (humming ? 5 : 9) + Math.random() * 4,
+            time + Math.min(0.9, dur * 0.55) + Math.random() * 0.2
+          );
+          vib.connect(vibAmt).connect(src.detune);
+
+          src.connect(head);
+          src.start(time);
+          vib.start(time);
+          sources.push(src, vib);
+        }
+
+        // Aspiration. Strongest at the onset, then settling back -- this is
+        // most of what separates a sung note from an organ note.
+        const breath = ctx.createBufferSource();
+        breath.buffer = this.noise;
+        breath.loop = true;
+        breath.playbackRate.value = 0.8 + Math.random() * 0.4;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = humming ? 900 : 2200;
+        bp.Q.value = 0.8;
+        const bg = ctx.createGain();
+        bg.gain.setValueAtTime(0.0001, time);
+        bg.gain.linearRampToValueAtTime(vel * (humming ? 0.05 : 0.1), time + 0.04);
+        bg.gain.exponentialRampToValueAtTime(Math.max(0.0005, vel * 0.02), time + 0.3);
+        bg.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.15);
+        breath.connect(bp).connect(bg).connect(amp);
+        breath.start(time);
+        breath.stop(stopAt);
+
+        this._stopClean(amp, sources, stopAt);
+        this._release(time, dur + 0.9, cost);
         return;
       }
 
@@ -1114,9 +1193,14 @@ export class Synth {
         return;
       }
 
-      // Eno's voices: three detuned saws, heavily filtered, arriving slowly.
-      case 'choir': {
-        if (!this._budget(time, true)) return;
+      // The old 'choir' lived here: three detuned saws through a lowpass,
+      // with no formants at all. That is a string pad, which is exactly what
+      // it sounded like. It is now handled with the vowel voices above,
+      // where it gets a vocal tract and three independently wavering
+      // singers. Renamed rather than deleted so the pad remains available
+      // to the profiles that actually wanted a pad.
+      case 'softpad': {
+        if (!this._budget(time, true, VOICE_COST.pad)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.setValueAtTime(700, time);
@@ -1137,8 +1221,8 @@ export class Synth {
           oscs.push(o);
         }
         lp.connect(g).connect(dest);
-        this._stopClean(g, oscs, time + dur + 1.8);
-        this._release(time, dur + 1.8);
+        this._stopClean(g, oscs, stopAt);
+        this._release(time, dur + 1.8, VOICE_COST.pad);
         return;
       }
 
