@@ -89,48 +89,74 @@ export function patternToMidi(pattern, { repeats = 1 } = {}) {
     ...varLen(loopTicks * repeats), 0xff, 0x2f, 0x00,
   ]);
 
-  const collect = (fn) => {
+  const totalTicks = loopTicks * repeats;
+
+  // Expand each layer on its OWN cycle.
+  //
+  // The old version offset every layer by the pattern length, which is only
+  // right when all the cycles match. Under polymeter, or the short
+  // fragments the pulse profile uses, a layer with a five-bar cycle inside
+  // a four-bar loop ran past the end and collided with the next repeat,
+  // while a one-bar fragment simply never repeated. The export did not
+  // match what you heard, which for a file whose whole job is to leave the
+  // browser is the worst kind of wrong.
+  const expand = (layer, emit) => {
+    const cycle = (pattern.cycles && pattern.cycles[layer]) || pattern.totalSteps;
+    const cycleTicks = Math.max(1, cycle * ticksPerStep);
     const out = [];
-    for (let r = 0; r < repeats; r++) fn(out, r * loopTicks);
+    for (let off = 0; off < totalTicks; off += cycleTicks) {
+      for (const e of pattern.tracks[layer]) {
+        if (!e.vel) continue;
+        const tick = off + at(e.step);
+        if (tick >= totalTicks) continue;
+        emit(out, e, tick);
+      }
+    }
     return out;
   };
 
-  const drums = collect((out, off) => {
-    for (const e of pattern.tracks.drums) {
-      if (!e.vel) continue;
-      const midi = GM_DRUMS[e.inst];
-      if (!midi) continue;
-      out.push({ tick: off + at(e.step), dur: 30, midi, vel: e.vel });
+  // Two hits on the same pitch at the same tick is malformed: the second
+  // note-on retriggers a note that is already sounding and the pairing of
+  // ons to offs stops meaning anything. Rolls generate these by design.
+  const dedupe = (notes) => {
+    const seen = new Set();
+    return notes.filter((n) => {
+      const k = `${n.tick}:${n.midi}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+
+  const drums = dedupe(expand('drums', (out, e, tick) => {
+    const midi = GM_DRUMS[e.inst];
+    if (!midi) return;
+    // Rolls sit between the steps; without their offset a burst of eight
+    // collapses onto four ticks and half of it vanishes in the dedupe.
+    const micro = Math.round((e.micro || 0) * ticksPerStep);
+    out.push({ tick: tick + micro, dur: 30, midi, vel: e.vel });
+  }));
+
+  const bass = dedupe(expand('bass', (out, e, tick) => {
+    out.push({ tick, dur: e.dur * ticksPerStep, midi: e.midi, vel: e.vel });
+  }));
+
+  const chords = dedupe(expand('chords', (out, e, tick) => {
+    for (const n of e.notes) {
+      out.push({ tick, dur: e.dur * ticksPerStep, midi: n, vel: e.vel });
     }
-  });
-  const bass = collect((out, off) => {
-    for (const e of pattern.tracks.bass) {
-      if (!e.vel) continue;
-      out.push({ tick: off + at(e.step), dur: e.dur * ticksPerStep, midi: e.midi, vel: e.vel });
+  }));
+
+  const melody = dedupe(expand('melody', (out, e, tick) => {
+    out.push({ tick, dur: e.dur * ticksPerStep, midi: e.midi, vel: e.vel });
+  }));
+
+  const texture = dedupe(expand('texture', (out, e, tick) => {
+    if (!e.notes || !e.notes.length) return;
+    for (const n of e.notes) {
+      out.push({ tick, dur: e.dur * ticksPerStep, midi: n, vel: e.vel });
     }
-  });
-  const chords = collect((out, off) => {
-    for (const e of pattern.tracks.chords) {
-      if (!e.vel) continue;
-      for (const n of e.notes) {
-        out.push({ tick: off + at(e.step), dur: e.dur * ticksPerStep, midi: n, vel: e.vel });
-      }
-    }
-  });
-  const melody = collect((out, off) => {
-    for (const e of pattern.tracks.melody) {
-      if (!e.vel) continue;
-      out.push({ tick: off + at(e.step), dur: e.dur * ticksPerStep, midi: e.midi, vel: e.vel });
-    }
-  });
-  const texture = collect((out, off) => {
-    for (const e of pattern.tracks.texture) {
-      if (!e.vel || !e.notes || !e.notes.length) continue;
-      for (const n of e.notes) {
-        out.push({ tick: off + at(e.step), dur: e.dur * ticksPerStep, midi: n, vel: e.vel });
-      }
-    }
-  });
+  }));
 
   const tracks = [
     tempoTrack,

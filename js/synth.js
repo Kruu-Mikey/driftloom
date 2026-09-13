@@ -4,7 +4,14 @@
 
 import { midiToFreq } from './theory.js';
 
-const MAX_VOICES = 28;
+// Busy loops genuinely want up to 38 voices at once, so a cap of 28 was
+// dropping notes on about 1% of them -- and dropping whichever note happened
+// to arrive next, which could be the melody. The cap is now above the
+// measured peak, and pads and textures hit a lower one first, so when
+// something has to give it is the sustained background rather than the tune.
+const MAX_VOICES = 44;
+const SOFT_VOICES = 30;
+const LITE_VOICES = 26;
 
 // Tape saturation, not a maximizer.
 //
@@ -112,7 +119,16 @@ export class Synth {
     this.tone.connect(this.hp);
     this.hp.connect(this.comp);
     this.comp.connect(this.master);
-    this.master.connect(this.ceiling);
+    // Everything already scheduled keeps playing after Stop: notes are
+    // queued up to a lookahead ahead (three seconds when hidden) and a pad
+    // triggered just before Stop rings for its full length. A transport has
+    // to actually stop, so the whole output passes through here and gets
+    // faded out in 60ms.
+    this.kill = ctx.createGain();
+    this.kill.gain.value = 1;
+
+    this.master.connect(this.kill);
+    this.kill.connect(this.ceiling);
     // The last node in the chain. Connected straight to the speakers here
     // so the synth works on its own, but MediaBridge re-routes it through
     // a media element so the phone treats us as a music player.
@@ -259,6 +275,21 @@ export class Synth {
     ch.gain.gain.setTargetAtTime(muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);
   }
 
+  // Silence everything already in flight. Not a mute: the transport stopped.
+  silence(when = this.ctx.currentTime) {
+    const g = this.kill.gain;
+    g.cancelScheduledValues(when);
+    g.setValueAtTime(g.value, when);
+    g.linearRampToValueAtTime(0, when + 0.06);
+  }
+
+  unsilence(when = this.ctx.currentTime) {
+    const g = this.kill.gain;
+    g.cancelScheduledValues(when);
+    g.setValueAtTime(g.value, when);
+    g.linearRampToValueAtTime(1, when + 0.02);
+  }
+
   setVolume(v) {
     this.userVolume = v;
     this._applyGain();
@@ -285,9 +316,37 @@ export class Synth {
   //
   // Releases are now tracked on the audio clock and pruned against the time
   // the note is scheduled for, which is correct in both cases.
-  _budget(time = this.ctx.currentTime) {
+  // Guarantee an envelope is actually at zero when its oscillators stop.
+  //
+  // setTargetAtTime approaches the target exponentially and never arrives,
+  // so stopping a node a fixed time later severs whatever is left. On a six
+  // second chord that was a quarter of peak amplitude -- a step
+  // discontinuity, which is a click, on every sustained note. Hold the
+  // envelope where it has got to, then ramp it properly to zero.
+  // Schedule a release that genuinely arrives at zero, then stop.
+  //
+  // setTargetAtTime approaches its target exponentially and never reaches
+  // it, so stopping a node a fixed time later severs whatever is left --
+  // on a six second chord that was a quarter of peak amplitude, a step
+  // discontinuity, which is a click, on every sustained note.
+  // exponentialRampToValueAtTime has a defined endpoint, so a short linear
+  // ramp can take the last inaudible bit to true zero from a known value.
+  _release2(param, from, to, floor = 0.0006) {
+    param.exponentialRampToValueAtTime(floor, Math.max(from + 0.01, to - 0.025));
+    param.linearRampToValueAtTime(0, to);
+  }
+
+  _stopClean(gainNode, sources, stopAt) {
+    for (const s of sources) {
+      try { s.stop(stopAt + 0.01); } catch { /* already stopped */ }
+    }
+  }
+
+  _budget(time = this.ctx.currentTime, soft = false) {
     while (this._releases.length && this._releases[0] <= time) this._releases.shift();
-    if (this._releases.length > MAX_VOICES) return false;
+    const ceiling = this.quality === 'lite' ? LITE_VOICES : MAX_VOICES;
+    const cap = soft ? Math.min(SOFT_VOICES, ceiling) : ceiling;
+    if (this._releases.length > cap) return false;
     return true;
   }
 
@@ -564,17 +623,19 @@ export class Synth {
     modGain.gain.exponentialRampToValueAtTime(Math.max(1, index * 0.06), time + Math.min(0.9, decay));
     mod.connect(modGain).connect(car.frequency);
 
+    const peak = Math.max(0.001, vel * 0.26);
+    const stop = time + dur + 1.2;
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, time);
-    g.gain.exponentialRampToValueAtTime(Math.max(0.001, vel * 0.26), time + attack);
-    g.gain.setTargetAtTime(0.0001, time + Math.max(0.05, dur * 0.7), Math.max(0.06, dur * 0.35));
+    g.gain.exponentialRampToValueAtTime(peak, time + attack);
+    // Decay across the note, then a defined release to silence.
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0008, peak * 0.3), time + Math.max(0.08, dur * 0.7));
+    this._release2(g.gain, time + Math.max(0.08, dur * 0.7), stop);
 
     car.connect(g).connect(out);
     car.start(time);
     mod.start(time);
-    const stop = time + dur + 1.2;
-    car.stop(stop);
-    mod.stop(stop);
+    this._stopClean(g, [car, mod], stop);
     this._release(time, dur + 1.2);
   }
 
@@ -582,17 +643,19 @@ export class Synth {
     const ctx = this.ctx;
     const out = dest || this.channels.chords.gain;
     for (const midi of notes) {
-      if (!this._budget(time)) return;
+      if (!this._budget(time, true)) return;
       const f = midiToFreq(midi);
       const g = ctx.createGain();
+      const stopAt = time + dur + 1.6;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.linearRampToValueAtTime((vel * 0.22) / Math.sqrt(notes.length), time + Math.min(0.9, dur * 0.4));
-      g.gain.setTargetAtTime(0.0001, time + dur * 0.8, dur * 0.35 + 0.2);
+      this._release2(g.gain, time + dur * 0.8, stopAt);
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
       lp.frequency.setValueAtTime(700, time);
       lp.frequency.linearRampToValueAtTime(1900, time + dur * 0.5);
       lp.Q.value = 0.8;
+      const oscs = [];
       for (const cents of [-7, 6]) {
         const o = ctx.createOscillator();
         o.type = 'triangle';
@@ -600,9 +663,10 @@ export class Synth {
         o.detune.value = cents;
         o.connect(lp);
         o.start(time);
-        o.stop(time + dur + 1.6);
+        oscs.push(o);
       }
       lp.connect(g).connect(out);
+      this._stopClean(g, oscs, time + dur + 1.6);
       this._release(time, dur + 1.6);
     }
   }
@@ -699,7 +763,14 @@ export class Synth {
         g.gain.linearRampToValueAtTime(vel * 0.3, time + 0.05);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
         o.connect(g).connect(dest);
-        const air = this._noiseSource(time, dur + 0.1);
+        // The shared noise buffer is two seconds long; a held note can be
+        // longer than that, and the breath used to stop partway through it.
+        const air = ctx.createBufferSource();
+        air.buffer = this.noise;
+        air.loop = true;
+        air.playbackRate.value = 0.9 + Math.random() * 0.25;
+        air.start(time);
+        air.stop(time + dur + 0.5);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
         bp.frequency.value = f * 2;
@@ -729,16 +800,18 @@ export class Synth {
       // against each other; that slow phasing is the whole sound, and it is
       // why one oscillator never sounds like this however it is filtered.
       case 'analogpad': {
-        if (!this._budget(time)) return;
+        if (!this._budget(time, true)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 1.6;
         lp.frequency.setValueAtTime(Math.min(900, f * 3), time);
         lp.frequency.linearRampToValueAtTime(Math.min(2600, f * 6), time + Math.min(2, dur * 0.6));
         const g = ctx.createGain();
+        const stopAt = time + dur + 1.6;
         g.gain.setValueAtTime(0.0001, time);
         g.gain.linearRampToValueAtTime(vel * 0.17, time + Math.min(0.9, dur * 0.3));
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.75, dur * 0.3 + 0.25);
+        this._release2(g.gain, time + dur * 0.75, stopAt);
+        const oscs = [];
         for (const cents of [-11, 0, 9]) {
           const o = ctx.createOscillator();
           o.type = 'sawtooth';
@@ -746,9 +819,10 @@ export class Synth {
           o.detune.value = cents;
           o.connect(lp);
           o.start(time);
-          o.stop(time + dur + 1.6);
+          oscs.push(o);
         }
         lp.connect(g).connect(dest);
+        this._stopClean(g, oscs, time + dur + 1.6);
         this._release(time, dur + 1.6);
         return;
       }
@@ -882,15 +956,17 @@ export class Synth {
 
       // Eno's voices: three detuned saws, heavily filtered, arriving slowly.
       case 'choir': {
-        if (!this._budget(time)) return;
+        if (!this._budget(time, true)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.setValueAtTime(700, time);
         lp.frequency.linearRampToValueAtTime(1500, time + dur * 0.5);
         const g = ctx.createGain();
+        const stopAt = time + dur + 1.8;
         g.gain.setValueAtTime(0.0001, time);
         g.gain.linearRampToValueAtTime(vel * 0.16, time + Math.min(1.4, dur * 0.45));
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, dur * 0.3 + 0.3);
+        this._release2(g.gain, time + dur * 0.7, stopAt);
+        const oscs = [];
         for (const cents of [-9, 0, 11]) {
           const o = ctx.createOscillator();
           o.type = 'sawtooth';
@@ -898,9 +974,10 @@ export class Synth {
           o.detune.value = cents;
           o.connect(lp);
           o.start(time);
-          o.stop(time + dur + 1.8);
+          oscs.push(o);
         }
         lp.connect(g).connect(dest);
+        this._stopClean(g, oscs, time + dur + 1.8);
         this._release(time, dur + 1.8);
         return;
       }
@@ -911,12 +988,13 @@ export class Synth {
         o.type = 'sine';
         o.frequency.value = f;
         const g = ctx.createGain();
+        const stopAt = time + dur + 1;
         g.gain.setValueAtTime(0.0001, time);
         g.gain.linearRampToValueAtTime(vel * 0.24, time + Math.min(0.5, dur * 0.3));
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.25);
+        this._release2(g.gain, time + dur * 0.7, stopAt);
         o.connect(g).connect(dest);
         o.start(time);
-        o.stop(time + dur + 1);
+        this._stopClean(g, [o], time + dur + 1);
         this._release(time, dur + 1);
         return;
       }
@@ -935,9 +1013,10 @@ export class Synth {
   texture(kind, notes, time, dur, vel, opts = {}) {
     const ctx = this.ctx;
     const out = this.channels.texture.gain;
+    const soft = true; // background: first to yield when the graph is full
     if (kind === 'swell') {
       for (const midi of notes) {
-        if (!this._budget(time)) return;
+        if (!this._budget(time, soft)) return;
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = midiToFreq(midi);

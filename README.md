@@ -247,6 +247,39 @@ can be ducked rather than filled with wash. Rests land 20-45 dB below
 programme level rather than at digital zero, because held notes are allowed
 to decay into them, which is what the references do too.
 
+## Audit notes
+
+Things found by measuring rather than reading, each with a test or a number
+behind it:
+
+- **Sustained notes clicked.** `setTargetAtTime` approaches its target
+  exponentially and never arrives, so stopping an oscillator a fixed time
+  later severs whatever is left. A six second Rhodes chord was being cut at
+  a quarter of peak amplitude, -12 dB relative to its own peak: a step
+  discontinuity on every held note. Releases now use
+  `exponentialRampToValueAtTime` to a floor, which has a defined endpoint,
+  then a short linear ramp to true zero. Worst cut across fourteen voices
+  and three note lengths is now -79 dB.
+- **Stop did not stop.** Notes are scheduled up to a lookahead ahead -- three
+  seconds when the page is hidden -- and a pad triggered just before Stop
+  rang for its full length regardless. The output now passes through a kill
+  gain that fades in 60ms.
+- **MIDI export did not match playback.** Every layer was offset by the
+  pattern length, which is only correct when all cycles agree. Under
+  polymeter a five-bar layer inside a four-bar loop ran past the end and
+  collided with the next repeat, and a one-bar fragment never repeated at
+  all. Layers now expand on their own cycles.
+- **Stutter rolls collapsed in export.** They carry sub-step timing, which
+  the exporter ignored, stacking a burst of eight onto four ticks as
+  duplicate note-ons at identical pitch and tick.
+- **The voice cap was below demand.** Busy loops want up to 38 simultaneous
+  voices against a cap of 28, so about 1% dropped notes -- and whichever
+  note arrived next, possibly the melody. Cap raised above the measured
+  peak, with pads and textures hitting a lower one first so the background
+  yields before the tune does.
+- **Breath noise stopped mid-note.** The shared noise buffer is two seconds;
+  a longer flute or ocarina note simply ran out of air. It loops now.
+
 ## Known rough edges
 
 - Output now peaks between about 0.46 and 0.84 with no full-scale samples

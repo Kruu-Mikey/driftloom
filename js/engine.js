@@ -139,6 +139,7 @@ export class Engine {
   start() {
     if (this.playing || !this.spec) return;
     this.playing = true;
+    this.synth.unsilence();
     this.nextStepTime = this.ctx.currentTime + 0.08;
     this.clock.start(this.hidden ? TICK_HIDDEN : TICK_VISIBLE);
     this._tick();
@@ -148,6 +149,7 @@ export class Engine {
     this.playing = false;
     this.clock.stop();
     this.visualQueue = [];
+    this.synth.silence();
     if (this.tailsDucked) {
       this.synth.restoreTails(this.ctx.currentTime);
       this.tailsDucked = false;

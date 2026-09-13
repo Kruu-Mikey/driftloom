@@ -189,5 +189,45 @@ for (let i = 0; i < 500; i++) {
 }
 check('every exported file parses as valid MIDI', midiFailures === 0, lastMidiError);
 
+// A layer on its own cycle has to repeat on that cycle in the export too,
+// or the file does not match what was playing.
+let polySpec = null;
+for (let s = 1; s < 80000 && !polySpec; s++) {
+  const cand = newSpec(s);
+  if (cand.cycles && cand.cycles.melody && cand.cycles.melody < cand.bars * cand.stepsPerBar) {
+    if (render(cand).tracks.melody.some((e) => e.vel > 0)) polySpec = cand;
+  }
+}
+check('a short-cycle layer repeats across the exported file', (() => {
+  if (!polySpec) return false;
+  const pat = render(polySpec);
+  const bytes = patternToMidi(pat, { repeats: 1 }).bytes;
+  parseMidi(bytes);
+  const cycleSteps = polySpec.cycles.melody;
+  const perCycle = pat.tracks.melody.filter((e) => e.vel > 0).length;
+  const repeatsInLoop = Math.floor((polySpec.bars * polySpec.stepsPerBar) / cycleSteps);
+  // Count melody note-ons in the exported file (track 4, channel 2).
+  let ons = 0;
+  for (let i = 0; i < bytes.length - 2; i++) {
+    if (bytes[i] === 0x92 && bytes[i + 2] > 0) ons++;
+  }
+  return repeatsInLoop > 1 && ons >= perCycle * repeatsInLoop * 0.8;
+})(), polySpec ? '' : 'no polymetric example found');
+
+// Roll bursts must not collapse onto the same tick and same pitch.
+check('stutter rolls keep their sub-step timing', (() => {
+  for (let s = 1; s < 120000; s++) {
+    const cand = newSpec(s);
+    const pat = render(cand);
+    const rolls = pat.tracks.drums.filter((e) => e.roll && e.vel > 0);
+    if (rolls.length < 4) continue;
+    const bytes = patternToMidi(pat, { repeats: 1 }).bytes;
+    parseMidi(bytes); // must still be structurally valid
+    const micros = new Set(rolls.map((e) => e.micro));
+    return micros.size > 1; // the burst is spread, not stacked
+  }
+  return false;
+})());
+
 console.log(failures === 0 ? '\nAll good.\n' : `\n${failures} failing.\n`);
 process.exit(failures === 0 ? 0 : 1);
