@@ -1046,8 +1046,11 @@ export class Synth {
           o: [[450, 70, 17], [800, 80, 12], [2830, 120, 7]],
           u: [[325, 50, 17], [700, 60, 11], [2530, 170, 6]],
         };
-        const keys = Object.keys(VOWELS);
-        const vowelKey = opts.vowel || keys[Math.abs(midi + (choral ? 2 : 0)) % keys.length];
+        // The composer supplies the vowel. The fallback is fixed rather
+        // than pitch-derived: deriving it from the note number changed the
+        // vowel on every note and made every loop in a given register sing
+        // the same sequence.
+        const vowelKey = opts.vowel || 'a';
         // A closed mouth: one low nasal resonance, nothing up top.
         const formants = humming
           ? [[280, 60, 18], [1100, 100, 8], [2200, 160, 3]]

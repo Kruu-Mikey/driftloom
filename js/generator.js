@@ -23,6 +23,12 @@ export const LAYER_LABELS = {
 // real value now lives on the spec: 16 is 4/4, 12 is 6/8, 20 is 5/4.
 export const STEPS_PER_BAR = 16;
 
+// Vowels belong to the composition, not to the pitch. Deriving them from
+// the note number (the first attempt) meant they changed on every note,
+// which reads as texture rather than singing, and meant any two loops in a
+// similar register sang the same sequence.
+export const VOWEL_KEYS = ['a', 'e', 'o', 'u'];
+
 // ---------------------------------------------------------------- spec
 
 export function newSpec(seed = randomSeed()) {
@@ -373,6 +379,9 @@ function genHarmony(spec) {
     prevVoicing = notes;
 
     const startStep = s * slotLen;
+    // Held across the chord and usually across several, the way a sung line
+    // stays on a vowel rather than changing on every note.
+    const slotVowel = VOWEL_KEYS[Math.floor(s / (1 + r.int(0, 2))) % VOWEL_KEYS.length];
     const rootMidi = scalePitch(spec.root, scale, degree, 0);
     // A bass note that disagrees with the chord is the one idea from the
     // theory sheets that transfers directly: every chord there is a slash
@@ -413,6 +422,10 @@ function genHarmony(spec) {
           notes: notes.slice(),
           vel: 0.4 + r.f() * 0.25,
           voice: voice === 'both' ? (r.chance(0.5) ? 'keys' : 'pad') : voice,
+          // One vowel for the whole chord. Singers on a chord sing the same
+          // vowel; giving each note its own is not a choir, it is four
+          // people disagreeing.
+          vowel: slotVowel,
         });
       }
     }
@@ -560,8 +573,11 @@ function genMelody(spec, harmony) {
   // phase and makes you lose count. One dropped step does the same here.
   const slip = c.skipStep && r.chance(c.skipStep) ? r.int(1, 2) : 0;
 
+  // One vowel per phrase, changing every bar or two rather than per note.
+  let vowel = r.pick(VOWEL_KEYS);
   for (let bar = 0; bar < spec.bars; bar++) {
     if (r.chance(restBarChance)) continue;
+    if (bar > 0 && r.chance(0.45)) vowel = r.pick(VOWEL_KEYS);
     const barStart = bar * spb - slip * bar;
     const slot = slotAt(harmony.slots, barStart, harmony.cycleSteps);
     const transpose = bar === 0 ? 0 : r.weighted([[0, 4], [1, 1.5], [-1, 1.5], [2, 1]]);
@@ -585,6 +601,7 @@ function genMelody(spec, harmony) {
         midi,
         vel: m.vel * (bar === 0 ? 1 : 0.9),
         voice,
+        vowel,
       });
     }
   }

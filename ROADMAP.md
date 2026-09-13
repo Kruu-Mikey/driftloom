@@ -63,9 +63,17 @@ bell-adjacent voices (bell, bells, chime, musicbox, celeste, harp) and the
 distinctions between adding tubular, handbell and templebell are thinner than
 the distinctions already in place.
 
-**Vowel movement within a note.** Right now a vowel is chosen per note and
-held. Moving between vowels across a sustained note ("ah" opening into "oh")
+**Vowel movement within a note.** Vowels are now chosen per phrase and held,
+and shared across the notes of a chord. The remaining step is movement
+*within* a long note -- "ah" opening into "oh" across a sustained bar -- which
 is the difference between a formant filter and something that sounds sung.
+
+**Keys and melody share a register.** Noticed from a real export: both
+layers sat in 56-66 with the same seven pitches. When they happen to draw
+the same voice it blends into one convincing ensemble, which is worth
+engineering on purpose rather than leaving to chance; when they draw
+different voices they mask each other. Worth giving the two layers
+deliberately different registers, or deliberately the same one.
 
 ## Cover art
 

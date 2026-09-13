@@ -308,7 +308,7 @@ export class Engine {
             // Spread the notes of a chord by a few milliseconds so it
             // sounds like fingers rather than a switch closing.
             this.synth.voice(e.voice, n, t + i * 0.011, e.dur * sd, e.vel * spread,
-              this.synth.channels.chords.gain);
+              this.synth.channels.chords.gain, { vowel: e.vowel });
           });
         }
       }
@@ -318,7 +318,7 @@ export class Engine {
       for (const e of p.tracks.melody) {
         if (e.step !== s || !e.vel) continue;
         this.synth.voice(e.voice, e.midi, t, e.dur * sd, e.vel,
-          this.synth.channels.melody.gain, { glide: e.glide });
+          this.synth.channels.melody.gain, { glide: e.glide, vowel: e.vowel });
       }
     }
     if (!mutes.texture) {
