@@ -551,92 +551,140 @@ function genMelody(spec, harmony) {
   const mood = lf.lift;
   if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [] };
 
-  // Build a short motif in scale-degree offsets, then quote it across the
-  // loop with variations. Repetition with variation is most of what makes
-  // a random line sound composed rather than sprayed.
-  // Longer phrases at high energy, so a driven melody has somewhere to go.
-  const motifLen = lf.energy > 0.6 ? r.int(5, 9) : r.int(3, 6);
-  const rhythmPool = [
-    [0, 2, 4, 6, 8, 10, 12, 14],
-    [0, 3, 6, 8, 11, 14],
-    [0, 2, 3, 6, 10, 12],
-    [0, 4, 6, 10, 12, 14],
-    [2, 4, 8, 10, 14],
-  ];
-  // At high energy prefer the busier grids: continuous motion is most of
-  // what makes a melody read as going somewhere rather than settling.
+  // --- the motif ------------------------------------------------------
+  //
+  // Positions are drawn from ACROSS the bar, not from the front of it. The
+  // old version took grid slots 0..n-1, so a three-note motif only ever
+  // used the first three, and every melody in the app clustered into the
+  // opening beat and left the rest of the bar empty. Checked against a real
+  // export: 132 notes and not one of them past beat 1.5.
   const driven = lf.energy > 0.6;
-  const gridPool = spb === 12
-    ? (driven
-        ? [[0, 2, 4, 6, 8, 10], [0, 1, 3, 4, 6, 7, 9, 10], [0, 2, 3, 5, 6, 8, 9, 11]]
-        : [[0, 3, 6, 9], [0, 2, 4, 6, 8, 10], [0, 3, 4, 7, 9], [0, 2, 6, 8, 11], [1, 3, 6, 10]])
-    : (driven
-        ? [[0, 2, 4, 6, 8, 10, 12, 14], [0, 2, 3, 5, 6, 8, 10, 12, 14], [0, 1, 3, 4, 6, 8, 11, 12, 14]]
-        : rhythmPool);
-  const grid = r.pick(gridPool).filter((x) => x < spb);
-  if (!grid.length) grid.push(0);
+  const pointillist = c.pointillist || 0;
+  const slots = [];
+  for (let i = 0; i < spb; i += (driven ? 2 : 2)) slots.push(i);
+  const motifLen = Math.min(slots.length, driven ? r.int(5, 9) : r.int(3, 6));
+  const chosen = r.shuffle(slots).slice(0, motifLen).sort((x, y) => x - y);
+
   const motif = [];
   let deg = 0;
-  for (let i = 0; i < motifLen; i++) {
+  for (let i = 0; i < chosen.length; i++) {
     motif.push({
-      offset: grid[i % grid.length],
+      offset: chosen[i],
       degree: deg,
       dur: r.pick([2, 2, 3, 4, 6]),
       vel: 0.4 + r.f() * 0.3,
     });
-    // A rising line reads as glad, a falling one as settled. The axis tilts
-    // the random walk rather than dictating it.
     const up = 1 + mood * 2.2;
     const down = 1 + (1 - mood) * 2.2;
     deg += r.weighted([
       [0, 1], [1, 2 * up], [-1, 2 * down], [2, 1.4 * up], [-2, 1.1 * down],
       [3, 0.8 * up], [-3, 0.6 * down], [4, 0.4 * up],
     ]);
-    deg = Math.max(-4, Math.min(9, deg));
+    deg = Math.max(-5, Math.min(10, deg));
   }
 
+  // --- how the motif is developed --------------------------------------
+  //
+  // A melody that restates the same figure every bar is not a melody, it is
+  // a stamp. These are the standard ways a phrase is actually varied: move
+  // it to a new degree, turn it upside down, run it backwards, break off a
+  // piece, or stretch it out.
+  const transform = (m, kind, amount) => {
+    const base = m[0].degree;
+    switch (kind) {
+      case 'sequence':
+        return m.map((x) => ({ ...x, degree: x.degree + amount }));
+      case 'invert':
+        return m.map((x) => ({ ...x, degree: base - (x.degree - base) }));
+      case 'retro':
+        return m.map((x, i) => ({ ...x, degree: m[m.length - 1 - i].degree }));
+      case 'fragment': {
+        const head = m.slice(0, Math.max(2, Math.ceil(m.length / 2)));
+        return head.concat(head.map((x) => ({
+          ...x,
+          offset: Math.min(spb - 1, x.offset + Math.floor(spb / 2)),
+          degree: x.degree + amount,
+        })));
+      }
+      case 'augment':
+        // Half as many notes, twice as long: the phrase in slow motion.
+        return m.filter((_, i) => i % 2 === 0).map((x) => ({ ...x, dur: x.dur * 2 }));
+      default:
+        return m.map((x) => ({ ...x }));
+    }
+  };
+
+  // Phrase plan. Forms are the ordinary shapes of a tune: a statement, an
+  // answer, a departure, a return.
+  const barsPerPhrase = spec.bars >= 8 ? (r.chance(0.45) ? 4 : 2) : Math.max(1, Math.min(2, spec.bars));
+  const phraseCount = Math.max(1, Math.round(spec.bars / barsPerPhrase));
+  const FORMS = [
+    ['A', 'A2', 'B', 'A3'],
+    ['A', 'B', 'A2', 'C'],
+    ['A', 'A2', 'A3', 'B'],
+    ['A', 'B', 'B2', 'A2'],
+  ];
+  const form = r.pick(FORMS);
+  const KINDS = {
+    A: ['exact', 0], A2: ['sequence', 0], A3: ['sequence', 0],
+    B: ['invert', 0], C: ['retro', 0], B2: ['fragment', 0],
+  };
+
   const events = [];
-  const octave = r.chance(0.25 + mood * 0.5) ? 1 : 0;
-  // Energy trades silence for activity: a still loop rests far more often
-  // than an animated one built from the same material.
-  const restBarChance = Math.max(0.02, Math.min(0.7, c.restBar * (1.7 - lf.energy * 1.4)));
-  const pointillist = c.pointillist || 0;
-  // Kataoka's Lost Woods loop appears to skip a beat, which knocks it out of
-  // phase and makes you lose count. One dropped step does the same here.
-  const slip = c.skipStep && r.chance(c.skipStep) ? r.int(1, 2) : 0;
+  const restPhrase = Math.max(0.02, Math.min(0.5, c.restBar * (1.5 - lf.energy * 1.2)));
 
-  // One vowel per phrase, changing every bar or two rather than per note.
-  let vowel = r.pick(VOWEL_KEYS);
-  for (let bar = 0; bar < spec.bars; bar++) {
-    if (r.chance(restBarChance)) continue;
-    if (bar > 0 && r.chance(0.45)) vowel = r.pick(VOWEL_KEYS);
-    const barStart = bar * spb - slip * bar;
-    const slot = slotAt(harmony.slots, barStart, harmony.cycleSteps);
-    const transpose = bar === 0 ? 0 : r.weighted([[0, 4], [1, 1.5], [-1, 1.5], [2, 1]]);
-    const trim = r.chance(0.3) ? r.int(1, 2) : 0;
+  for (let ph = 0; ph < phraseCount; ph++) {
+    const role = form[ph % form.length];
+    let [kind] = KINDS[role] || ['exact'];
+    // Sequences step somewhere rather than wandering: that directed motion
+    // is what makes a phrase feel like it is going anywhere.
+    const step = r.pick([1, 2, -1, 3, -2]);
+    if (kind === 'sequence' && r.chance(0.25)) kind = 'augment';
+    const shaped = transform(motif, kind, step);
 
-    for (let i = 0; i < motif.length - trim; i++) {
-      const m = motif[i];
-      // An animated loop keeps moving; a still one leaves holes. Dropping
-      // a fixed one note in eight regardless of energy was part of why
-      // everything sounded becalmed.
-      if (r.chance(0.2 - lf.energy * 0.15)) continue;
-      let midi = scalePitch(spec.root, scale, m.degree + transpose + slot.degree, octave) + 12;
-      // Land on a chord tone at the start of a phrase so it feels anchored.
-      if (i === 0) midi = nearestChordTone(midi, slot.notes);
-      if (r.chance(0.07)) midi += 12;
-      // Pointillism: leap an octave instead of stepping, so the line reads
-      // as colour rather than tune.
-      if (pointillist && r.chance(pointillist)) midi += r.pick([-12, 12, 12]);
-      while (midi < 55) midi += 12;
-      while (midi > 95) midi -= 12;
-      events.push({
-        step: ((barStart + m.offset) % total + total) % total,
-        dur: m.dur,
-        midi,
-        vel: m.vel * (bar === 0 ? 1 : 0.9),
-        voice,
-        vowel,
+    // Contour arc across the whole loop: rise toward a high point about two
+    // thirds through, then come back down. Without this a long loop has no
+    // shape at all, which is what makes twenty-four bars feel like one bar
+    // played twenty-four times.
+    const pos = phraseCount > 1 ? ph / (phraseCount - 1) : 0;
+    // Peaks about two thirds through and stays lifted at the edges. A plain
+    // sine returns to zero at both ends, so a two-phrase loop got an arc of
+    // zero at each end -- no arc at all, which is why widening it changed
+    // nothing the first time it was tried.
+    const arc = Math.sin(Math.PI * Math.min(0.97, pos * 0.72 + 0.14)) * (driven ? 4.5 : 3.2);
+    const lift = Math.round(arc) + (kind === 'sequence' ? step : 0);
+
+    for (let bar = 0; bar < barsPerPhrase; bar++) {
+      const absBar = ph * barsPerPhrase + bar;
+      if (absBar >= spec.bars) break;
+      // Rest at the end of a phrase rather than at random: a breath belongs
+      // between sentences.
+      if (bar === barsPerPhrase - 1 && r.chance(restPhrase)) continue;
+      const barStart = absBar * spb;
+      const slot = slotAt(harmony.slots, barStart, harmony.cycleSteps);
+      const lastBarOfPhrase = bar === barsPerPhrase - 1;
+
+      shaped.forEach((m, i) => {
+        if (r.chance(0.2 - lf.energy * 0.15)) return;
+        let midi = scalePitch(spec.root, scale, m.degree + lift + slot.degree, 0) + 12;
+        // Cadence: land the end of a phrase on something stable, and the
+        // end of the loop on the tonic.
+        const isLast = lastBarOfPhrase && i === shaped.length - 1;
+        if (i === 0 || isLast) midi = nearestChordTone(midi, slot.notes);
+        if (isLast && ph === phraseCount - 1) {
+          midi = nearestChordTone(scalePitch(spec.root, scale, 0, 0) + 24, slot.notes);
+        }
+        if (pointillist && r.chance(pointillist)) midi += r.pick([-12, 12, 12]);
+        while (midi < 55) midi += 12;
+        while (midi > 95) midi -= 12;
+        events.push({
+          step: ((barStart + m.offset) % total + total) % total,
+          dur: m.dur,
+          midi,
+          vel: m.vel * (isLast ? 1.05 : 1) * (ph === 0 ? 1 : 0.94),
+          voice,
+          vowel: VOWEL_KEYS[(ph + (kind === 'invert' ? 1 : 0)) % VOWEL_KEYS.length],
+        });
       });
     }
   }

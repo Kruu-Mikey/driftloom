@@ -47,6 +47,13 @@ its own vibrato rate and its own jitter, which is what makes a group read as
 a group rather than as one voice through a chorus pedal. Cost is 34 units
 against a single vowel's 22, not triple.
 
+**Melodic range is still narrow.** After rebuilding melodic development the
+average melody spans about 9.6 semitones, and widening the contour arc did
+not change that figure at all -- so the arc is not what constrains it and the
+real cause is still unidentified. Suspects: `nearestChordTone` pulling phrase
+edges inward, the degree random walk rarely reaching its own limits, or the
+octave wrapping folding wide leaps back. Measure before changing anything.
+
 **A more human whistle.** Agreed as worth doing and never started, so it is
 recorded here rather than lost. The existing `whistle` shares its
 implementation with `moog` -- a triangle through a resonant filter with
