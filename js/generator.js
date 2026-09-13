@@ -8,7 +8,7 @@
 
 import { Rng, randomSeed, seedName } from './rng.js';
 import { SCALES, scalePitch, buildChord, voiceInRange, nearestChordTone, moodWeighted } from './theory.js';
-import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES, blendCharacters } from './characters.js';
+import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES, blendMix, resolveKey } from './characters.js';
 
 export const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 export const LAYER_LABELS = {
@@ -27,23 +27,39 @@ export const STEPS_PER_BAR = 16;
 
 export function newSpec(seed = randomSeed()) {
   const r = new Rng(seed);
-  const characterKey = r.weighted(CHARACTER_WEIGHTS);
-  // Most loops lean on one character, but well over half pull something in
-  // from a second, so the six palettes shade into each other rather than
-  // sitting in six separate boxes.
-  let secondKey = null;
-  let blend = 0;
-  if (r.chance(0.62)) {
-    secondKey = r.weighted(CHARACTER_WEIGHTS.filter(([k]) => k !== characterKey));
-    blend = r.range(0.2, 0.6);
-  }
-  const c = blendCharacters(characterKey, secondKey, blend);
 
-  // The character axis runs from settled to lifted -- reflective, soothing,
-  // peaceful at one end, happy and joyful at the other. Both ends are
-  // wholesome; there is no sombre pole. Skewed upward because the app was
-  // reliably wistful and almost never glad, and it should be able to be both.
-  const mood = c.mood[0] + (c.mood[1] - c.mood[0]) * Math.pow(r.f(), 0.62);
+  // A loop's identity is a weight across profiles, not a choice between
+  // them. Draw a few, give each an exponential weight and normalise: that
+  // produces everything from a single pure profile through to a genuine
+  // four-way blur, with the lopsided mixes commoner than the even ones,
+  // which is what keeps a loop sounding like it is *about* something.
+  const howMany = r.weighted([[1, 2.2], [2, 4], [3, 2.6], [4, 1.2]]);
+  const pool = CHARACTER_WEIGHTS.slice();
+  const mix = {};
+  for (let i = 0; i < howMany && pool.length; i++) {
+    const key = r.weighted(pool);
+    const idx = pool.findIndex(([k]) => k === key);
+    if (idx >= 0) pool.splice(idx, 1);
+    // -log(u) is an exponential draw; normalising a set of them is a
+    // Dirichlet, which spreads weight much more naturally than picking
+    // fractions by hand.
+    mix[key] = -Math.log(1 - r.f() * 0.999) * (i === 0 ? 1.6 : 1);
+  }
+  const total = Object.values(mix).reduce((a, b) => a + b, 0);
+  for (const k of Object.keys(mix)) mix[k] = +(mix[k] / total).toFixed(3);
+
+  const c = blendMix(mix);
+
+  // Feeling is three dials, not one slider. Independent axes let a loop be
+  // glad and unhurried at once, or hushed and restless, instead of sliding
+  // along a single line between two moods.
+  const axis = (range, skew) =>
+    +(range[0] + (range[1] - range[0]) * Math.pow(r.f(), skew)).toFixed(3);
+  const feel = {
+    lift: axis(c.feel.lift, 0.62),     // settled to lifted, skewed bright
+    energy: axis(c.feel.energy, 1),    // still to animated
+    warmth: axis(c.feel.warmth, 0.85), // glassy to warm
+  };
 
   const stepsPerBar = r.weighted(c.stepsPerBar);
   const bars = r.weighted(c.bars);
@@ -51,13 +67,14 @@ export function newSpec(seed = randomSeed()) {
   const spec = {
     seed,
     name: seedName(seed),
-    character: characterKey,
-    character2: secondKey,
-    blend: +blend.toFixed(3),
-    mood: +mood.toFixed(3),
-    bpm: Math.round(r.range(c.bpm[0], c.bpm[1]) + (mood - 0.5) * 6),
+    mix,
+    feel,
+    mood: feel.lift, // kept so older code and saves still read something
+    bpm: Math.round(
+      r.range(c.bpm[0], c.bpm[1]) + (feel.lift - 0.5) * 5 + (feel.energy - 0.5) * 10
+    ),
     root: r.int(0, 11),
-    scale: r.weighted(moodWeighted(c.scales, mood)),
+    scale: r.weighted(moodWeighted(c.scales, feel.lift)),
     bars,
     stepsPerBar,
     swing: r.range(c.swing[0], c.swing[1]),
@@ -70,34 +87,53 @@ export function newSpec(seed = randomSeed()) {
     },
     mutes: { drums: false, bass: false, chords: false, melody: false, texture: false },
     tone: {
-      warmth: r.range(c.tone.warmth[0], c.tone.warmth[1]),
+      warmth: r.range(c.tone.warmth[0], c.tone.warmth[1]) * (0.6 + feel.warmth * 0.6),
       space: r.range(c.tone.space[0], c.tone.space[1]),
       wobble: r.range(c.tone.wobble[0], c.tone.wobble[1]),
     },
   };
 
-  // Eno's trick: give each layer its own loop length, chosen so they do not
-  // share factors. Nothing ever changes, and it never repeats.
   if (c.polymeter) {
-    const pool = r.shuffle(POLY_CYCLES);
+    const cycles = r.shuffle(POLY_CYCLES);
     spec.cycles = {
       drums: null,
-      bass: pool[0] * stepsPerBar,
-      chords: pool[1] * stepsPerBar,
-      melody: pool[2] * stepsPerBar,
-      texture: pool[3] * stepsPerBar,
+      bass: cycles[0] * stepsPerBar,
+      chords: cycles[1] * stepsPerBar,
+      melody: cycles[2] * stepsPerBar,
+      texture: cycles[3] * stepsPerBar,
+    };
+  } else if (c.microLoop && bars >= 8) {
+    // Very short fragments against a longer frame: the loop stays put while
+    // its parts slide, which is how this music changes without changing.
+    const short = r.pick([1, 2, 2, 4]);
+    spec.cycles = {
+      drums: null,
+      bass: short * stepsPerBar,
+      chords: r.pick([2, 4]) * stepsPerBar,
+      melody: r.pick([1, 2, 3]) * stepsPerBar,
+      texture: null,
     };
   }
   return spec;
 }
 
 export function characterOf(spec) {
-  if (!spec.character2 || !spec.blend) return CHARACTERS[spec.character] || CHARACTERS.tape;
-  return blendCharacters(spec.character, spec.character2, spec.blend);
+  if (spec.mix) return blendMix(spec.mix);
+  // Saves from before profiles became weights.
+  const mix = {};
+  mix[resolveKey(spec.character || 'dust')] = 1 - (spec.blend || 0);
+  if (spec.character2 && spec.blend) mix[resolveKey(spec.character2)] = spec.blend;
+  return blendMix(mix);
+}
+
+export function feelOf(spec) {
+  if (spec.feel) return spec.feel;
+  const lift = spec.mood ?? 0.5;
+  return { lift, energy: 0.5, warmth: 0.6 };
 }
 
 export function moodOf(spec) {
-  return spec.mood ?? 0.5;
+  return feelOf(spec).lift;
 }
 
 // Rolling a layer should always give you that layer. If a character almost
@@ -415,7 +451,10 @@ function genMelody(spec, harmony) {
 
   const events = [];
   const octave = r.chance(0.25 + mood * 0.5) ? 1 : 0;
-  const restBarChance = c.restBar;
+  const feel = feelOf(spec);
+  // Energy trades silence for activity: a still loop rests far more often
+  // than an animated one built from the same material.
+  const restBarChance = Math.max(0.02, Math.min(0.7, c.restBar * (1.7 - feel.energy * 1.4)));
   const pointillist = c.pointillist || 0;
   // Kataoka's Lost Woods loop appears to skip a beat, which knocks it out of
   // phase and makes you lose count. One dropped step does the same here.
@@ -483,10 +522,17 @@ function genDrums(spec) {
 
   // A bar of 6/8 is not a bar of 4/4 with four steps missing; it needs its
   // own patterns or the backbeat lands in the wrong place.
-  const kick = spb === 12 ? r.pick(KICK_12) : spb === 20 ? r.pick(KICK_20) : r.pick(KICK_PATTERNS);
+  // A steady four is not one of the boom-bap patterns with extra kicks; it
+  // is a different idea, and the hats move to the offbeats to match.
+  const fourFloor = c.fourFloor && spb === 16 && r.chance(c.fourFloor);
+  const kick = fourFloor
+    ? [0, 4, 8, 12]
+    : spb === 12 ? r.pick(KICK_12) : spb === 20 ? r.pick(KICK_20) : r.pick(KICK_PATTERNS);
   const snare = spb === 12 ? r.pick(SNARE_12) : spb === 20 ? r.pick(SNARE_20) : r.pick(SNARE_PATTERNS);
   const snareVoice = r.weighted([['snare', 3], ['rim', 2], ['clap', 1.5]]);
-  const hatDensity = r.range(c.hatDensity[0], c.hatDensity[1]);
+  const feel = feelOf(spec);
+  const hatDensity = Math.min(1,
+    r.range(c.hatDensity[0], c.hatDensity[1]) * (0.55 + feel.energy * 0.9));
   const hatGrid = r.chance(0.55) ? 2 : 1; // eighths or sixteenths
   const useShaker = r.chance(0.4);
 
@@ -505,7 +551,10 @@ function genDrums(spec) {
     if (r.chance(0.4)) events.push({ step: b + r.int(1, spb - 1), inst: 'rim', vel: 0.22 });
 
     for (let s = 0; s < spb; s += hatGrid) {
-      if (!r.chance(hatDensity)) continue;
+      // Offbeat hats against a steady kick, which is where the lift comes
+      // from in this music.
+      if (fourFloor && s % 4 !== 2) { if (!r.chance(hatDensity * 0.25)) continue; }
+      else if (!r.chance(hatDensity)) continue;
       const open = r.chance(0.08);
       events.push({
         step: b + s,
@@ -518,6 +567,26 @@ function genDrums(spec) {
         if (r.chance(0.6)) events.push({ step: b + s, inst: 'shaker', vel: 0.18 + r.f() * 0.15 });
       }
     }
+    // Stutter rolls: a hit subdivided into a burst of rapidly quietening
+    // repeats. This is the gesture that makes chopped breaks read as
+    // chopped rather than merely fast.
+    if (c.rolls && r.chance(c.rolls)) {
+      const from = r.int(0, spb - 4);
+      const count = r.pick([3, 4, 6, 8]);
+      const inst = r.pick(['snare', 'rim', 'hat', 'kick']);
+      for (let k = 0; k < count; k++) {
+        const step = b + from + Math.floor((k * 4) / count);
+        if (step >= b + spb) break;
+        events.push({
+          step,
+          inst,
+          vel: (0.55 - k * 0.045) * (0.8 + r.f() * 0.4),
+          roll: true,
+          micro: k / count, // fractional offset inside the step
+        });
+      }
+    }
+
     // A small fill to mark the turnaround.
     if (lastBar && r.chance(0.35)) {
       const from = spb - r.int(2, 4);

@@ -47,54 +47,49 @@ pass and never written back.
 so the notes can go to a DAW, a groovebox, or anything with a MIDI in.
 Whatever the browser synth sounds like, the composition itself travels.
 
-## Characters
+## Profiles
 
-One generator making one kind of music gets samey however good the randomness
-is, because the *shape* never changes. A character moves tempo, scale pool,
-instruments, density, metre and form together, so two loops can differ in kind
-rather than only in detail. Each is built from how the real thing works:
+A profile is a set of constraints -- tempo band, scale pool, instruments,
+density, metre, form -- that move together.
 
 | | |
 |---|---|
-| **Tape** | the original lo-fi voice, still the most common draw |
-| **Hyrule** | Kondo. Modes sharing a lowered 7th so bVII-to-I is available, which ends a phrase without finishing it. Harp, ocarina, flute, often 6/8 |
-| **Field** | Breath of the Wild. Sparse piano, long silence, lines that leap octaves, quartal chords, and loops that drop a step so you lose count |
-| **Postcard** | Yoshimura. Rhodes and a hushed pad, no percussion, very slow, Japanese pentatonics, deliberately dry |
-| **Plantasia** | Garson. Monophonic Moog lead with portamento through a resonant filter. Bright and quick |
-| **Airports** | Eno. Layer cycles of coprime lengths that never resynchronise |
+| **Dust** | worn tape; the original voice, still the commonest draw |
+| **Glade** | modal folk. Modes sharing a lowered 7th so bVII-to-I is available; harp, ocarina, flute, often 6/8 |
+| **Thaw** | cold and spacious. Sparse piano, long silence, octave leaps, quartal chords, dropped steps |
+| **Haven** | still and domestic. Rhodes and a hushed pad, no percussion, very slow, deliberately dry |
+| **Bloom** | bright and mechanical. Mono lead with portamento through a resonant filter |
+| **Vapor** | drifting. Coprime layer cycles that never resynchronise |
+| **Halcyon** | warm analogue nostalgia. Fat detuned pads, soft breakbeat, long dub delays |
+| **Clockwork** | prepared piano. Felt-damped, faintly out of tune, the mechanism audible |
+| **Shatter** | fast and fractured. Chopped breaks, stutter rolls, chromatic turns |
+| **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 
-About 60% of loops blend two characters rather than sitting in one box, so
-you get things like an ocarina over an Eno drift, or a Moog lead on a tape
-beat. The blend is stored as two names and a number, and rebuilt
-deterministically, so it still costs nothing to save.
+These are not ten boxes. Every loop draws a **weight across several of
+them** -- an exponential draw per profile, normalised, which is a Dirichlet
+and spreads weight far more naturally than picking fractions by hand. About
+78% of loops blend two to four profiles, with lopsided mixes commoner than
+even ones, so a loop still sounds like it is *about* something. Pools are
+unioned rather than replaced, so a mostly-Dust loop with a little Glade in
+it can still reach for an ocarina.
 
-A **character axis** is sampled per loop and steers scale choice, melodic
-register, the direction of the melodic walk, and whether chords take an
-added ninth -- so those agree with each other instead of pulling apart.
+## Feeling
 
-It runs from settled to lifted: reflective, soothing and peaceful at one
-end, happy and joyful at the other. Neither end is a sad end. The framing is
-sukha to piti, comfort to brightness, rather than gloom to joy. Loops come
-out roughly 40% joyful, 36% happy, 20% peaceful, 4% reflective.
+Three dials, not one slider:
 
-There is deliberately no birdsong or other nature mimicry. Wherever this
-gets played there are already real birds; the job is to complement what is
-outside, not imitate it.
+- **lift** -- settled to lifted. Steers scale choice, register, the
+  direction of the melodic walk, added ninths.
+- **energy** -- still to animated. Steers tempo, hat density, how often bars
+  rest.
+- **warmth** -- glassy to warm. Steers saturation and timbre.
 
-Rolling a layer always produces that layer. A character that almost never
-has drums will still give you drums when you roll the drum track -- silence
-is what Mute is for. Rolling is a revision of the current loop, so it
-replaces it in the history rather than adding an entry; Previous steps
-between loops, not between your own rolls.
+Independent axes let a loop be glad and unhurried at once, or hushed and
+restless, rather than sliding along one line between two moods. The word in
+the readout comes from their combination: serene, exuberant, wistful,
+bustling, reflective, peaceful, happy, easy, restless.
 
-Roughly half of all loops have percussion; the rest are ambient by design.
-Metre is 4/4 about three quarters of the time, 6/8 a fifth, occasionally 5/4.
-
-Two ideas came out of a set of handwritten theory sheets (see
-`docs/theory-sheets.md`): every chord being an extended 13th rather than a
-triad, and the bass sitting on a note that is *not* the chord root. About two
-thirds of loops now use a slash bass. It is the cheapest way to stop harmony
-from settling.
+Neither end of any axis is a sad end. The framing is sukha to piti, comfort
+to brightness, rather than gloom to joy.
 
 ## How it works
 
@@ -135,19 +130,23 @@ Notes worth knowing if you go digging:
 
 ## Playhead
 
-The cursor is driven by a requestAnimationFrame loop reading position off
-the audio clock, not by a setTimeout per step. Timer callbacks drift, arrive
-in bursts and are the first thing a loaded main thread drops, which made the
-playhead wander away from the music.
+`AudioContext.currentTime` is the time of audio handed to the output, not of
+audio arriving at the ear. The gap is the output latency, which on Android
+can exceed 300ms and changes the moment Bluetooth headphones connect.
+Lighting the cursor at `currentTime` therefore runs ahead of the music by an
+unknown amount, and asking the user to dial that in by hand is not a fix.
 
-It also only repaints the two cells that changed. It used to rewrite every
-cell in every layer on every step -- well over a hundred class writes
-several times a second, each forcing a style recalculation.
+`getOutputTimestamp()` exists for exactly this. It returns a correlated
+pair: the audio-clock time of the sample being played *at the output*, and
+the performance-clock time it happened. Interpolating from that pair with
+`performance.now()` gives true playback position, self-correcting as latency
+changes underneath. The implied latency is smoothed rather than the
+position, so the cursor never jumps backwards on a wobbly measurement.
+Falls back to `outputLatency` / `baseLatency` if the timestamp is unusable.
 
-If it still reads early or late on your device, **Playhead sync** in the
-Sound panel shifts it by up to 300ms either way. Audio scheduled at a given
-time is heard one output latency later, and on Android that can be over
-300ms, so the right value is device-specific.
+The cursor repaints on animation frames and touches only the two cells that
+changed. A manual trim survives in Diagnostics for hardware that reports
+nothing usable; it should never be needed.
 
 ## Tests
 

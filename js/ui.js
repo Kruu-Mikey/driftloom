@@ -1,5 +1,5 @@
 import { LAYERS, LAYER_LABELS, STEPS_PER_BAR } from './generator.js';
-import { CHARACTERS } from './characters.js';
+import { CHARACTERS, resolveKey } from './characters.js';
 import { NOTE_NAMES, SCALES } from './theory.js';
 
 export const el = (id) => document.getElementById(id);
@@ -22,19 +22,55 @@ export function buildPlayhead(steps = STEPS_PER_BAR) {
 
 const METER = { 12: '6/8', 16: '4/4', 20: '5/4', 14: '7/8' };
 
+// Feeling is three dials, so the word has to come from their combination
+// rather than from one of them. Lift says whether it is glad or settled,
+// energy whether it is busy or still, and the pair together is what people
+// actually mean when they name a mood.
+function feelWord(feel) {
+  const { lift, energy } = feel;
+  const high = lift > 0.66;
+  const mid = lift > 0.38;
+  if (energy > 0.68) {
+    if (high) return 'exuberant';
+    if (mid) return 'bustling';
+    return 'restless';
+  }
+  if (energy > 0.36) {
+    if (high) return 'happy';
+    if (mid) return 'easy';
+    return 'wistful';
+  }
+  if (high) return 'serene';
+  if (mid) return 'peaceful';
+  return 'reflective';
+}
+
+// Name the blend by its weights: the dominant profile, then anything with a
+// real share of the sound, so the label describes the mixture rather than
+// pretending the loop belongs to one box.
+function mixLabel(spec) {
+  if (!spec.mix) {
+    const c = CHARACTERS[resolveKey(spec.character || 'dust')];
+    return c ? c.label : 'Dust';
+  }
+  const parts = Object.entries(spec.mix)
+    .map(([k, w]) => [resolveKey(k), w])
+    .filter(([, w]) => w >= 0.12)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([k]) => CHARACTERS[k].label);
+  return parts.join(' / ') || 'Dust';
+}
+
 export function renderReadout(spec, pattern) {
   el('loopName').textContent = spec.name;
-  const character = CHARACTERS[spec.character];
   const key = `${NOTE_NAMES[spec.root]} ${SCALES[spec.scale].label}`;
   const meter = METER[spec.stepsPerBar || 16] || `${spec.stepsPerBar}/16`;
-  let name = character ? character.label : 'Tape';
-  if (spec.character2 && spec.blend) {
-    const second = CHARACTERS[spec.character2];
-    if (second) name = `${name}/${second.label}`;
-  }
-  const bits = [name, key, `${spec.bpm} bpm`, meter, `${spec.bars} bars`];
-  const mood = spec.mood ?? 0.5;
-  bits.push(mood > 0.78 ? 'joyful' : mood > 0.6 ? 'happy' : mood > 0.4 ? 'peaceful' : 'reflective');
+  const feel = spec.feel || { lift: spec.mood ?? 0.5, energy: 0.5, warmth: 0.6 };
+  const bits = [
+    mixLabel(spec), key, `${spec.bpm} bpm`, meter,
+    `${spec.bars} bars`, feelWord(feel),
+  ];
   if (pattern && pattern.form) bits.push('airy');
   if (spec.cycles) bits.push('drifting');
   el('loopDetail').textContent = bits.join(' · ');

@@ -1,36 +1,19 @@
-// Characters.
+// Sound profiles.
 //
-// One generator making one kind of music gets samey no matter how good the
-// randomness is, because the *shape* never changes: same tempo band, same
-// instruments, same density, same four bars of 4/4. A character is a set of
-// constraints that moves all of those together, so two loops can differ in
-// kind rather than just in detail.
+// A profile is a set of constraints -- tempo band, scale pool, instruments,
+// density, metre, form -- that move together. On their own they would be ten
+// boxes. They are not used that way: every loop draws a *weight* across
+// several of them, so the palette is a continuous space rather than ten
+// points, and a loop can be mostly one thing with three others colouring it.
 //
-// Each is built from how the real thing actually works, not from a vibe:
-//
-//  tape       the original lo-fi voice. Weighted highest so the app still
-//             mostly makes what it already made.
-//  hyrule     Koji Kondo. Modes sharing a lowered seventh (Mixolydian,
-//             Dorian, Aeolian) so bVII-to-I is available, which is the move
-//             that makes a phrase end without sounding finished. Harp,
-//             ocarina, flute. Often in 6/8.
-//  field      Breath of the Wild. Sparse piano, long silence, pointillistic
-//             lines that leap octaves, quartal harmony, and loops that
-//             occasionally drop a step so you lose count of the beat.
-//  postcard   Hiroshi Yoshimura. Rhodes and a hushed pad, no percussion at
-//             all, very slow, Japanese pentatonics. Deliberately dry: the
-//             records have next to no reverb on them.
-//  plantasia  Mort Garson. Monophonic Moog lead with portamento through a
-//             resonant filter. Bright, major, quick and a bit silly.
-//  airports   Brian Eno. Layer cycles of coprime lengths that never come
-//             back into sync, so a handful of fixed elements keep
-//             recombining. Long tones, no pulse.
+// Names are deliberately about the sound rather than where it came from.
 
 export const CHARACTERS = {
-  tape: {
-    level: 1.0,
-    label: 'Tape',
-    weight: 3.8,
+  // Worn tape. The original voice of the app, and still the commonest draw.
+  dust: {
+    label: 'Dust',
+    weight: 3.0,
+    level: 1.05,
     bpm: [61, 88],
     stepsPerBar: [[16, 1]],
     bars: [[4, 7], [2, 2], [8, 3], [16, 1.2]],
@@ -44,23 +27,25 @@ export const CHARACTERS = {
     ],
     drums: 0.9,
     hatDensity: [0.15, 0.85],
-    chordVoices: [['keys', 5], ['pad', 3], ['both', 2]],
+    chordVoices: [['keys', 5], ['pad', 3]],
     melodyVoices: [['pluck', 3], ['bell', 2], ['keys', 2], ['saw', 1]],
     bassStyles: [['held', 3], ['pulse', 3], ['dub', 2.5], ['walk', 1.5], ['sparse', 2]],
     bassVoices: [['sub', 3], ['round', 2], ['pluckbass', 2], ['moogbass', 1.5]],
     textures: [['bells', 3], ['swell', 2], ['drops', 2], ['chime', 1.5], ['wind', 0.7], ['none', 2]],
-    mood: [0.2, 0.8],
     restBar: 0.22,
     chordSize: [[3, 3], [4, 4], [2, 1]],
     tone: { warmth: [0.35, 0.9], space: [0.25, 0.8], wobble: [0.1, 0.7] },
+    feel: { lift: [0.2, 0.8], energy: [0.3, 0.7], warmth: [0.5, 0.95] },
   },
 
-  hyrule: {
+  // Modal folk. Modes sharing a lowered seventh, so bVII-to-I is available
+  // and a phrase can end without sounding finished. Harp, ocarina, flute.
+  glade: {
+    label: 'Glade',
+    weight: 2.0,
     level: 0.8,
-    label: 'Hyrule',
-    weight: 2.1,
     bpm: [74, 112],
-    stepsPerBar: [[16, 2], [12, 3]], // 4/4 and 6/8
+    stepsPerBar: [[16, 2], [12, 3]],
     bars: [[4, 5], [8, 3], [2, 1], [16, 1.5]],
     airy: 0.35,
     swing: [0, 0.1],
@@ -76,19 +61,21 @@ export const CHARACTERS = {
     bassStyles: [['held', 3], ['pulse', 2], ['walk', 2], ['sparse', 1]],
     bassVoices: [['pluckbass', 3], ['round', 3], ['sub', 1.5], ['fifths', 1]],
     textures: [['bells', 3], ['chime', 2.5], ['swell', 2], ['drops', 1], ['wind', 0.4], ['none', 1.5]],
-    mood: [0.45, 1],
     restBar: 0.14,
     chordSize: [[3, 4], [4, 3]],
-    flatSeven: 0.45,   // chance a progression reaches for bVII
+    flatSeven: 0.45,
     tone: { warmth: [0.2, 0.5], space: [0.45, 0.85], wobble: [0.05, 0.3] },
+    feel: { lift: [0.45, 1], energy: [0.45, 0.85], warmth: [0.35, 0.75] },
   },
 
-  field: {
-    level: 0.42,
-    label: 'Field',
-    weight: 1.9,
+  // Cold and spacious. Sparse piano, long silence, lines that leap octaves,
+  // quartal chords, and loops that drop a step so you lose count.
+  thaw: {
+    label: 'Thaw',
+    weight: 1.8,
+    level: 0.68,
     bpm: [50, 72],
-    stepsPerBar: [[16, 3], [12, 1], [20, 1]], // sometimes 5/4
+    stepsPerBar: [[16, 3], [12, 1], [20, 1]],
     bars: [[4, 2.5], [8, 3], [6, 1], [3, 1], [16, 3], [24, 1.5]],
     airy: 0.75,
     swing: [0, 0.06],
@@ -104,19 +91,21 @@ export const CHARACTERS = {
     bassStyles: [['sparse', 4], ['held', 2]],
     bassVoices: [['round', 3], ['fifths', 2.5], ['sub', 1]],
     textures: [['swell', 3], ['chime', 2.5], ['bells', 2.5], ['drops', 1.2], ['wind', 1], ['none', 2]],
-    mood: [0.35, 0.9],
     restBar: 0.45,
     chordSize: [[3, 2], [4, 3]],
-    pointillist: 0.5,  // leap an octave rather than step
-    skipStep: 0.35,    // drop a step so the loop slips out of phase
+    pointillist: 0.5,
+    skipStep: 0.35,
     quartal: 0.5,
     tone: { warmth: [0.15, 0.4], space: [0.6, 0.95], wobble: [0, 0.15] },
+    feel: { lift: [0.3, 0.85], energy: [0.05, 0.35], warmth: [0.15, 0.5] },
   },
 
-  postcard: {
-    level: 0.4,
-    label: 'Postcard',
-    weight: 1.7,
+  // Still and domestic. Rhodes and a hushed pad, no percussion, very slow,
+  // Japanese pentatonics. Deliberately dry.
+  haven: {
+    label: 'Haven',
+    weight: 1.6,
+    level: 0.78,
     bpm: [46, 66],
     stepsPerBar: [[16, 3], [12, 1]],
     bars: [[4, 2.5], [8, 3], [2, 1], [16, 2.5], [24, 1.2]],
@@ -134,18 +123,18 @@ export const CHARACTERS = {
     bassStyles: [['sparse', 4], ['held', 3]],
     bassVoices: [['round', 3], ['rhodesbass', 2.5], ['fifths', 2]],
     textures: [['swell', 3], ['chime', 2.5], ['bells', 2], ['drops', 0.8], ['wind', 0.8], ['none', 2]],
-    mood: [0.5, 1],
     restBar: 0.4,
     chordSize: [[3, 3], [4, 2]],
-    // The records are close-miked and almost dry. Resist the urge to drown
-    // this in reverb; the restraint is the point.
     tone: { warmth: [0.35, 0.6], space: [0.2, 0.45], wobble: [0, 0.2] },
+    feel: { lift: [0.45, 1], energy: [0.05, 0.4], warmth: [0.5, 0.85] },
   },
 
-  plantasia: {
-    level: 0.5,
-    label: 'Plantasia',
+  // Bright and mechanical. Monophonic lead with portamento through a
+  // resonant filter. Quick, major, slightly silly.
+  bloom: {
+    label: 'Bloom',
     weight: 1.5,
+    level: 0.62,
     bpm: [84, 118],
     stepsPerBar: [[16, 3], [12, 2]],
     bars: [[4, 5], [8, 2], [2, 2], [16, 1]],
@@ -162,17 +151,18 @@ export const CHARACTERS = {
     bassStyles: [['pulse', 4], ['walk', 2], ['dub', 1.5]],
     bassVoices: [['moogbass', 4], ['sub', 2], ['pluckbass', 1.5]],
     textures: [['bells', 2], ['drops', 2], ['chime', 1.5], ['swell', 1.5], ['wind', 0.3], ['none', 2]],
-    mood: [0.6, 1],
     restBar: 0.1,
     chordSize: [[3, 4], [4, 2]],
-    glide: 0.55,       // portamento, the Moog giveaway
+    glide: 0.55,
     tone: { warmth: [0.3, 0.6], space: [0.3, 0.6], wobble: [0.15, 0.5] },
+    feel: { lift: [0.6, 1], energy: [0.55, 0.95], warmth: [0.4, 0.8] },
   },
 
-  airports: {
-    level: 0.42,
-    label: 'Airports',
+  // Drifting. Layer cycles of coprime lengths that never resynchronise.
+  vapor: {
+    label: 'Vapor',
     weight: 1.3,
+    level: 0.64,
     bpm: [40, 58],
     stepsPerBar: [[16, 1]],
     bars: [[4, 1], [8, 2], [16, 2.5], [32, 1.5]],
@@ -189,67 +179,246 @@ export const CHARACTERS = {
     bassStyles: [['sparse', 5]],
     bassVoices: [['fifths', 3], ['round', 3], ['rhodesbass', 1.5]],
     textures: [['swell', 4], ['chime', 2], ['bells', 1.5], ['wind', 1], ['drops', 0.5], ['none', 1.5]],
-    mood: [0.4, 0.95],
     restBar: 0.5,
     chordSize: [[3, 3], [4, 3]],
-    polymeter: true,   // coprime layer cycles that never resynchronise
+    polymeter: true,
     tone: { warmth: [0.2, 0.45], space: [0.75, 1], wobble: [0, 0.1] },
+    feel: { lift: [0.35, 0.9], energy: [0, 0.25], warmth: [0.25, 0.6] },
+  },
+
+  // Warm analogue nostalgia. Fat detuned pads, a soft breakbeat, long dub
+  // delays, simple diatonic melodies sitting well back in the mix.
+  halcyon: {
+    label: 'Halcyon',
+    weight: 1.7,
+    level: 0.72,
+    bpm: [96, 132],
+    stepsPerBar: [[16, 1]],
+    bars: [[4, 4], [8, 4], [16, 2]],
+    airy: 0.3,
+    swing: [0, 0.12],
+    scales: [
+      ['aeolian', 3], ['dorian', 2.5], ['ionian', 2], ['minorPent', 2],
+      ['lydian', 1.5], ['mixolydian', 1.5], ['harmonicMinor', 0.7],
+    ],
+    drums: 0.75,
+    hatDensity: [0.3, 0.8],
+    chordVoices: [['analogpad', 5], ['pad', 2], ['keys', 1.5]],
+    melodyVoices: [['analoglead', 3], ['sine', 2], ['bell', 1.5], ['keys', 1.5]],
+    bassStyles: [['pulse', 3], ['held', 2.5], ['dub', 2]],
+    bassVoices: [['round', 3], ['sub', 2.5], ['moogbass', 1.5]],
+    textures: [['swell', 3], ['chime', 2], ['bells', 1.5], ['drops', 1], ['none', 2]],
+    restBar: 0.2,
+    chordSize: [[4, 4], [3, 3]],
+    dubEcho: 0.5,
+    tone: { warmth: [0.5, 0.85], space: [0.5, 0.85], wobble: [0.2, 0.55] },
+    feel: { lift: [0.25, 0.7], energy: [0.4, 0.8], warmth: [0.55, 1] },
+  },
+
+  // Prepared piano. Felt-damped, slightly detuned, faintly mechanical.
+  // No percussion; the instrument's own knocks are the percussion.
+  clockwork: {
+    label: 'Clockwork',
+    weight: 1.5,
+    level: 0.88,
+    bpm: [54, 84],
+    stepsPerBar: [[16, 3], [12, 2]],
+    bars: [[4, 3], [8, 3], [16, 1.5], [2, 1]],
+    airy: 0.35,
+    swing: [0, 0.14],
+    scales: [
+      ['aeolian', 3], ['ionian', 2.5], ['dorian', 2], ['harmonicMinor', 1.5],
+      ['lydian', 1.5], ['majorPent', 1.2], ['phrygian', 0.8],
+    ],
+    drums: 0.1,
+    hatDensity: [0.05, 0.25],
+    chordVoices: [['prepared', 5], ['musicbox', 1.5]],
+    melodyVoices: [['prepared', 4], ['musicbox', 2.5], ['celeste', 2]],
+    bassStyles: [['held', 3], ['sparse', 2.5], ['walk', 1.5]],
+    bassVoices: [['pluckbass', 3], ['round', 2.5], ['rhodesbass', 1.5]],
+    textures: [['chime', 3], ['bells', 2], ['drops', 1.5], ['swell', 1], ['none', 2.5]],
+    restBar: 0.24,
+    chordSize: [[3, 3], [4, 3]],
+    tone: { warmth: [0.3, 0.6], space: [0.35, 0.7], wobble: [0.1, 0.4] },
+    feel: { lift: [0.2, 0.75], energy: [0.2, 0.6], warmth: [0.3, 0.7] },
+  },
+
+  // Fast and fractured. Chopped breaks, stutter rolls, chromatic turns.
+  // The loudest thing here, and rare enough to stay a surprise.
+  shatter: {
+    label: 'Shatter',
+    weight: 0.9,
+    level: 0.72,
+    bpm: [140, 178],
+    stepsPerBar: [[16, 3], [12, 1]],
+    bars: [[2, 3], [4, 4], [8, 1.5]],
+    airy: 0.1,
+    swing: [0, 0.08],
+    scales: [
+      ['harmonicMinor', 2.5], ['phrygian', 2], ['aeolian', 2],
+      ['hirajoshi', 1.5], ['wholeTone', 1.2], ['phrygianDominant', 1.5],
+      ['dorian', 1.2],
+    ],
+    drums: 1,
+    hatDensity: [0.5, 1],
+    chordVoices: [['prepared', 3], ['keys', 2], ['pad', 1.5]],
+    melodyVoices: [['musicbox', 2.5], ['prepared', 2], ['pluck', 2], ['saw', 1.5]],
+    bassStyles: [['pulse', 3], ['dub', 2.5], ['held', 1.5]],
+    bassVoices: [['sub', 3], ['moogbass', 2.5], ['pluckbass', 1.5]],
+    textures: [['drops', 3], ['chime', 1.5], ['bells', 1], ['none', 2]],
+    restBar: 0.12,
+    chordSize: [[3, 3], [4, 2]],
+    rolls: 0.6,
+    tone: { warmth: [0.25, 0.6], space: [0.2, 0.5], wobble: [0.05, 0.3] },
+    feel: { lift: [0.15, 0.7], energy: [0.75, 1], warmth: [0.25, 0.6] },
+  },
+
+  // Hypnotic pulse. A steady four, very short looping fragments, and the
+  // whole mix breathing against the kick. Change arrives by accumulation.
+  undertow: {
+    label: 'Undertow',
+    weight: 1.6,
+    level: 0.72,
+    bpm: [112, 128],
+    stepsPerBar: [[16, 1]],
+    bars: [[8, 3], [16, 3], [4, 2], [32, 1]],
+    airy: 0.3,
+    swing: [0, 0.06],
+    scales: [
+      ['aeolian', 3], ['dorian', 3], ['minorPent', 2], ['ionian', 1.5],
+      ['mixolydian', 1.5], ['majorPent', 1.2],
+    ],
+    drums: 1,
+    hatDensity: [0.45, 0.9],
+    chordVoices: [['stab', 4], ['analogpad', 3], ['pad', 2]],
+    melodyVoices: [['stab', 3], ['sine', 2], ['analoglead', 2], ['bell', 1.5]],
+    bassStyles: [['pulse', 5], ['held', 2]],
+    bassVoices: [['round', 3], ['sub', 3], ['moogbass', 1.5]],
+    textures: [['swell', 3], ['chime', 1.5], ['drops', 1.5], ['none', 2]],
+    restBar: 0.15,
+    chordSize: [[3, 3], [4, 3]],
+    fourFloor: 0.85,
+    pump: 0.55,
+    microLoop: true,
+    tone: { warmth: [0.4, 0.75], space: [0.45, 0.8], wobble: [0.1, 0.4] },
+    feel: { lift: [0.25, 0.75], energy: [0.55, 0.9], warmth: [0.4, 0.8] },
   },
 };
 
-export const CHARACTER_WEIGHTS = Object.entries(CHARACTERS).map(([k, c]) => [k, c.weight]);
+// Saved loops from before the rename still resolve.
+export const LEGACY_NAMES = {
+  tape: 'dust',
+  hyrule: 'glade',
+  field: 'thaw',
+  postcard: 'haven',
+  plantasia: 'bloom',
+  airports: 'vapor',
+};
 
-// Cycle lengths in bars for the Eno character. Coprime, so the combination
-// only returns to its starting alignment after their product: five layers
-// at 3, 4, 5, 7 and 8 bars restate together once every 840 bars, which at
-// these tempos is several hours.
-export const POLY_CYCLES = [3, 4, 5, 7, 8, 9, 11];
-
-
-// ---------------------------------------------------------------- blending
-
-const NUM_RANGES = ['bpm', 'swing', 'hatDensity'];
-const NUM_SCALARS = ['drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist', 'skipStep', 'glide', 'airy'];
-const WEIGHTED = ['scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices', 'bassStyles', 'bassVoices', 'chordSize', 'textures'];
-
-const lerp = (a, b, t) => a + (b - a) * t;
-
-function blendWeighted(a = [], b = [], mix) {
-  // Both pools stay available; the mix only changes how likely each is. That
-  // is what lets a Hyrule/Airports loop reach for an ocarina or a choir.
-  const out = new Map();
-  for (const [k, w] of a) out.set(k, (out.get(k) || 0) + w * (1 - mix));
-  for (const [k, w] of b) out.set(k, (out.get(k) || 0) + w * mix);
-  return [...out].filter(([, w]) => w > 0.001);
+export function resolveKey(key) {
+  if (CHARACTERS[key]) return key;
+  return LEGACY_NAMES[key] || 'dust';
 }
 
-// A pure function of (a, b, mix), so a spec only has to store two names and a
-// number and the blend can be rebuilt identically every time.
-export function blendCharacters(keyA, keyB, mix) {
-  const a = CHARACTERS[keyA] || CHARACTERS.tape;
-  if (!keyB || keyB === keyA) return a;
-  const b = CHARACTERS[keyB] || CHARACTERS.tape;
+export const CHARACTER_WEIGHTS = Object.entries(CHARACTERS).map(([k, c]) => [k, c.weight]);
 
-  const out = { label: `${a.label}/${b.label}`, blended: true };
-  for (const k of NUM_RANGES) {
-    const av = a[k] || [0, 0];
-    const bv = b[k] || [0, 0];
-    out[k] = [lerp(av[0], bv[0], mix), lerp(av[1], bv[1], mix)];
+export const POLY_CYCLES = [3, 4, 5, 7, 8, 9, 11];
+
+// ---------------------------------------------------------------- mixing
+
+const NUM_RANGES = ['bpm', 'swing', 'hatDensity'];
+const NUM_SCALARS = [
+  'drums', 'restBar', 'level', 'flatSeven', 'quartal', 'pointillist',
+  'skipStep', 'glide', 'airy', 'pump', 'rolls', 'fourFloor', 'dubEcho',
+];
+const WEIGHTED = [
+  'scales', 'stepsPerBar', 'bars', 'chordVoices', 'melodyVoices',
+  'bassStyles', 'bassVoices', 'chordSize', 'textures',
+];
+const FEEL_AXES = ['lift', 'energy', 'warmth'];
+
+function normalise(mix) {
+  const out = {};
+  let total = 0;
+  for (const [k, w] of Object.entries(mix)) {
+    if (w > 0) total += w;
   }
+  if (!total) return { dust: 1 };
+  for (const [k, w] of Object.entries(mix)) {
+    if (w > 0) out[resolveKey(k)] = (out[resolveKey(k)] || 0) + w / total;
+  }
+  return out;
+}
+
+// Combine any number of profiles by weight. Pure, so a spec only stores the
+// weights and the blend rebuilds identically every time.
+export function blendMix(mix) {
+  const w = normalise(mix);
+  const keys = Object.keys(w);
+  if (keys.length === 1) return CHARACTERS[keys[0]];
+
+  const out = { blended: true };
+  out.label = keys
+    .slice()
+    .sort((a, b) => w[b] - w[a])
+    .map((k) => CHARACTERS[k].label)
+    .join('/');
+
+  for (const k of NUM_RANGES) {
+    let lo = 0;
+    let hi = 0;
+    for (const key of keys) {
+      const v = CHARACTERS[key][k] || [0, 0];
+      lo += v[0] * w[key];
+      hi += v[1] * w[key];
+    }
+    out[k] = [lo, hi];
+  }
+
   for (const k of NUM_SCALARS) {
-    const av = a[k] ?? 0;
-    const bv = b[k] ?? 0;
-    const v = lerp(av, bv, mix);
+    let v = 0;
+    for (const key of keys) v += (CHARACTERS[key][k] ?? 0) * w[key];
     if (v) out[k] = v;
   }
-  for (const k of WEIGHTED) out[k] = blendWeighted(a[k], b[k], mix);
+
+  // Pools are unioned, not replaced, so a mostly-Dust loop with a little
+  // Glade in it can still reach for an ocarina.
+  for (const k of WEIGHTED) {
+    const acc = new Map();
+    for (const key of keys) {
+      for (const [name, weight] of CHARACTERS[key][k] || []) {
+        acc.set(name, (acc.get(name) || 0) + weight * w[key]);
+      }
+    }
+    out[k] = [...acc].filter(([, v]) => v > 0.001);
+  }
+
   out.tone = {};
   for (const k of ['warmth', 'space', 'wobble']) {
-    out.tone[k] = [lerp(a.tone[k][0], b.tone[k][0], mix), lerp(a.tone[k][1], b.tone[k][1], mix)];
+    let lo = 0;
+    let hi = 0;
+    for (const key of keys) {
+      lo += CHARACTERS[key].tone[k][0] * w[key];
+      hi += CHARACTERS[key].tone[k][1] * w[key];
+    }
+    out.tone[k] = [lo, hi];
   }
-  out.mood = [lerp(a.mood[0], b.mood[0], mix), lerp(a.mood[1], b.mood[1], mix)];
-  // Polymeter is all or nothing; it goes with whichever side is dominant.
-  out.polymeter = mix < 0.5 ? !!a.polymeter : !!b.polymeter;
-  out.level = lerp(a.level ?? 1, b.level ?? 1, mix);
+
+  out.feel = {};
+  for (const axis of FEEL_AXES) {
+    let lo = 0;
+    let hi = 0;
+    for (const key of keys) {
+      const range = CHARACTERS[key].feel[axis];
+      lo += range[0] * w[key];
+      hi += range[1] * w[key];
+    }
+    out.feel[axis] = [lo, hi];
+  }
+
+  // All-or-nothing traits go to whichever profile dominates.
+  const lead = keys.reduce((a, b) => (w[a] >= w[b] ? a : b));
+  out.polymeter = !!CHARACTERS[lead].polymeter;
+  out.microLoop = !!CHARACTERS[lead].microLoop;
   return out;
 }

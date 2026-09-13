@@ -180,6 +180,13 @@ export class Synth {
     // provide the atmosphere without adding an audible hiss.
 
     // Per-layer channels, each with its own send amounts.
+    // Everything except the drums passes through here, so the kick can
+    // press the rest of the mix down and let it breathe back. Without that
+    // movement a steady four-to-the-floor is just a thud on top of a pad.
+    this.pumpBus = ctx.createGain();
+    this.pumpBus.gain.value = 1;
+    this.pumpBus.connect(this.preBus);
+
     this.channels = {};
     const cfg = {
       drums: { gain: 0.82, verb: 0.1, echo: 0.05 },
@@ -195,7 +202,7 @@ export class Synth {
       verb.gain.value = c.verb;
       const echo = ctx.createGain();
       echo.gain.value = c.echo;
-      g.connect(this.preBus);
+      g.connect(name === 'drums' ? this.preBus : this.pumpBus);
       g.connect(verb).connect(this.reverbIn);
       g.connect(echo).connect(this.echoIn);
       this.channels[name] = { gain: g, verb, echo, base: c };
@@ -231,6 +238,15 @@ export class Synth {
   restoreTails(time) {
     this.tails.gain.cancelScheduledValues(time);
     this.tails.gain.setTargetAtTime(1, time, 0.08);
+  }
+
+  // Called on each kick when the profile asks for it.
+  duck(time, amount = 0.5, recover = 0.24) {
+    if (!amount) return;
+    const g = this.pumpBus.gain;
+    g.cancelScheduledValues(time);
+    g.setValueAtTime(Math.max(0.1, 1 - amount), time);
+    g.linearRampToValueAtTime(1, time + recover);
   }
 
   setEchoTime(seconds) {
@@ -705,6 +721,117 @@ export class Synth {
       case 'piano': {
         this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002 });
         this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4 });
+        return;
+      }
+
+
+      // Fat detuned analogue pad. Three sawtooths a few cents apart beat
+      // against each other; that slow phasing is the whole sound, and it is
+      // why one oscillator never sounds like this however it is filtered.
+      case 'analogpad': {
+        if (!this._budget(time)) return;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = 1.6;
+        lp.frequency.setValueAtTime(Math.min(900, f * 3), time);
+        lp.frequency.linearRampToValueAtTime(Math.min(2600, f * 6), time + Math.min(2, dur * 0.6));
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(vel * 0.17, time + Math.min(0.9, dur * 0.3));
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.75, dur * 0.3 + 0.25);
+        for (const cents of [-11, 0, 9]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.value = f;
+          o.detune.value = cents;
+          o.connect(lp);
+          o.start(time);
+          o.stop(time + dur + 1.6);
+        }
+        lp.connect(g).connect(dest);
+        this._release(time, dur + 1.6);
+        return;
+      }
+
+      case 'analoglead': {
+        if (!this._budget(time)) return;
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = 5;
+        lp.frequency.setValueAtTime(Math.min(5000, f * 8), time);
+        lp.frequency.exponentialRampToValueAtTime(Math.max(300, f * 2.4), time + Math.max(0.2, dur * 0.7));
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(vel * 0.16, time + 0.03);
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.18);
+        for (const cents of [-7, 6]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.value = f;
+          o.detune.value = cents;
+          o.connect(lp);
+          o.start(time);
+          o.stop(time + dur + 0.8);
+        }
+        lp.connect(g).connect(dest);
+        this._release(time, dur + 0.8);
+        return;
+      }
+
+      // Prepared piano: felt between the hammers and the strings. The tone
+      // loses its upper partials and shortens, and you hear the mechanism --
+      // a wooden knock alongside the note rather than underneath it.
+      case 'prepared': {
+        this.fm(midi, time, dur * 0.7, vel * 0.85, {
+          out: dest, ratio: 1, index: 200, decay: 0.1, attack: 0.002,
+        });
+        if (!this._budget(time)) return;
+        const knock = this._noiseSource(time, 0.05);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = 220 + Math.random() * 180;
+        bp.Q.value = 3.5;
+        const kg = ctx.createGain();
+        kg.gain.setValueAtTime(vel * 0.13, time);
+        kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+        knock.connect(bp).connect(kg).connect(dest);
+        // A touch of detuning: nothing prepared stays in tune.
+        this.fm(midi, time + 0.004, dur * 0.45, vel * 0.2, {
+          out: dest, ratio: 1, index: 90, decay: 0.08, detune: 9,
+        });
+        this._release(time, dur + 0.4);
+        return;
+      }
+
+      case 'celeste':
+        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 4, index: 200, decay: 0.5 });
+        return;
+
+      // Short filtered chord stab. The repeating fragment that hypnotic
+      // house is built from: too brief to be a chord, too pitched to be a
+      // drum, and it survives being heard a thousand times.
+      case 'stab': {
+        if (!this._budget(time)) return;
+        const len = Math.min(dur, 0.22);
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(Math.min(3400, f * 3.2), time);
+        bp.Q.value = 2.2;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.006);
+        g.gain.exponentialRampToValueAtTime(0.0001, time + len);
+        for (const cents of [-6, 7]) {
+          const o = ctx.createOscillator();
+          o.type = 'sawtooth';
+          o.frequency.value = f;
+          o.detune.value = cents;
+          o.connect(bp);
+          o.start(time);
+          o.stop(time + len + 0.1);
+        }
+        bp.connect(g).connect(dest);
+        this._release(time, len + 0.2);
         return;
       }
 

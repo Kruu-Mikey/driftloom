@@ -5,10 +5,9 @@
 // The actual note times are absolute Web Audio clock times, which are
 // sample-accurate. Standard two-clock pattern.
 
-import { render, drift, LAYERS } from './generator.js';
+import { render, drift, LAYERS, characterOf } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
 import { Clock } from './clock.js';
-import { CHARACTERS } from './characters.js';
 
 // While you are looking at it, a short lookahead keeps mutes and re-rolls
 // feeling immediate. Once the page is hidden the timer may be throttled to
@@ -47,15 +46,51 @@ export class Engine {
     this.totalTicks = 0;
     this.tailsDucked = false;
     this.visualQueue = [];
-    // Positive values show the cursor later. Audio scheduled at time T is
-    // heard one output-latency afterwards, and that latency is large and
-    // very device-dependent on Android, so this is adjustable.
-    this.visualOffset = 0;
+    this.visualOffset = 0;   // optional manual trim, normally zero
+    this.latency = null;     // measured, smoothed, seconds
+  }
+
+  // What the listener is hearing right now, on the audio clock.
+  //
+  // ctx.currentTime is the time of audio being handed to the output, not of
+  // audio arriving at the ear; the gap is the output latency, which on
+  // Android can exceed 300ms and varies by device, buffer size, and whether
+  // headphones or Bluetooth are connected. Lighting the cursor at
+  // currentTime therefore runs ahead of the music by an unknown amount, and
+  // asking the user to dial that in by hand is not a fix.
+  //
+  // getOutputTimestamp exists for exactly this. It returns a correlated
+  // pair: the audio-clock time of the sample being played at the output,
+  // and the performance-clock time it happened. Interpolating from that pair
+  // with performance.now() gives the true playback position, self-correcting
+  // as latency changes underneath us -- which it does the moment Bluetooth
+  // headphones connect.
+  heardTime() {
+    const ctx = this.ctx;
+    let heard = null;
+    if (typeof ctx.getOutputTimestamp === 'function') {
+      const ts = ctx.getOutputTimestamp();
+      if (ts && ts.contextTime > 0 && ts.performanceTime > 0) {
+        const since = (performance.now() - ts.performanceTime) / 1000;
+        // A stale timestamp would otherwise extrapolate without bound.
+        heard = ts.contextTime + Math.max(0, Math.min(0.5, since));
+      }
+    }
+    if (heard === null) {
+      // No timestamp: fall back to the declared latency figures.
+      const declared = ctx.outputLatency || ctx.baseLatency || 0;
+      heard = ctx.currentTime - declared;
+    }
+    // Smooth the implied latency rather than the position, so the cursor
+    // never jumps backwards when a measurement wobbles.
+    const raw = Math.max(0, Math.min(0.6, ctx.currentTime - heard));
+    this.latency = this.latency === null ? raw : this.latency * 0.92 + raw * 0.08;
+    return ctx.currentTime - this.latency;
   }
 
   // The step that should be lit right now, or null if nothing has changed.
   visualStep() {
-    const now = this.ctx.currentTime - this.visualOffset;
+    const now = this.heardTime() + this.visualOffset;
     let found = null;
     while (this.visualQueue.length && this.visualQueue[0].time <= now) {
       found = this.visualQueue.shift().step;
@@ -68,8 +103,9 @@ export class Engine {
     this.base = render(spec);
     this.live = this.driftOn ? drift(this.base, this.driftRng, this.driftAmount) : this.base;
     this.synth.setTone(spec.tone);
-    const character = CHARACTERS[spec.character];
-    this.synth.setCharacterLevel(character ? (character.level ?? 1) : 1);
+    const character = characterOf(spec);
+    this.synth.setCharacterLevel(character.level ?? 1);
+    this.pumpAmount = character.pump ?? 0;
     this.synth.setEchoTime((60 / spec.bpm) * 0.75);
     for (const [layer, muted] of Object.entries(spec.mutes || {})) {
       this.synth.setMute(layer, muted);
@@ -130,6 +166,8 @@ export class Engine {
       sampleRate: this.ctx.sampleRate,
       baseLatency: this.ctx.baseLatency ? +this.ctx.baseLatency.toFixed(4) : '-',
       outputLatency: this.ctx.outputLatency ? +this.ctx.outputLatency.toFixed(4) : '-',
+      measuredLatencyMs: this.latency === null ? '-' : Math.round(this.latency * 1000),
+      timestampApi: typeof this.ctx.getOutputTimestamp === 'function' ? 'yes' : 'no',
     };
   }
 
@@ -231,9 +269,15 @@ export class Engine {
 
     if (!mutes.drums) {
       const s = at('drums');
+      const pump = this.pumpAmount || 0;
       for (const e of p.tracks.drums) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.drum(e.inst, t + (Math.random() - 0.5) * 0.008, e.vel);
+        // Rolls sit between the steps, so they carry a fractional offset and
+        // skip the humanising jitter that would smear them.
+        const micro = e.micro ? e.micro * sd : 0;
+        const jitter = e.roll ? 0 : (Math.random() - 0.5) * 0.008;
+        this.synth.drum(e.inst, t + micro + jitter, e.vel);
+        if (pump && e.inst === 'kick') this.synth.duck(t + micro, pump * e.vel);
       }
     }
     if (!mutes.bass) {
