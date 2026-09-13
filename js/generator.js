@@ -46,7 +46,7 @@ export function newSpec(seed = randomSeed()) {
     mix[key] = -Math.log(1 - r.f() * 0.999) * (i === 0 ? 1.6 : 1);
   }
   const total = Object.values(mix).reduce((a, b) => a + b, 0);
-  for (const k of Object.keys(mix)) mix[k] = +(mix[k] / total).toFixed(3);
+  for (const k of Object.keys(mix)) mix[k] = q8(mix[k] / total);
 
   const c = blendMix(mix);
 
@@ -81,7 +81,7 @@ export function newSpec(seed = randomSeed()) {
     const w = feelMix[k] / moodTotal;
     // A trace below half a percent is not a colour, it is rounding noise.
     if (w < 0.005) delete feelMix[k];
-    else feelMix[k] = +w.toFixed(3);
+    else feelMix[k] = q8(w);
   }
 
   const feel = { lift: 0, energy: 0, warmth: 0 };
@@ -90,11 +90,11 @@ export function newSpec(seed = randomSeed()) {
   }
   for (const axisName of ['lift', 'energy', 'warmth']) {
     const [lo, hi] = c.feel[axisName];
-    feel[axisName] = +Math.max(lo, Math.min(hi, feel[axisName])).toFixed(3);
+    feel[axisName] = q8(Math.max(lo, Math.min(hi, feel[axisName])));
   }
   // How closely the layers agree with the loop's centre. Low values let a
   // bright melody sit over a settled accompaniment.
-  const coherence = +r.range(0.42, 0.82).toFixed(3);
+  const coherence = q8(r.range(0.42, 0.82));
 
   const stepsPerBar = r.weighted(c.stepsPerBar);
   const bars = r.weighted(c.bars);
@@ -185,6 +185,14 @@ const LAYER_SALT = {
 };
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+// Quantise to the same 1/255 grid a share code uses.
+//
+// These weights feed weighted random picks, so a rounding difference of
+// 0.004 is enough to select a different scale or voice. Snapping generation
+// to the grid the encoding can represent makes a share code lossless by
+// construction rather than lossless-if-you-are-lucky.
+const q8 = (v) => Math.round(clamp01(v) * 255) / 255;
 
 // A loop's feeling is a *mixture* of those regions, not a point among them.
 //

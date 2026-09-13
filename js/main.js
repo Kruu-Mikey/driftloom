@@ -3,6 +3,8 @@ import { Synth } from './synth.js';
 import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
+import * as share from './share.js';
+import { drawCover } from './cover.js';
 import * as store from './storage.js';
 import * as ui from './ui.js';
 
@@ -149,6 +151,7 @@ function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false
   ui.renderReadout(spec, state.pattern);
   ui.renderGrids(cells, state.pattern, 0, spec.mutes);
   syncToneInputs(spec);
+  drawCoverFor(spec);
   refreshSaved();
   if (pushToHistory) pushHistory(spec);
   updateHistoryButtons();
@@ -161,6 +164,99 @@ function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false
 function syncMediaMetadata() {
   if (!state.media || !state.spec) return;
   state.media.setMetadata(state.spec.name, `${state.spec.bpm} bpm · Driftloom`);
+}
+
+function drawCoverFor(spec) {
+  const canvas = ui.el('cover');
+  if (!canvas || !spec) return;
+  try {
+    drawCover(canvas, spec, 320);
+  } catch (err) {
+    console.warn('Could not draw cover', err);
+  }
+}
+
+function refreshAlbums() {
+  const host = ui.el('albumList');
+  if (!host) return;
+  host.innerHTML = '';
+  const albums = store.loadAlbums();
+  if (!albums.length) {
+    const p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'No albums yet. Make one, then add saved loops to it.';
+    host.appendChild(p);
+    return;
+  }
+  const saved = store.loadAll();
+  for (const album of albums) {
+    const row = document.createElement('div');
+    row.className = 'album';
+
+    const name = document.createElement('button');
+    name.className = 'album-name';
+    name.appendChild(document.createTextNode(album.title));
+    const meta = document.createElement('span');
+    meta.className = 'album-meta';
+    const present = album.ids.filter((id) => saved.some((e) => e.id === id));
+    meta.textContent = `${present.length} loop${present.length === 1 ? '' : 's'} · tap to add the current one`;
+    name.appendChild(meta);
+    name.addEventListener('click', () => {
+      if (!state.currentId) {
+        ui.toast('Save this loop first, then add it');
+        return;
+      }
+      if (album.ids.includes(state.currentId)) {
+        ui.toast('Already in that album');
+        return;
+      }
+      store.setAlbumIds(album.id, [...album.ids, state.currentId]);
+      refreshAlbums();
+      ui.toast(`Added to ${album.title}`);
+    });
+
+    const code = document.createElement('button');
+    code.className = 'ghost tiny';
+    code.textContent = 'code';
+    code.addEventListener('click', async () => {
+      const specs = album.ids
+        .map((id) => saved.find((e) => e.id === id))
+        .filter(Boolean)
+        .map((e) => e.spec);
+      if (!specs.length) {
+        ui.toast('That album is empty');
+        return;
+      }
+      await offerCode(share.encodeAlbum(album.title, specs),
+        `${album.title} · ${specs.length} loops`);
+    });
+
+    const del = document.createElement('button');
+    del.className = 'ghost tiny';
+    del.textContent = 'delete';
+    del.addEventListener('click', () => {
+      store.removeAlbum(album.id);
+      refreshAlbums();
+      ui.toast('Album deleted');
+    });
+
+    row.append(name, code, del);
+    host.appendChild(row);
+  }
+}
+
+// Put a code where it can be taken. The clipboard is the quick path; the
+// box below is the one that still works when the clipboard is refused.
+async function offerCode(code, label) {
+  const out = ui.el('shareOut');
+  out.hidden = false;
+  out.textContent = `${label}\n\n${code}`;
+  try {
+    await navigator.clipboard.writeText(code);
+    ui.toast('Code copied');
+  } catch {
+    ui.toast('Copy it from the box below');
+  }
 }
 
 function syncToneInputs(spec) {
@@ -423,6 +519,68 @@ function wire() {
     }
   });
 
+  ui.el('copySong').addEventListener('click', async () => {
+    if (!state.spec) return;
+    try {
+      await offerCode(share.encodeSong(state.spec), state.spec.name);
+    } catch (err) {
+      console.warn('Could not build a code', err);
+      ui.toast('Could not build a code for this loop');
+    }
+  });
+
+  ui.el('pasteCode').addEventListener('click', async () => {
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      text = '';
+    }
+    if (!share.codeKind(text)) {
+      text = prompt('Paste a Driftloom code') || '';
+    }
+    const kind = share.codeKind(text);
+    if (!kind) {
+      if (text.trim()) ui.toast('That does not look like a Driftloom code');
+      return;
+    }
+    try {
+      if (kind === 'song') {
+        const spec = share.decodeSong(text);
+        const ids = store.addSpecs([spec]);
+        refreshSaved();
+        loadSpec(spec, { id: ids ? ids[0] : null });
+        if (!state.engine.playing) togglePlay();
+        ui.toast(ids ? `Added ${spec.name}` : `Playing ${spec.name} (could not save it)`);
+      } else {
+        const { title, specs } = share.decodeAlbum(text);
+        const ids = store.addSpecs(specs);
+        if (!ids) {
+          ui.toast('Could not save those loops');
+          return;
+        }
+        const album = store.createAlbum(title);
+        if (album) store.setAlbumIds(album.id, ids);
+        refreshSaved();
+        refreshAlbums();
+        ui.toast(`Added ${title} · ${specs.length} loops`);
+      }
+    } catch (err) {
+      ui.toast(err.message || 'That code could not be read');
+    }
+  });
+
+  ui.el('newAlbum').addEventListener('click', () => {
+    const title = prompt('Name this album', 'Untitled');
+    if (!title) return;
+    if (!store.createAlbum(title.trim())) {
+      ui.toast('Could not create the album');
+      return;
+    }
+    refreshAlbums();
+    ui.toast(`Created ${title.trim()}`);
+  });
+
   ui.el('copyBackup').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(await store.exportAll().text());
@@ -510,6 +668,8 @@ function wire() {
   lights = ui.buildPlayhead(state.gridSteps);
   cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, state.gridSteps);
   ui.resetCursor();
+  drawCoverFor(state.spec);
+  refreshAlbums();
   resetHistory(state.spec);
   ui.renderReadout(state.spec, { meta: { kit: 'none' } });
   syncToneInputs(state.spec);

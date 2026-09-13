@@ -210,6 +210,53 @@ The scheduler runs off a Web Worker and queues further ahead while the page
 is hidden (3s instead of 0.3s). Backgrounded pages get their timers clamped
 to roughly one tick a second, which starves a short queue.
 
+## Sharing
+
+A loop is a recipe, not a recording, so it fits in a code and needs no
+internet at either end.
+
+MIDI is the wrong tool for this. MIDI carries the notes, which means the
+recipient gets a frozen transcript they cannot re-roll, drift or edit. MIDI
+is for taking music *out* to a DAW; a share code is for taking a loop to
+another Driftloom.
+
+A song code is about 111 characters:
+
+    DL1-0405P-0020G-80BBK-BG48Y-8PAG3-A9R7D-QQJEX-14P70-S3BEK-...
+
+An album is a named list of loops and shares the same way, at roughly 110
+characters per loop -- long enough to copy and paste rather than read out,
+but still just text.
+
+Two decisions worth recording:
+
+- **The code is explicit, not just a seed.** A seed-only code would be about
+  ten characters, but it would mean whatever the generator happened to make
+  of it *that week*: change one weighting and every code already written
+  down quietly becomes different music. Writing the parameters down costs
+  about seventy bytes and makes a code mean one thing permanently.
+- **Crockford Base32**, because codes get read aloud and typed. It drops I,
+  L, O and U so there is no 1/l or 0/O confusion, it is case-insensitive,
+  and a Fletcher-16 checksum catches transposed characters -- which is
+  exactly the mistake people make copying one out by hand.
+
+Generation is quantised to the same 1/255 grid the encoding uses. These
+weights feed weighted random picks, so a rounding difference of 0.004 is
+enough to pick a different scale, and snapping generation to the grid makes
+a code lossless by construction. Verified over 25,000 round-trips, edited
+loops included: zero differences.
+
+## Cover art
+
+Drawn from the same numbers as the music, so it travels inside a share code
+without an image ever being sent -- whoever pastes the code sees the same
+picture.
+
+The mapping is not decorative: energy becomes turbulence, warmth picks the
+palette, lift sets brightness, and the dominant profile chooses the form. Six
+forms (plasma, clouds, water, cells, waves, rings) across nine palettes,
+each about equally likely.
+
 ## Diagnostics
 
 There is a Diagnostics panel at the bottom of the page. It reports which

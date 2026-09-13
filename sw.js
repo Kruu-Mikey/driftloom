@@ -1,7 +1,7 @@
 // Offline cache. The whole app is a few kilobytes of text, so it is
 // cached whole on install and served from cache first. Bump CACHE when
 // you change any file, or the browser will keep serving the old one.
-const CACHE = 'driftloom-v12';
+const CACHE = 'driftloom-v13';
 const FILES = [
   './',
   './index.html',
@@ -11,6 +11,8 @@ const FILES = [
   './js/clock.js',
   './js/characters.js',
   './js/media.js',
+  './js/share.js',
+  './js/cover.js',
   './audio/keepalive.flac',
   './audio/keepalive.wav',
   './js/engine.js',

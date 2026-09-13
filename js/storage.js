@@ -96,6 +96,69 @@ export function importAll(json) {
   return { added, rejected, failed: false };
 }
 
+// Albums are named lists of saved-loop ids. Kept separate from the loops
+// themselves so a loop can sit in several albums without being duplicated.
+const ALBUMS = 'driftloom.albums.v1';
+
+export function loadAlbums() {
+  try {
+    const raw = localStorage.getItem(ALBUMS);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistAlbums(list) {
+  try {
+    localStorage.setItem(ALBUMS, JSON.stringify(list));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function createAlbum(title) {
+  const list = loadAlbums();
+  const album = {
+    id: `a${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`,
+    title: (title || 'Untitled').slice(0, 40),
+    ids: [],
+  };
+  list.unshift(album);
+  return persistAlbums(list) ? album : null;
+}
+
+export function setAlbumIds(id, ids) {
+  const list = loadAlbums();
+  const album = list.find((a) => a.id === id);
+  if (!album) return false;
+  album.ids = ids;
+  return persistAlbums(list);
+}
+
+export function removeAlbum(id) {
+  return persistAlbums(loadAlbums().filter((a) => a.id !== id));
+}
+
+// Add loops that arrived from a shared code, keeping any that are already
+// here rather than making duplicates.
+export function addSpecs(specs) {
+  const list = loadAll();
+  const added = [];
+  for (const spec of specs) {
+    const entry = {
+      id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`,
+      savedAt: new Date().toISOString(),
+      spec: JSON.parse(JSON.stringify(spec)),
+    };
+    list.unshift(entry);
+    added.push(entry.id);
+  }
+  return persist(list) ? added : null;
+}
+
 export function getPrefs() {
   try {
     return JSON.parse(localStorage.getItem(PREFS) || '{}');

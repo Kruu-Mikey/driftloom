@@ -16,6 +16,7 @@
 <main id="app">
 
   <section class="readout" aria-label="Current loop">
+    <canvas id="cover" class="cover" width="320" height="320" aria-label="Cover art for this loop"></canvas>
     <div class="readout-top">
       <h1 id="loopName" class="loop-name">—</h1>
       <button id="renameBtn" class="ghost tiny" title="Rename this loop">rename</button>
@@ -78,6 +79,25 @@
       <input type="checkbox" id="liteMode">
       <span>Lighter on the processor</span>
     </label>
+  </section>
+
+  <section class="panel" aria-label="Share">
+    <h2 class="section-head">Share</h2>
+    <p class="hint">A loop is a recipe, not a recording, so it fits in a code.
+      No internet needed at either end.</p>
+    <div class="row wrap">
+      <button id="copySong" class="ghost">Copy this loop's code</button>
+      <button id="pasteCode" class="ghost">Paste a code</button>
+    </div>
+    <pre id="shareOut" class="diag-out" hidden></pre>
+  </section>
+
+  <section class="panel" aria-label="Albums">
+    <h2 class="section-head">Albums</h2>
+    <div id="albumList"></div>
+    <div class="row wrap">
+      <button id="newAlbum" class="ghost">New album</button>
+    </div>
   </section>
 
   <section class="panel" aria-label="Saved loops">

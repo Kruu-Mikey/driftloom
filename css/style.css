@@ -60,6 +60,46 @@ body {
   padding: 16px 16px 12px;
 }
 
+/* Drawn from the same numbers as the music, so it travels inside the share
+   code without an image ever being sent. */
+.cover {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  border-radius: 2px;
+  margin-bottom: 14px;
+  background: #0b1517;
+  image-rendering: auto;
+}
+
+.album {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.album:last-of-type { border-bottom: 0; }
+.album-name {
+  font-family: var(--mono);
+  font-size: 15px;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--sand);
+}
+.album-meta {
+  display: block;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--haze);
+  margin-top: 2px;
+}
+
 .readout-top {
   display: flex;
   align-items: baseline;
