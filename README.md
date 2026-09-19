@@ -147,6 +147,14 @@ Notes worth knowing if you go digging:
   quoted across the loop with transposition, trimming and dropped notes.
   Repetition with variation is most of what separates a composed line from a
   sprayed one.
+- **Rhythm is drawn before pitch.** The motif takes its note positions and
+  lengths from one of thirty rhythmic cells -- dotted, syncopated,
+  anticipated, short-short-long, three-against-four, staccato bursts, long
+  sustains -- with separate tables for 16- and 12-step bars, and the rest
+  built to fit whatever other metre a profile asks for. Which cells are
+  likely follows the loop's energy and lift, so a joyful loop gets a
+  bouncier figure and a reflective one gets long notes. Pitch is a random
+  walk laid over whatever the cell decided.
 - **The reverb** is six damped comb filters rather than a convolver: cheaper on
   a weak phone, and tunable while it plays, which a fixed impulse response
   isn't.
@@ -184,6 +192,31 @@ leaves the others byte-identical, and parses 500 exported MIDI files to verify
 they're structurally valid with no unreleased notes. This has already caught
 three real bugs, including chord voicings that walked off the bottom of the
 keyboard over successive bars.
+
+## Statistics
+
+```sh
+node tools/stats.mjs --n 4000
+node tools/stats.mjs --n 4000 --lift-low --lift-high
+```
+
+Draws a corpus the way the app does -- `newSpec()` then `render()` -- and
+reports what came out: dominant profile, steps per bar, melody voice and
+rhythmic cell distributions, mean melodic span, note count, note duration and
+velocity, and the share of melody notes landing off the beat. Counted on the
+rendered pattern, after entry schedules and gaps have zeroed what they
+silence, so the figures describe what you would hear.
+
+`--lift-low` and `--lift-high` split the corpus by `feel.lift` and print the
+two buckets side by side, which is how you check that a change actually
+follows the feeling rather than applying evenly. Both take an optional
+value; the defaults are roughly the quartiles of a distribution that is
+skewed high.
+
+The corpus is deterministic -- same `--seed`, same loops -- which is what
+makes a before-and-after comparison mean anything. This is the generation
+half of the measurement harness; the audio half (peak, RMS, ring time,
+per-voice cost) is a separate tool and still to come.
 
 ## Track length
 

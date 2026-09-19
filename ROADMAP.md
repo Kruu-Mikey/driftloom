@@ -16,8 +16,18 @@ low quality, they are the things that found the envelope clicks, the
 saturator, the voice-budget miscount and the melody bug. Every later task is
 slower without them.
 
-Ship `tools/measure.mjs` with: render a spec offline, report peak, RMS,
-amplitude at node-stop, per-layer balance, and per-voice marginal cost.
+**The generation half has shipped.** `tools/stats.mjs` draws a corpus through
+`newSpec()` and `render()` and reports profile, metre, voice and rhythmic-cell
+distributions, melodic span, note count, duration, velocity and the share of
+melody notes landing off the beat, either overall or bucketed by `feel.lift`.
+It is what found the vestigial ternary that had kept every melody note in the
+app's history on an even step, and it is what items 2 and 3 should be measured
+against.
+
+**The audio half is still open.** Ship `tools/measure.mjs` with: render a spec
+offline, report peak, RMS, amplitude at node-stop, per-layer balance, and
+per-voice marginal cost. It needs an offline render of the synth graph, which
+is a different kind of harness from counting events.
 
 **Done when** `node tools/measure.mjs --voice templebell` prints peak, RMS,
 ring time and cut-off dB without a browser tab being opened by hand.
@@ -149,7 +159,9 @@ brings a build step or a worklet, breaking "works offline from a folder".
 Not roadmap items; the things that are not obvious from reading the code.
 
 Run `node test/generator.test.mjs` before and after any change, a few times,
-since it uses random seeds.
+since it uses random seeds. For anything that touches generation, also run
+`node tools/stats.mjs` before and after and compare the two: the tests prove
+nothing is broken, the statistics say whether the change did what it claimed.
 
 1. **New voices go in new profiles, never into existing pools.** Voices are
    drawn at render time from the blended pool, so one added entry shifts that

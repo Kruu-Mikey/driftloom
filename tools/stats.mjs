@@ -1,0 +1,293 @@
+// Corpus statistics for the generator.
+//
+// Run with:  node tools/stats.mjs [--n 2000] [--seed 1] [--lift-low] [--lift-high]
+//
+// Roadmap item 1 asks for the measurement harnesses to stop living in
+// throwaway scripts. This is the generation half of that: it draws a corpus
+// of loops the same way the app does -- newSpec() then render() -- and
+// reports what actually came out. The audio half (peak, RMS, ring time,
+// per-voice cost) is a separate tool and needs a different kind of harness.
+//
+// Everything is counted on the rendered pattern, after entry schedules and
+// gaps have zeroed the notes they silence, so the figures describe what you
+// would hear rather than what was generated and then thrown away.
+//
+// The corpus is deterministic: the same --seed and --n give the same
+// numbers, which is what makes a before-and-after comparison mean anything.
+// Pass a different --seed for an independent corpus.
+
+import { newSpec, render, STEPS_PER_BAR } from '../js/generator.js';
+import { Rng } from '../js/rng.js';
+
+// ------------------------------------------------------------ arguments
+
+const USAGE = `
+driftloom generation statistics
+
+  node tools/stats.mjs [options]
+
+  --n <count>         how many loops to draw            (default 2000)
+  --seed <number>     corpus seed; same seed, same loops   (default 1)
+  --lift-low [value]  upper bound of the low-lift bucket   (default 0.6)
+  --lift-high [value] lower bound of the high-lift bucket (default 0.78)
+  --help              this
+
+  Giving either --lift-low or --lift-high splits the corpus by feel.lift
+  and prints the two buckets side by side; the other bound takes its
+  default. Loops between the two bounds are in neither column. The
+  defaults are roughly the lower and upper quartiles of feel.lift, which
+  is skewed high, so a bound picked by eye puts almost nothing in the
+  low column.
+`;
+
+const LIFT_LOW_DEFAULT = 0.6;
+const LIFT_HIGH_DEFAULT = 0.78;
+
+function parseArgs(argv) {
+  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false };
+  for (let i = 0; i < argv.length; i++) {
+    let arg = argv[i];
+    let inline = null;
+    const eq = arg.indexOf('=');
+    if (arg.startsWith('--') && eq > 0) {
+      inline = arg.slice(eq + 1);
+      arg = arg.slice(0, eq);
+    }
+    // A flag whose value is optional takes the next token only when that
+    // token is a number, so `--lift-low --lift-high` means both defaults.
+    const value = (optional) => {
+      if (inline != null) return Number(inline);
+      const next = argv[i + 1];
+      if (next != null && next !== '' && Number.isFinite(Number(next))) {
+        i++;
+        return Number(next);
+      }
+      if (optional) return null;
+      fail(`${arg} needs a number`);
+      return null;
+    };
+
+    switch (arg) {
+      case '--n': case '-n':
+        opts.n = Math.max(1, Math.round(value(false)));
+        break;
+      case '--seed':
+        opts.seed = value(false) >>> 0;
+        break;
+      case '--lift-low':
+        opts.liftLow = value(true);
+        opts.bucketed = true;
+        break;
+      case '--lift-high':
+        opts.liftHigh = value(true);
+        opts.bucketed = true;
+        break;
+      case '--help': case '-h':
+        console.log(USAGE);
+        process.exit(0);
+        break;
+      default:
+        fail(`unknown option ${arg}`);
+    }
+  }
+  if (opts.bucketed) {
+    if (opts.liftLow == null) opts.liftLow = LIFT_LOW_DEFAULT;
+    if (opts.liftHigh == null) opts.liftHigh = LIFT_HIGH_DEFAULT;
+    if (opts.liftLow > opts.liftHigh) fail('--lift-low must not be above --lift-high');
+  }
+  return opts;
+}
+
+function fail(message) {
+  console.error(`stats: ${message}`);
+  console.error(USAGE);
+  process.exit(2);
+}
+
+// -------------------------------------------------------------- corpus
+
+// One record per loop. Scalars only, so a corpus of a hundred thousand
+// still fits in memory.
+function measure(spec) {
+  const pattern = render(spec);
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const notes = pattern.tracks.melody.filter((e) => e.vel > 0);
+
+  let profile = null;
+  let best = -1;
+  for (const [key, weight] of Object.entries(spec.mix || {})) {
+    if (weight > best) { best = weight; profile = key; }
+  }
+
+  const rec = {
+    lift: spec.feel.lift,
+    energy: spec.feel.energy,
+    profile: profile || 'unknown',
+    spb,
+    voice: pattern.meta.melodyVoice,
+    // Not present on older builds; the tool still runs without it, which
+    // is what makes a before-and-after comparison possible at all.
+    cell: pattern.meta.melodyCell || null,
+    bars: Math.max(1, Math.round(((pattern.cycles && pattern.cycles.melody) || pattern.totalSteps) / spb)),
+    count: notes.length,
+    odd: 0,
+    durSum: 0,
+    velSum: 0,
+    span: null,
+  };
+
+  if (notes.length) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const e of notes) {
+      if (e.step % 2 === 1) rec.odd++;
+      rec.durSum += e.dur;
+      rec.velSum += e.vel;
+      if (e.midi < lo) lo = e.midi;
+      if (e.midi > hi) hi = e.midi;
+    }
+    rec.span = hi - lo;
+  }
+  return rec;
+}
+
+function collect(opts) {
+  const master = new Rng(opts.seed || 1);
+  const records = [];
+  for (let i = 0; i < opts.n; i++) records.push(measure(newSpec(master.seed32())));
+  return records;
+}
+
+// ------------------------------------------------------------ summaries
+
+function tally(records, key) {
+  const counts = new Map();
+  for (const rec of records) {
+    const v = rec[key];
+    if (v == null) continue;
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+  return counts;
+}
+
+function summarise(records) {
+  const sung = records.filter((r) => r.count > 0);
+  const spanned = records.filter((r) => r.span != null && r.count > 1);
+  const notes = sung.reduce((a, r) => a + r.count, 0);
+  const mean = (list, f) => (list.length ? list.reduce((a, r) => a + f(r), 0) / list.length : NaN);
+  return {
+    loops: records.length,
+    sung: sung.length,
+    notes,
+    profiles: tally(records, 'profile'),
+    spb: tally(records, 'spb'),
+    voices: tally(sung, 'voice'),
+    cells: tally(sung, 'cell'),
+    span: mean(spanned, (r) => r.span),
+    perLoop: mean(sung, (r) => r.count),
+    perBar: mean(sung, (r) => r.count / r.bars),
+    dur: notes ? sung.reduce((a, r) => a + r.durSum, 0) / notes : NaN,
+    vel: notes ? sung.reduce((a, r) => a + r.velSum, 0) / notes : NaN,
+    oddFraction: notes ? sung.reduce((a, r) => a + r.odd, 0) / notes : NaN,
+  };
+}
+
+// -------------------------------------------------------------- printing
+
+const LABEL_WIDTH = 32;
+const COLUMN_WIDTH = 15;
+
+function line(label, cells, indent = 2) {
+  const head = ' '.repeat(indent) + label;
+  return (head.padEnd(LABEL_WIDTH) + cells.map((c) => String(c).padStart(COLUMN_WIDTH)).join('')).trimEnd();
+}
+
+function rule(columns) {
+  return ' '.repeat(2) + '-'.repeat(LABEL_WIDTH - 2 + COLUMN_WIDTH * columns);
+}
+
+const pct = (part, whole) => (whole ? `${((part / whole) * 100).toFixed(1)}%` : '-');
+const num = (v, places = 2) => (Number.isFinite(v) ? v.toFixed(places) : '-');
+
+// Distribution rows share one order across every column so the eye can run
+// across a row and compare like with like. Ordered by the summed share
+// rather than by the first column, or a row that dominates the second column
+// and is absent from the first would sort to the bottom and be cut.
+function distribution(title, pick, columns, { limit = 0, sortKeys = false } = {}) {
+  const out = [line(title, columns.map(() => ''))];
+  const shares = new Map();
+  for (const col of columns) {
+    const counts = pick(col.stats);
+    const total = [...counts.values()].reduce((a, b) => a + b, 0);
+    for (const [key, n] of counts) shares.set(key, (shares.get(key) || 0) + (total ? n / total : 0));
+  }
+  const keys = [...shares.keys()];
+  if (sortKeys) keys.sort((a, b) => Number(a) - Number(b));
+  else keys.sort((a, b) => shares.get(b) - shares.get(a) || String(a).localeCompare(String(b)));
+  const shown = limit ? keys.slice(0, limit) : keys;
+  for (const key of shown) {
+    out.push(line(String(key), columns.map((col) => {
+      const counts = pick(col.stats);
+      const total = [...counts.values()].reduce((a, b) => a + b, 0);
+      return counts.has(key) ? pct(counts.get(key), total) : '-';
+    }), 4));
+  }
+  if (shown.length < keys.length) {
+    out.push(line(`(${keys.length - shown.length} more)`, columns.map(() => ''), 4));
+  }
+  return out;
+}
+
+function report(columns, opts) {
+  const out = [];
+  out.push('');
+  out.push('driftloom generation statistics');
+  out.push(`  ${opts.n} loops drawn from corpus seed ${opts.seed}`);
+  if (opts.bucketed) {
+    out.push(`  bucketed by feel.lift at <= ${opts.liftLow} and >= ${opts.liftHigh}`);
+  }
+  out.push('');
+  out.push(line('', columns.map((c) => c.label)));
+  out.push(rule(columns.length));
+
+  out.push(line('loops', columns.map((c) => c.stats.loops)));
+  out.push(line('with an audible melody', columns.map((c) => `${c.stats.sung}`), 4));
+  out.push(line('share of loops', columns.map((c) => pct(c.stats.sung, c.stats.loops)), 4));
+  out.push(line('melody notes counted', columns.map((c) => c.stats.notes)));
+  out.push('');
+
+  out.push(...distribution('dominant profile', (s) => s.profiles, columns));
+  out.push('');
+  out.push(...distribution('steps per bar', (s) => s.spb, columns, { sortKeys: true }));
+  out.push('');
+  out.push(...distribution('melody voice', (s) => s.voices, columns, { limit: 12 }));
+  if (columns.some((c) => c.stats.cells.size)) {
+    out.push('');
+    out.push(...distribution('rhythmic cell', (s) => s.cells, columns));
+  }
+  out.push('');
+
+  out.push(line('melody figures', columns.map(() => '')));
+  out.push(line('mean melodic span', columns.map((c) => num(c.stats.span)), 4));
+  out.push(line('mean notes per loop', columns.map((c) => num(c.stats.perLoop, 1)), 4));
+  out.push(line('mean notes per bar', columns.map((c) => num(c.stats.perBar)), 4));
+  out.push(line('mean note duration', columns.map((c) => num(c.stats.dur)), 4));
+  out.push(line('mean velocity', columns.map((c) => num(c.stats.vel, 3)), 4));
+  out.push(line('notes on odd steps', columns.map((c) => num(c.stats.oddFraction, 3)), 4));
+  out.push('');
+  return out.join('\n');
+}
+
+// ----------------------------------------------------------------- main
+
+const opts = parseArgs(process.argv.slice(2));
+const records = collect(opts);
+
+const columns = opts.bucketed
+  ? [
+      { label: `lift <= ${opts.liftLow}`, stats: summarise(records.filter((r) => r.lift <= opts.liftLow)) },
+      { label: `lift >= ${opts.liftHigh}`, stats: summarise(records.filter((r) => r.lift >= opts.liftHigh)) },
+    ]
+  : [{ label: 'all', stats: summarise(records) }];
+
+console.log(report(columns, opts));

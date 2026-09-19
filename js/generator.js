@@ -540,6 +540,143 @@ function genBass(spec, harmony) {
 
 // ------------------------------------------------------------- melody
 
+// A rhythmic cell is one bar of rhythm: a list of [step, length] pairs, with
+// an optional third element marking an accent.
+//
+// The melody used to be laid on a fixed even-step grid. The loop that built
+// it read `i += (driven ? 2 : 2)`, a ternary with the same value in both
+// branches, so the "driven" case never existed and every melody note in the
+// app's history landed on an even step. Measured across four thousand loops,
+// 0.2% of notes fell off the beat, and those only because a phrase transform
+// clamped an offset into an odd slot by accident. A grid is not a rhythm; it
+// is the absence of one.
+//
+// These are ordinary figures a player would reach for. What tells them apart
+// is mostly where the notes are *not*: the same five pitches read as a march,
+// a gallop or a stumble depending only on the gaps between them.
+//
+// `e` and `l` say which end of the energy and lift axes a cell belongs to.
+// They scale its weight by 2^(bias * 2 * (value - 0.5)), so a bias of 1.5
+// makes a cell eight times likelier at the top of an axis than at the bottom,
+// and a joyful loop really does get the bouncier figure. Nothing is forbidden
+// outright -- a reflective loop can still stumble into a burst, it just
+// rarely does -- which keeps the pool from emptying at the extremes and keeps
+// the rare figures reachable.
+const cell = (id, e, l, w, pat) => ({ id, e, l, w, pat });
+
+// 16-step bars: 4/4 on a sixteenth grid. Beats at 0, 4, 8 and 12, eighths on
+// the even steps, and everything odd is a sixteenth off the beat.
+const CELLS_16 = [
+  // On the beat, and the long sustains the quiet profiles live on.
+  cell('quarters',    -0.8, -0.6, 2.0, [[0, 4, 1], [4, 4], [8, 4, 1], [12, 4]]),
+  cell('halves',      -2.2, -0.8, 1.4, [[0, 8, 1], [8, 8]]),
+  cell('whole',       -3.0, -1.4, 0.8, [[0, 16, 1]]),
+  cell('openLate',    -1.8, -0.3, 1.2, [[0, 8, 1], [10, 6]]),
+  // Dotted. 3+3+2 is the one everybody knows; the gallop is a dotted eighth
+  // answered by a sixteenth, which is where the swagger comes from.
+  cell('dotted32',     0.2,  0.3, 2.0, [[0, 6, 1], [6, 6], [12, 4]]),
+  cell('dottedPair',   0.2,  0.4, 1.6, [[0, 6, 1], [6, 2], [8, 6, 1], [14, 2]]),
+  cell('gallop',       1.2,  0.9, 1.9, [[0, 3, 1], [3, 1], [4, 3, 1], [7, 1], [8, 3, 1], [11, 1], [12, 4]]),
+  // Syncopated: the weight lands where the beat is not.
+  cell('charleston',   1.0,  1.0, 1.8, [[0, 4, 1], [6, 4], [11, 5, 1]]),
+  cell('clave',        1.6,  1.1, 1.7, [[0, 3, 1], [3, 3], [6, 4], [10, 3, 1], [13, 3]]),
+  cell('offEighths',   0.9,  0.7, 1.7, [[2, 2, 1], [6, 2], [10, 2], [13, 1], [14, 2, 1]]),
+  // Anticipated: the note arrives a sixteenth early and holds through the
+  // beat it was meant to land on.
+  cell('anticipate',   1.1,  1.0, 1.9, [[0, 4, 1], [7, 1], [8, 4, 1], [15, 1]]),
+  cell('pushIn',       1.1,  0.9, 1.4, [[3, 5, 1], [8, 4], [15, 1]]),
+  // Short-short-long, and its mirror.
+  cell('shortLong',    1.3,  1.2, 1.8, [[0, 1], [1, 1], [2, 6, 1], [8, 1], [9, 1], [10, 6, 1]]),
+  cell('longShort',    0.3,  0.3, 1.5, [[0, 6, 1], [6, 1], [7, 1], [8, 8, 1]]),
+  // Three against four: a three-step cycle over a four-step beat, which is as
+  // close to a triplet as a sixteenth grid can get.
+  cell('threeFour',    1.0,  0.7, 1.8, [[0, 3, 1], [3, 3], [6, 3], [9, 3], [12, 3, 1]]),
+  // Staccato bursts. Dense and short, so they only make sense once the loop
+  // is already moving.
+  cell('burst',        2.8,  1.8, 1.4, [[0, 1], [1, 1], [2, 1], [4, 2, 1], [8, 1], [9, 1], [10, 1], [12, 2, 1]]),
+  cell('chatter',      3.0,  1.7, 1.2, [[0, 1], [2, 1], [3, 1], [6, 1], [8, 1], [10, 1], [11, 1], [14, 2, 1]]),
+  cell('skipStep',     2.2,  1.6, 1.5, [[0, 2, 1], [2, 2], [5, 1], [6, 2], [9, 1], [10, 2, 1], [13, 3]]),
+];
+
+// 12-step bars: 6/8, two dotted beats at 0 and 6, eighths on the even steps.
+// The figures that carry this metre are the cross-rhythms -- three or four
+// evenly spaced notes laid over two dotted beats -- rather than the backbeat
+// displacements that carry 4/4.
+const CELLS_12 = [
+  cell('six8',        -0.2,  0.2, 2.1, [[0, 2, 1], [2, 2], [4, 2], [6, 2, 1], [8, 2], [10, 2]]),
+  cell('dotted12',    -2.2, -0.8, 1.4, [[0, 6, 1], [6, 6]]),
+  cell('whole12',     -3.0, -1.4, 0.8, [[0, 12, 1]]),
+  cell('airy12',      -1.6, -0.3, 1.1, [[0, 6, 1], [8, 4]]),
+  cell('lilt12',      -0.2,  0.2, 2.0, [[0, 4, 1], [4, 2], [6, 3, 1], [9, 1], [10, 2]]),
+  cell('hemiola12',    1.0,  0.9, 2.0, [[0, 3, 1], [3, 3], [6, 3, 1], [9, 3]]),
+  cell('cross12',      0.3,  0.5, 1.5, [[0, 4, 1], [4, 4], [8, 4]]),
+  cell('sync12',       1.3,  1.1, 1.6, [[0, 2, 1], [3, 3], [6, 2, 1], [9, 3]]),
+  cell('antic12',      1.2,  1.0, 1.6, [[0, 4, 1], [5, 1], [6, 4, 1], [11, 1]]),
+  cell('shortLong12',  1.3,  1.2, 1.8, [[0, 1], [1, 1], [2, 4, 1], [6, 1], [7, 1], [8, 4, 1]]),
+  cell('burst12',      2.6,  1.6, 1.3, [[0, 1], [1, 1], [2, 1], [3, 1], [6, 2, 1], [9, 3]]),
+  cell('skip12',       2.1,  1.5, 1.4, [[0, 2, 1], [3, 1], [4, 2], [6, 2, 1], [9, 1], [10, 2]]),
+];
+
+// Any other metre -- 5/4 exists in the thaw profile, and nothing stops a
+// later one being added -- gets the same families built to fit, rather than a
+// 16-step cell with its tail lopped off. Fewer figures, because a rare metre
+// does not earn a hand-written library, but the same vocabulary.
+function genericCells(spb) {
+  const beat = spb % 4 === 0 ? 4 : 3;
+  const beats = [];
+  for (let i = 0; i + beat <= spb; i += beat) beats.push(i);
+  const half = Math.max(2, Math.round(spb / 2));
+  const dotted = [];
+  for (let i = 0; i + 3 <= spb; i += 3) dotted.push([i, 3, i % beat === 0 ? 1 : 0]);
+  // Every other beat, each with a sixteenth leaning into it.
+  const anticipated = [];
+  beats.forEach((b, i) => {
+    if (i % 2) return;
+    if (b > 0) anticipated.push([b - 1, 1]);
+    anticipated.push([b, beat, 1]);
+  });
+  return [
+    cell('pulse',      -0.8, -0.6, 2.2, beats.map((b, i) => [b, beat, i % 2 === 0 ? 1 : 0])),
+    cell('halves',     -2.2, -0.8, 1.4, [[0, half, 1], [half, spb - half]]),
+    cell('whole',      -3.0, -1.4, 0.8, [[0, spb, 1]]),
+    cell('openLate',   -1.8, -0.3, 1.2, [[0, half, 1], [half + 2, spb - half - 2]]),
+    cell('dotted',      0.6,  0.6, 1.8, dotted),
+    cell('anticipate',  1.1,  1.0, 1.8, anticipated),
+    cell('shortLong',   1.3,  1.2, 1.8, [
+      [0, 1], [1, 1], [2, half - 2, 1],
+      [half, 1], [half + 1, 1], [half + 2, spb - half - 2, 1],
+    ]),
+    cell('burst',       2.6,  1.7, 1.4, [[0, 1], [1, 1], [2, 1], [3, 1], [half, 2, 1], [half + 3, 3]]),
+  ];
+}
+
+// A note outside the bar, or one with no length, is a typo rather than a
+// rhythm. Dropping them here means the tables above can be edited without the
+// risk of a silently malformed bar reaching the synth, and it is what lets
+// genericCells() write expressions rather than check its own arithmetic.
+function usable(list, spb) {
+  return list
+    .map((c) => ({ ...c, pat: c.pat.filter(([at, dur]) => at >= 0 && at < spb && dur >= 1) }))
+    .filter((c) => c.pat.length);
+}
+
+const CELL_POOLS = new Map();
+
+function cellsFor(spb) {
+  if (!CELL_POOLS.has(spb)) {
+    const table = spb === 16 ? CELLS_16 : spb === 12 ? CELLS_12 : genericCells(spb);
+    CELL_POOLS.set(spb, usable(table, spb));
+  }
+  return CELL_POOLS.get(spb);
+}
+
+function drawCell(r, spb, energy, lift) {
+  return r.weighted(cellsFor(spb).map((c) => [
+    c,
+    c.w * Math.pow(2, c.e * (energy - 0.5) * 2) * Math.pow(2, c.l * (lift - 0.5) * 2),
+  ]));
+}
+
 function genMelody(spec, harmony) {
   const r = new Rng(spec.layerSeeds.melody);
   const c = characterOf(spec);
@@ -549,30 +686,30 @@ function genMelody(spec, harmony) {
   const voice = r.weighted(c.melodyVoices);
   const lf = feelForLayer(spec, 'melody');
   const mood = lf.lift;
-  if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [] };
+  if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [], cell: null };
 
   // --- the motif ------------------------------------------------------
   //
-  // Positions are drawn from ACROSS the bar, not from the front of it. The
-  // old version took grid slots 0..n-1, so a three-note motif only ever
-  // used the first three, and every melody in the app clustered into the
-  // opening beat and left the rest of the bar empty. Checked against a real
-  // export: 132 notes and not one of them past beat 1.5.
+  // One rhythmic cell per motif. The cell fixes where the notes fall and
+  // how long they last; the walk below decides what pitch each one is. Two
+  // loops drawing the same cell are still two different tunes, and the same
+  // tune under two cells is two different pieces of music, which is the
+  // whole reason rhythm is drawn separately from pitch.
   const driven = lf.energy > 0.6;
   const pointillist = c.pointillist || 0;
-  const slots = [];
-  for (let i = 0; i < spb; i += (driven ? 2 : 2)) slots.push(i);
-  const motifLen = Math.min(slots.length, driven ? r.int(5, 9) : r.int(3, 6));
-  const chosen = r.shuffle(slots).slice(0, motifLen).sort((x, y) => x - y);
+  const rhythm = drawCell(r, spb, lf.energy, mood);
 
   const motif = [];
   let deg = 0;
-  for (let i = 0; i < chosen.length; i++) {
+  for (const [at, dur, accent] of rhythm.pat) {
     motif.push({
-      offset: chosen[i],
+      offset: at,
       degree: deg,
-      dur: r.pick([2, 2, 3, 4, 6]),
-      vel: 0.4 + r.f() * 0.3,
+      dur,
+      // The accent belongs to the figure, not to the phrase: a syncopation
+      // nobody leans on does not read as a syncopation. Velocity by
+      // position within a phrase is roadmap item 2 and is still absent.
+      vel: 0.36 + r.f() * 0.26 + (accent ? 0.16 : 0),
     });
     const up = 1 + mood * 2.2;
     const down = 1 + (1 - mood) * 2.2;
@@ -688,7 +825,7 @@ function genMelody(spec, harmony) {
       });
     }
   }
-  return { events, voice, motif };
+  return { events, voice, motif, cell: rhythm.id };
 }
 
 // -------------------------------------------------------------- drums
@@ -938,7 +1075,7 @@ export function render(spec) {
     },
     harmony,
     tracks,
-    meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, textureKind: texture.kind },
+    meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, melodyCell: melody.cell, textureKind: texture.kind },
   };
 }
 
