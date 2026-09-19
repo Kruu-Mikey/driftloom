@@ -1,0 +1,10 @@
+// Cloudflare Workers, assets only. Driftloom has no build step and no
+// server logic, so there is no `main` entry: Wrangler uploads the folder
+// and Cloudflare serves it. Unmatched paths return 404, which is right for
+// a static site -- do not set single-page-application here, or a typo'd
+// URL would quietly serve index.html instead of failing.
+{
+  "name": "driftloom",
+  "compatibility_date": "2026-09-19",
+  "assets": { "directory": "./" }
+}

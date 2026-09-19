@@ -1,7 +1,14 @@
 // Offline cache. The whole app is a few kilobytes of text, so it is
-// cached whole on install and served from cache first. Bump CACHE when
-// you change any file, or the browser will keep serving the old one.
-const CACHE = 'driftloom-v21';
+// cached whole on install -- but served *network first*, with the cache as
+// the fallback when the network is gone. That ordering is deliberate: it is
+// what lets a deployed change show up on the next cold start instead of
+// waiting for a cache bump.
+//
+// CACHE is also the build stamp shown in Diagnostics. Bump it on every
+// change, together with BUILD in js/main.js, so you can tell at a glance
+// which deploy you are listening to. Bumping it also evicts files that
+// have been deleted from FILES, which the network-first path cannot do.
+const CACHE = 'driftloom-v22';
 const FILES = [
   './',
   './index.html',
@@ -25,6 +32,7 @@ const FILES = [
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/maskable-512.png',
 ];
 
 self.addEventListener('install', (e) => {

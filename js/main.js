@@ -4,6 +4,11 @@ import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
 import * as share from './share.js';
+
+// Build stamp. Shown in Diagnostics so that after a deploy you can confirm
+// in one glance which version you are actually running, rather than
+// guessing whether a change landed. Bump it with CACHE in sw.js.
+const BUILD = 'v22';
 // Curated stops rather than a linear range: 0 to 9999 on a slider gives you
 // no useful control at the short end, and short lengths are what anyone
 // actually sets. The top end still reaches well past a day on a two-bar loop.
@@ -683,6 +688,7 @@ function wire() {
   const renderDiag = () => {
     const lines = [];
     const push = (o) => { for (const [k, v] of Object.entries(o)) lines.push(`${k}: ${v}`); };
+    lines.push(`build: ${BUILD}`);
     lines.push(`ua: ${navigator.userAgent}`);
     lines.push(`standalone: ${window.matchMedia('(display-mode: standalone)').matches}`);
     lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);

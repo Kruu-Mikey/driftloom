@@ -1,0 +1,10 @@
+# Kept out of the deployed site. Everything else in the repo root is part
+# of the app and has to ship.
+README.md
+ROADMAP.md
+Mikey's Thoughts.md
+LICENSE
+wrangler.jsonc
+docs
+test
+tools
