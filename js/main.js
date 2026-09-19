@@ -8,7 +8,11 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v22';
+const BUILD = 'v23';
+
+// Reported in Diagnostics. Declared here rather than beside the registration
+// at the foot of the file so it is initialised before anything can read it.
+let swState = 'unsupported';
 // Curated stops rather than a linear range: 0 to 9999 on a slider gives you
 // no useful control at the short end, and short lengths are what anyone
 // actually sets. The top end still reaches well past a day on a two-bar loop.
@@ -691,6 +695,9 @@ function wire() {
     lines.push(`build: ${BUILD}`);
     lines.push(`ua: ${navigator.userAgent}`);
     lines.push(`standalone: ${window.matchMedia('(display-mode: standalone)').matches}`);
+    // Registration failures are swallowed so they cannot break the app, which
+    // means a dead service worker -- no offline mode -- is otherwise invisible.
+    lines.push(`sw: ${swState}`);
     lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);
     if (state.media) push(state.media.report());
     else lines.push('media: not built yet (press Play)');
@@ -879,5 +886,13 @@ function wire() {
 wire();
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  swState = 'registering';
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    const track = () => {
+      const w = reg.installing || reg.waiting || reg.active;
+      swState = w ? w.state : 'registered';
+    };
+    track();
+    reg.addEventListener('updatefound', track);
+  }).catch((err) => { swState = `failed: ${err && err.message ? err.message : err}`; });
 }

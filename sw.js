@@ -8,10 +8,14 @@
 // change, together with BUILD in js/main.js, so you can tell at a glance
 // which deploy you are listening to. Bumping it also evicts files that
 // have been deleted from FILES, which the network-first path cannot do.
-const CACHE = 'driftloom-v22';
+const CACHE = 'driftloom-v23';
+// './index.html' is deliberately absent. Cloudflare redirects it to './'
+// with a 307, and the Cache API will not store a redirected response --
+// addAll is atomic, so that one entry failing takes the whole install with
+// it and leaves the app with no offline mode at all. './' serves the same
+// document.
 const FILES = [
   './',
-  './index.html',
   './css/style.css',
   './js/main.js',
   './js/ui.js',
