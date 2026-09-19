@@ -26,9 +26,9 @@ Wrangler uploads the folder. The dashboard side is Settings → Build on the
 Worker: branch `main`, empty build command, deploy command
 `npx wrangler deploy`, root directory `/`. Pushing to `main` deploys.
 
-Open the `workers.dev` URL in Chrome and use "Add to home screen" — there's a
-manifest and a service worker, so after the first visit it works with no
-signal at all.
+Live at <https://driftloom.kruu-mikey-thaiculture.workers.dev/>. Open it in
+Chrome and use "Add to home screen" — there's a manifest and a service
+worker, so after the first visit it works with no signal at all.
 
 The service worker is **network first**, with the cache as the offline
 fallback. A deploy therefore shows up on the next cold start: close the app
