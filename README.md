@@ -20,10 +20,22 @@ npx serve .
 
 Then open <http://localhost:8000>.
 
-To use it on a phone, push the repo to GitHub and turn on Pages
-(Settings → Pages → deploy from `main`, root). Open the URL in Chrome and use
-"Add to home screen" — there's a manifest and a service worker, so after the
-first visit it works with no signal at all.
+To use it on a phone, it deploys to Cloudflare Workers as static assets.
+`wrangler.jsonc` is an assets-only config — no build step, no `main` entry,
+Wrangler uploads the folder. The dashboard side is Settings → Build on the
+Worker: branch `main`, empty build command, deploy command
+`npx wrangler deploy`, root directory `/`. Pushing to `main` deploys.
+
+Open the `workers.dev` URL in Chrome and use "Add to home screen" — there's a
+manifest and a service worker, so after the first visit it works with no
+signal at all.
+
+The service worker is **network first**, with the cache as the offline
+fallback. A deploy therefore shows up on the next cold start: close the app
+from the recents switcher and reopen it, rather than returning to a
+backgrounded instance. Diagnostics reports `build`, which is the way to
+confirm what you are actually running; bump `BUILD` in `js/main.js` and
+`CACHE` in `sw.js` together on every change.
 
 ## Using it
 
