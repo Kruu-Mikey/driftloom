@@ -232,7 +232,6 @@ export class Synth {
     // No continuous surface-noise layer: the musical voices and reverb
     // provide the atmosphere without adding an audible hiss.
 
-    // Per-layer channels, each with its own send amounts.
     // Everything except the drums passes through here, so the kick can
     // press the rest of the mix down and let it breathe back. Without that
     // movement a steady four-to-the-floor is just a thud on top of a pad.
@@ -240,12 +239,22 @@ export class Synth {
     this.pumpBus.gain.value = 1;
     this.pumpBus.connect(this.preBus);
 
+    // Per-layer channels, each with its own send amounts.
+    //
+    // The melody used to be the quietest channel in the mix and the wettest
+    // -- 0.45 of gain against 0.5 for both keys and air, with more echo on
+    // it than anything else carries. That is the recipe for an accompaniment,
+    // not a tune: send and level both push a part backwards, and the melody
+    // had the worst of each. It now sits above keys and air, with the echo
+    // cut to a third of what it was and the reverb pulled back with it, so
+    // the line arrives dry and in front instead of washing in from behind.
+    // Keys give up a little to make the room.
     this.channels = {};
     const cfg = {
       drums: { gain: 0.82, verb: 0.1, echo: 0.05 },
       bass: { gain: 0.62, verb: 0.05, echo: 0.0 },
-      chords: { gain: 0.5, verb: 0.35, echo: 0.15 },
-      melody: { gain: 0.45, verb: 0.4, echo: 0.35 },
+      chords: { gain: 0.44, verb: 0.35, echo: 0.15 },
+      melody: { gain: 0.58, verb: 0.28, echo: 0.12 },
       texture: { gain: 0.5, verb: 0.6, echo: 0.25 },
     };
     for (const [name, c] of Object.entries(cfg)) {
