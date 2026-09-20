@@ -162,7 +162,15 @@ peaky and the perceived range is smaller than the figure suggests, and this
 closes. If the two track each other, the catalogue really does span 14 dB of
 loudness and the question becomes a real one worth answering.
 
-No implementation until that comparison has been made and read.
+**First reading, thirty loops:** peak spread 13.4 dB, RMS spread 13.2 dB.
+They track almost exactly, so the quiet loops are quiet in the middle and
+not merely less peaky, and the perceived range is about what the peak
+figure says. That points at the question being a real one rather than an
+artefact of crest factor -- but one corpus of thirty is a reading, not a
+verdict, and what it cannot say is whether 13 dB is wider than *wanted*.
+That part is a judgement about listening, not a measurement.
+
+No implementation until someone has sat through twenty in a row and said.
 
 ---
 
