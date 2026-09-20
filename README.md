@@ -167,6 +167,22 @@ Notes worth knowing if you go digging:
   likely follows the loop's energy and lift, so a joyful loop gets a
   bouncier figure and a reflective one gets long notes. Pitch is a random
   walk laid over whatever the cell decided.
+- **The figure is fixed before it is played.** Which notes a motif leaves
+  out is decided once, when the motif is built, so every restatement is
+  missing the same notes. Rolling the omission per bar instead looked like
+  variation and was not: dropping a note fuses the two intervals either
+  side of it into a third that was never in the figure, so every bar quoted
+  a slightly different tune.
+- **The walk moves mostly by step, and answers its leaps.** A leap is
+  followed by a step back into the gap it opened, which is the oldest rule
+  in counterpoint and the thing that makes a leap sound intended rather
+  than random. Two degrees of a pentatonic is a fifth where two degrees of
+  a seven-note mode is a third, so the allowance narrows to match the
+  scale.
+- **Keys and melody are kept apart.** Same drawn voice, they are put in
+  unison on purpose; different voices, the keys move down until the two
+  centroids are at least five semitones apart. The melody never moves: it
+  is the part being listened to.
 - **The reverb** is six damped comb filters rather than a convolver: cheaper on
   a weak phone, and tunable while it plays, which a fixed impulse response
   isn't.

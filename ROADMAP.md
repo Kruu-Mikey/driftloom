@@ -67,7 +67,7 @@ back into the window.
 **Done when** the average is 14 semitones or more and distinct-shapes-per-bar
 stays above 0.9, so range is not bought with repetition.
 
-## 4. Keys and melody register — **S**
+## 4. Keys and melody register — **S** — *shipped*
 
 Both layers currently land in the same narrow band by accident. The decision,
 not a coin flip:
@@ -79,6 +79,19 @@ not a coin flip:
 
 **Done when** no loop has two different pitched voices whose centroids are
 within 5 semitones, and same-voice loops sit within 2.
+
+**Shipped.** `separateRegisters()` runs in `render()` once both layers exist
+and moves the chord *events* by whole octaves; the slots the bass and melody
+read their notes from are untouched, so the harmony is unchanged and only
+its voicing moves. Measured over 4000 loops: different-voice loops inside
+five semitones went from 99.4% to **0%**, and the mean centroid gap from 1.4
+to 9.8 semitones.
+
+The same-voice half is met in spirit rather than to the letter: 81% sit
+within 2, 99.3% within 4, and the widest is 4.33. Transposition is by the
+octave, so a three-semitone gap cannot be closed -- moving an octave to fix
+it would open a nine-semitone one. Every same-voice loop is inside six
+semitones, which is one register by any reading.
 
 ## 5. Real-hardware budget calibration — **S**
 
