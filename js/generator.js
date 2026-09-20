@@ -701,6 +701,18 @@ function genMelody(spec, harmony) {
 
   const motif = [];
   let deg = 0;
+  // The size of the last move, so a leap can be answered. Kept as the move
+  // that actually happened rather than the one drawn, because the clamp
+  // below can turn a drawn leap into a step at the edge of the range.
+  let lastMove = 0;
+  const up = 1 + mood * 2.2;
+  const down = 1 + (1 - mood) * 2.2;
+  // A degree is not a fixed distance. Two degrees of a seven-note mode is
+  // a third; two degrees of a pentatonic is a fourth or a fifth, which is
+  // why the pentatonic scales measured worst for leaps by a clear margin.
+  // Same walk, narrower allowance, so the figure comes out the same shape
+  // whatever it is spelled in.
+  const wide = scale.length <= 5 ? 0.4 : 1;
   for (const [at, dur, accent] of rhythm.pat) {
     motif.push({
       offset: at,
@@ -711,14 +723,50 @@ function genMelody(spec, harmony) {
       // position within a phrase is roadmap item 2 and is still absent.
       vel: 0.36 + r.f() * 0.26 + (accent ? 0.16 : 0),
     });
-    const up = 1 + mood * 2.2;
-    const down = 1 + (1 - mood) * 2.2;
-    deg += r.weighted([
-      [0, 1], [1, 2 * up], [-1, 2 * down], [2, 1.4 * up], [-2, 1.1 * down],
-      [3, 0.8 * up], [-3, 0.6 * down], [4, 0.4 * up],
-    ]);
-    deg = Math.max(-5, Math.min(10, deg));
+    // A tune moves mostly by step.
+    //
+    // The old weights made a degree move of two or more about as likely as
+    // one, which across the corpus put 41% of consecutive intervals at a
+    // fifth or wider and only 28% at a tone or less. That is not a melody
+    // wandering, it is a melody being drawn from a hat: a line that leaps
+    // as often as it steps has no shape to remember.
+    //
+    // Two changes, because the first alone was not enough. Weighting
+    // toward 0 and +/-1 got leaps to about 34%, still miles off anything
+    // singable. The rest comes from answering a leap: a leap followed by a
+    // step back into the gap it opened is the oldest rule in counterpoint
+    // and the thing that makes a leap sound intended rather than random,
+    // and it removes the case the weights could not -- two leaps in a row
+    // compounding into an interval nobody chose.
+    let move;
+    if (Math.abs(lastMove) >= 2) {
+      const back = lastMove > 0 ? -1 : 1;
+      move = r.weighted([[back, 9], [back * 2, 0.8], [0, 1.4]]);
+    } else {
+      move = r.weighted([
+        [0, 4], [1, 9 * up], [-1, 9 * down],
+        [2, 0.4 * up * wide], [-2, 0.32 * down * wide],
+        [3, 0.06 * up * wide], [-3, 0.05 * down * wide], [4, 0.02 * up * wide],
+      ]);
+    }
+    const before = deg;
+    deg = Math.max(-5, Math.min(10, deg + move));
+    lastMove = deg - before;
   }
+
+  // Which notes the figure leaves out, decided once.
+  //
+  // The omission used to be rolled per restatement, which quietly undid the
+  // motif: measured across the corpus, bars sharing the commonest rhythm
+  // ran at 0.55 and bars sharing the commonest pitch contour at only 0.32.
+  // The contour came apart faster than the rhythm because dropping a note
+  // does not merely remove it -- it fuses the two intervals either side
+  // into a third interval that was never in the motif, so every bar quoted
+  // a slightly different tune. Deciding here means the gaps belong to the
+  // figure, and the figure is the same figure every time it is played.
+  const omit = Math.max(0, 0.2 - lf.energy * 0.15);
+  const kept = motif.filter(() => !r.chance(omit));
+  const figure = kept.length >= Math.min(2, motif.length) ? kept : motif;
 
   // --- how the motif is developed --------------------------------------
   //
@@ -777,7 +825,7 @@ function genMelody(spec, harmony) {
     // is what makes a phrase feel like it is going anywhere.
     const step = r.pick([1, 2, -1, 3, -2]);
     if (kind === 'sequence' && r.chance(0.25)) kind = 'augment';
-    const shaped = transform(motif, kind, step);
+    const shaped = transform(figure, kind, step);
 
     // Contour arc across the whole loop: rise toward a high point about two
     // thirds through, then come back down. Without this a long loop has no
@@ -802,12 +850,18 @@ function genMelody(spec, harmony) {
       const lastBarOfPhrase = bar === barsPerPhrase - 1;
 
       shaped.forEach((m, i) => {
-        if (r.chance(0.2 - lf.energy * 0.15)) return;
         let midi = scalePitch(spec.root, scale, m.degree + lift + slot.degree, 0) + 12;
         // Cadence: land the end of a phrase on something stable, and the
         // end of the loop on the tonic.
         const isLast = lastBarOfPhrase && i === shaped.length - 1;
-        if (i === 0 || isLast) midi = nearestChordTone(midi, slot.notes);
+        // Anchor the phrase, not every bar. Snapping the first note of
+        // every bar to a chord tone moved it by up to a fifth while the
+        // note after it stayed where the figure put it, which both
+        // manufactured a leap the walk had no chance to answer and gave
+        // every bar a different opening interval. A phrase that enters on
+        // a chord tone and cadences on one is anchored; the bars in
+        // between are free to be the tune.
+        if ((bar === 0 && i === 0) || isLast) midi = nearestChordTone(midi, slot.notes);
         if (isLast && ph === phraseCount - 1) {
           midi = nearestChordTone(scalePitch(spec.root, scale, 0, 0) + 24, slot.notes);
         }
@@ -820,12 +874,17 @@ function genMelody(spec, harmony) {
           midi,
           vel: m.vel * (isLast ? 1.05 : 1) * (ph === 0 ? 1 : 0.94),
           voice,
+          // The figure's own scale degree, carried through for measurement.
+          // Semitone intervals cannot tell whether a motif is being quoted,
+          // because transposing it diatonically through a progression
+          // changes them by design; the degree can.
+          degree: m.degree,
           vowel: VOWEL_KEYS[(ph + (kind === 'invert' ? 1 : 0)) % VOWEL_KEYS.length],
         });
       });
     }
   }
-  return { events, voice, motif, cell: rhythm.id };
+  return { events, voice, motif: figure, cell: rhythm.id };
 }
 
 // -------------------------------------------------------------- drums
@@ -1015,6 +1074,68 @@ function genTexture(spec, harmony) {
   return { events, kind };
 }
 
+// --------------------------------------------------- register
+
+// Keys and melody in different rooms -- or deliberately in the same one.
+//
+// Roadmap item 4. Measured across the corpus, the two layers' centroids sat
+// 1.4 semitones apart, and 99% of loops whose keys and melody drew
+// *different* voices had them inside five semitones of each other. That is
+// not two parts, it is one thicker part: a piano chord and a piano melody
+// in the same octave blur together, and the tune stops being a tune.
+//
+// The decision, rather than a coin flip:
+//
+//   same drawn voice  -> put them in unison, which is the case that already
+//                        sounded good by accident and should be deliberate
+//   different voices  -> at least five semitones apart
+//
+// Keys move, melody does not. The melody is the part being listened to and
+// it has already been placed in a register that suits its voice; dragging
+// it up to clear the accompaniment would fix the spacing by spoiling the
+// thing the spacing is for.
+function separateRegisters(harmony, melody) {
+  const chords = harmony.events.filter((e) => e.notes && e.notes.length);
+  if (!chords.length || !melody.events.length) return;
+
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const notes = [];
+  for (const e of chords) for (const n of e.notes) notes.push(n);
+  const melodyCentre = mean(melody.events.map((e) => e.midi));
+  const chordCentre = mean(notes);
+
+  // "Same voice" means the whole keys layer drew the one the melody drew.
+  // A layer split between keys and pad is two voices and takes the
+  // separated case.
+  const voices = new Set(chords.map((e) => e.voice));
+  const same = voices.size === 1 && voices.has(melody.voice);
+
+  const lowest = Math.min(...notes);
+  const highest = Math.max(...notes);
+  // Octaves only, and only ones that keep the voicing somewhere a keyboard
+  // would actually play it.
+  const room = (sh) => lowest + sh >= 33 && highest + sh <= 88;
+  const gap = (sh) => Math.abs(melodyCentre - (chordCentre + sh));
+
+  let shift = 0;
+  if (same) {
+    // Unison: whichever octave puts the two centres closest together.
+    for (const sh of [-12, 12, -24]) {
+      if (room(sh) && gap(sh) < gap(shift)) shift = sh;
+    }
+  } else if (gap(0) < 5) {
+    // Down, by the least that clears five semitones; failing that, by
+    // whatever opens the most room.
+    const down = [-12, -24].filter(room);
+    shift = down.find((sh) => gap(sh) >= 5)
+      ?? down.sort((a, b) => gap(b) - gap(a))[0]
+      ?? 0;
+  }
+
+  if (!shift) return;
+  for (const e of chords) e.notes = e.notes.map((n) => n + shift);
+}
+
 // --------------------------------------------------------------- render
 
 export function render(spec) {
@@ -1023,6 +1144,12 @@ export function render(spec) {
   const melody = genMelody(layerSpec(spec, 'melody'), harmony);
   const drums = genDrums(layerSpec(spec, 'drums'));
   const texture = genTexture(layerSpec(spec, 'texture'), harmony);
+
+  // Done here rather than inside genHarmony because it needs both layers,
+  // and only the chord *events* move: the slots the bass and the melody
+  // read their notes from are untouched, so the harmony is the same
+  // harmony and only its voicing has changed octave.
+  separateRegisters(harmony, melody);
 
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const form = genForm(spec);
