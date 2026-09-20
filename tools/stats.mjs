@@ -18,6 +18,7 @@
 
 import { newSpec, render, STEPS_PER_BAR } from '../js/generator.js';
 import { Rng } from '../js/rng.js';
+import { SCALES } from '../js/theory.js';
 
 // ------------------------------------------------------------ arguments
 
@@ -149,6 +150,7 @@ function measure(spec) {
     rhythmRepeat: null,
     contourRepeat: null,
     figureRepeat: null,
+    audibleRepeat: null,
     // Distance between the keys and melody centroids, and whether the two
     // layers drew the same voice.
     separation: null,
@@ -209,6 +211,40 @@ function measure(spec) {
       // once the chord underneath them is also the same.
       if (line[0].degree != null) {
         rec.figureRepeat = commonest((l) => l.slice(1).map((e, i) => e.degree - l[i].degree).join(','));
+      }
+
+      // The same question again, asked of the pitch that actually comes
+      // out. `figureRepeat` above reads `degree` straight off the motif,
+      // which is the figure *before* the arc, the chord it is sitting on,
+      // the chord-tone snap, the closing cadence and the octave fold have
+      // touched it -- so it measures whether the motif was reused, not
+      // whether anything reused is audible. This converts the emitted midi
+      // back to scale degrees with the loop's own root and scale, which
+      // makes it blind to the transposition a progression applies (a
+      // sequence is still the same figure) while still seeing every other
+      // thing done to the note on its way out.
+      //
+      // The two disagree by a lot -- 0.68 against 0.35 -- and the gap is
+      // the point: see the bisect in the pull request that added this.
+      const steps = SCALES[spec.scale] && SCALES[spec.scale].steps;
+      if (steps && steps.length) {
+        const degreeOf = (midi) => {
+          const rel = midi - spec.root;
+          const pc = ((rel % 12) + 12) % 12;
+          let idx = steps.indexOf(pc);
+          // Chord tones are built from scale degrees, so this does not fire
+          // in practice; kept so a future chromatic note cannot silently
+          // corrupt the figure rather than merely being unusual.
+          if (idx < 0) {
+            let best = 0;
+            let bd = 99;
+            steps.forEach((v, j) => { const d = Math.abs(v - pc); if (d < bd) { bd = d; best = j; } });
+            idx = best;
+          }
+          return Math.floor(rel / 12) * steps.length + idx;
+        };
+        rec.audibleRepeat = commonest((l) => l.slice(1)
+          .map((e, i) => degreeOf(e.midi) - degreeOf(l[i].midi)).join(','));
       }
     }
   }
@@ -285,6 +321,7 @@ function summarise(records) {
     rhythmRepeat: mean(records.filter((r) => r.rhythmRepeat != null), (r) => r.rhythmRepeat),
     contourRepeat: mean(records.filter((r) => r.contourRepeat != null), (r) => r.contourRepeat),
     figureRepeat: mean(records.filter((r) => r.figureRepeat != null), (r) => r.figureRepeat),
+    audibleRepeat: mean(records.filter((r) => r.audibleRepeat != null), (r) => r.audibleRepeat),
     separation: mean(records.filter((r) => r.separation != null), (r) => r.separation),
     tooClose: (() => {
       const pairs = records.filter((r) => r.separation != null && r.sameVoice === false);
@@ -394,6 +431,7 @@ function report(columns, opts) {
   out.push(line('bars sharing the rhythm', columns.map((c) => num(c.stats.rhythmRepeat, 3)), 4));
   out.push(line('bars sharing the contour', columns.map((c) => num(c.stats.contourRepeat, 3)), 4));
   out.push(line('bars quoting the figure', columns.map((c) => num(c.stats.figureRepeat, 3)), 4));
+  out.push(line('bars quoting it audibly', columns.map((c) => num(c.stats.audibleRepeat, 3)), 4));
   out.push('');
 
   out.push(line('keys against melody', columns.map((c) => '')));
