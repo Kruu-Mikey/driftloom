@@ -7,30 +7,36 @@ Sizes: **S** under an hour, **M** a session, **L** more than a session.
 
 ---
 
-## 1. Commit the measurement harnesses — **S**, blocking
+## 1. Commit the measurement harnesses — **S** — *shipped, both halves*
 
-Four items below say "measure first" and the tools to do it are not in the
-repo. They were written inline in throwaway scripts against a local server
-and never cleaned up, which is the only reason they are missing; they are not
-low quality, they are the things that found the envelope clicks, the
-saturator, the voice-budget miscount and the melody bug. Every later task is
-slower without them.
+Four items below say "measure first" and the tools to do it were not in the
+repo. They had been written inline in throwaway scripts against a local
+server and never cleaned up, which is the only reason they were missing;
+they were not low quality, they were the things that found the envelope
+clicks, the saturator, the voice-budget miscount and the melody bug. Both
+now live here.
 
-**The generation half has shipped.** `tools/stats.mjs` draws a corpus through
-`newSpec()` and `render()` and reports profile, metre, voice and rhythmic-cell
-distributions, melodic span, note count, duration, velocity and the share of
-melody notes landing off the beat, either overall or bucketed by `feel.lift`.
-It is what found the vestigial ternary that had kept every melody note in the
-app's history on an even step, and it is what items 2 and 3 should be measured
-against.
+**`tools/stats.mjs` — generation.** Draws a corpus through `newSpec()` and
+`render()` and reports profile, metre, voice and rhythmic-cell distributions,
+melodic span, note count, duration, velocity and the share of melody notes
+landing off the beat, either overall or bucketed by `feel.lift`. It is what found the vestigial ternary
+that had kept every melody note in the app's history on an even step.
 
-**The audio half is still open.** Ship `tools/measure.mjs` with: render a spec
-offline, report peak, RMS, amplitude at node-stop, per-layer balance, and
-per-voice marginal cost. It needs an offline render of the synth graph, which
-is a different kind of harness from counting events.
+**`tools/measure.mjs` — audio.** Drives the real `Engine` and `Synth` against
+an `OfflineAudioContext` in headless Chromium and reports per-loop peak, RMS
+and full-scale sample count, corpus peak and RMS spread, crest factor, and
+the dry level of each layer tapped at its channel gain, so the balance
+between layers is measured rather than read off the gain table. Web Audio
+does not exist in Node and a reimplementation of the graph would only
+measure the reimplementation, so the tool needs Playwright and a Chromium
+build; that is a dependency of the tool, not of the app.
 
-**Done when** `node tools/measure.mjs --voice templebell` prints peak, RMS,
-ring time and cut-off dB without a browser tab being opened by hand.
+It is what established that the peak range the README used to claim was
+never true, and what item 11 is waiting on.
+
+**Not built:** the per-voice probe the original acceptance line described
+(`--voice templebell` printing ring time and cut-off dB). Nothing has needed
+it yet. It is a small addition to the same harness whenever something does.
 
 ## 2. Articulation, v1: dropped notes and velocity by phrase position — **M**
 
@@ -129,6 +135,42 @@ these subsume the old "human whistle" item rather than sitting beside it.
 Vowels are chosen per phrase and shared across a chord. The remaining step is
 movement *within* a long note -- "ah" opening into "oh" across a sustained bar
 -- which is the difference between a formant filter and something sung.
+
+## 11. Loudness spread across the catalogue — **deferred, question first**
+
+Measured with `tools/measure.mjs` over thirty loops: peak level runs from
+about 0.17 to about 0.85, roughly 14 dB, with nothing normalising it. A
+quiet loop is quiet because its profile is quiet -- the sparse, airy
+palettes land at the bottom of that range and the busy ones at the top --
+and the master chain deliberately does not pull them together.
+
+**This is not filed as a fault.** Quiet tracks are wanted, and so is
+dynamic range across the catalogue; a loop machine whose every loop arrives
+at the same level has had something taken away from it. Normalisation is
+not the obvious answer and is not being proposed here.
+
+The open question is narrower: **is the spread wider than intended when you
+listen to twenty in a row?** Reaching for the volume control between tracks
+is a different experience from noticing that one piece is hushed, and 14 dB
+of peak is a lot if the quiet ones are also quiet in the middle rather than
+merely less peaky.
+
+**What would settle it:** report RMS spread alongside peak spread from
+`tools/measure.mjs` -- it already prints both -- and compare them. If RMS
+spread is much narrower than peak spread, the quiet loops are simply less
+peaky and the perceived range is smaller than the figure suggests, and this
+closes. If the two track each other, the catalogue really does span 14 dB of
+loudness and the question becomes a real one worth answering.
+
+**First reading, thirty loops:** peak spread 13.4 dB, RMS spread 13.2 dB.
+They track almost exactly, so the quiet loops are quiet in the middle and
+not merely less peaky, and the perceived range is about what the peak
+figure says. That points at the question being a real one rather than an
+artefact of crest factor -- but one corpus of thirty is a reading, not a
+verdict, and what it cannot say is whether 13 dB is wider than *wanted*.
+That part is a judgement about listening, not a measurement.
+
+No implementation until someone has sat through twenty in a row and said.
 
 ---
 

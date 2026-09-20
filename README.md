@@ -226,9 +226,35 @@ value; the defaults are roughly the quartiles of a distribution that is
 skewed high.
 
 The corpus is deterministic -- same `--seed`, same loops -- which is what
-makes a before-and-after comparison mean anything. This is the generation
-half of the measurement harness; the audio half (peak, RMS, ring time,
-per-voice cost) is a separate tool and still to come.
+makes a before-and-after comparison mean anything.
+
+## Measurement
+
+```sh
+node tools/measure.mjs --n 30
+```
+
+The audio counterpart to the statistics above. It renders loops offline and
+reports what came out of the bus: per-loop peak, RMS and full-scale sample
+count, the peak and RMS spread across the corpus, crest factor, and the dry
+level of each layer tapped at its channel gain -- so the balance between
+melody, keys and air is measured rather than read off the gain table and
+hoped for. The per-layer figures are dry on purpose: reverb and echo returns
+arrive through one shared pair of nodes, so a wet tail cannot be attributed
+back to the layer that sent it.
+
+It drives the real `Engine` and `Synth` against an `OfflineAudioContext` --
+same nodes, same envelopes, same saturator, same ceiling, same scheduling
+code that runs when you press play. Web Audio does not exist in Node, and a
+reimplementation of the graph would only measure the reimplementation, so
+the tool runs the app inside headless Chromium:
+
+```sh
+npm install -g playwright && npx playwright install chromium
+```
+
+That is a dependency of this one tool. The app still has no build step and
+still runs from a folder.
 
 ## Track length
 
@@ -479,8 +505,16 @@ behind it:
 
 ## Known rough edges
 
-- Output now peaks between about 0.46 and 0.84 with no full-scale samples
-  across long multi-pass renders, and the crest factor survives the bus.
+- Output peaks span roughly **0.17 to 0.85** across loops, about 14 dB, with
+  no full-scale samples across long multi-pass renders and a crest factor
+  that survives the bus. An earlier version of this line claimed 0.46 to
+  0.84; that was never measured over a whole corpus and is not true. The
+  low end is a property of the sparse profiles rather than a fault --
+  `thaw`, `haven` and the other airy palettes are quiet by design, nothing
+  normalises between loops, and a loop machine whose every loop arrives at
+  the same level has had something taken away from it. Run
+  `node tools/measure.mjs` to see the current figures. Whether the spread is
+  wider than intended over twenty tracks in a row is roadmap item 11.
 - Loops are always 4/4. No odd meters yet.
 - There's no way to edit a pattern by hand — you can only re-roll.
 - Saves live in this browser on this device. "Back up all" downloads a file;
