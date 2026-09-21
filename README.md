@@ -183,6 +183,12 @@ Notes worth knowing if you go digging:
   unison on purpose; different voices, the keys move down until the two
   centroids are at least five semitones apart. The melody never moves: it
   is the part being listened to.
+- **A phrase is leaned on at its edges.** Velocity follows a full cosine
+  across the phrase -- strongest on the first and last note, easing through
+  the middle -- and the depth of it follows energy, so a hushed loop arrives
+  even and a quickened one breathes. The rhythmic cell's own accent stays
+  underneath: the accent says which note of the figure is leaned on, the arc
+  says where in the phrase the leaning happens.
 - **The reverb** is six damped comb filters rather than a convolver: cheaper on
   a weak phone, and tunable while it plays, which a fixed impulse response
   isn't.
@@ -231,7 +237,8 @@ node tools/stats.mjs --n 4000 --lift-low --lift-high
 Draws a corpus the way the app does -- `newSpec()` then `render()` -- and
 reports what came out: dominant profile, steps per bar, melody voice and
 rhythmic cell distributions, mean melodic span, note count, note duration and
-velocity, and the share of melody notes landing off the beat. Counted on the
+velocity, how velocity is shaped across a phrase, and the share of melody
+notes landing off the beat. Counted on the
 rendered pattern, after entry schedules and gaps have zeroed what they
 silence, so the figures describe what you would hear.
 

@@ -854,6 +854,29 @@ function genMelody(spec, harmony) {
     if (kind === 'sequence' && r.chance(0.25)) kind = 'augment';
     const shaped = transform(figure, kind, step);
 
+    // Velocity across the phrase.
+    //
+    // A player leans on the note a phrase enters on and the note it lands
+    // on, and eases through the middle. Nothing here did that: the only
+    // shaping was a 5% lift on the closing note and a flat 6% drop for
+    // every phrase after the first, so a phrase arrived at one level and
+    // left at the same one.
+    //
+    // Measured, the edges already sat 0.044 above the middle, but that was
+    // an accident of the rhythmic cells -- most of them accent their first
+    // note, and a phrase begins on one. Against a within-phrase spread of
+    // 0.223 that shape was buried five to one under note-to-note jitter,
+    // which is why the phrase did not read as a phrase.
+    //
+    // A full cosine over the phrase is +1 at both ends and -1 in the
+    // middle, and averages to zero across it, so the shaping bends the
+    // line without making the melody louder or quieter overall.
+    //
+    // Depth follows energy. A hushed loop should arrive even -- evenness is
+    // what hushed sounds like -- and a quickened one should breathe.
+    const phraseNotes = Math.max(1, barsPerPhrase * shaped.length);
+    const breath = 0.02 + lf.energy * 0.33;
+
     // Contour arc across the whole loop: rise toward a high point about two
     // thirds through, then come back down. Without this a long loop has no
     // shape at all, which is what makes twenty-four bars feel like one bar
@@ -935,6 +958,8 @@ function genMelody(spec, harmony) {
       shaped.forEach((m, i) => {
         let midi = pitchOf(degreeOf(m) + anchorShift);
         const isLast = lastBarOfPhrase && i === shaped.length - 1;
+        const pos = phraseNotes > 1 ? (bar * shaped.length + i) / (phraseNotes - 1) : 0;
+        const arc = Math.cos(pos * Math.PI * 2);
         if (pointillist && r.chance(pointillist)) midi += r.pick([-12, 12, 12]);
         barOf.push(absBar);
         centreSum += midi;
@@ -944,13 +969,19 @@ function genMelody(spec, harmony) {
           step: ((barStart + m.offset) % total + total) % total,
           dur: m.dur,
           midi,
-          vel: m.vel * (isLast ? 1.05 : 1) * (ph === 0 ? 1 : 0.94),
+          // The cell's own accent stays underneath this: the accent says
+          // which note of the figure is leaned on, the arc says where in
+          // the phrase the leaning happens. Two layers of one thing.
+          vel: Math.min(1, m.vel * (1 + arc * breath) * (ph === 0 ? 1 : 0.94)),
           voice,
           // The figure's own scale degree, carried through for measurement.
           // Semitone intervals cannot tell whether a motif is being quoted,
           // because transposing it diatonically through a progression
           // changes them by design; the degree can.
           degree: m.degree,
+          // Which phrase this note belongs to, carried through so the
+          // shaping across a phrase can be measured rather than asserted.
+          phrase: ph,
           vowel: VOWEL_KEYS[(ph + (kind === 'invert' ? 1 : 0)) % VOWEL_KEYS.length],
         });
       });
