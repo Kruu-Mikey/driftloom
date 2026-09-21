@@ -816,6 +816,33 @@ function genMelody(spec, harmony) {
   };
 
   const events = [];
+  const barOf = [];
+  // Mean pitch of everything placed so far, so each bar can enter near
+  // where the line already is rather than wherever the chord puts it.
+  let centreSoFar = null;
+  let centreCount = 0;
+  let centreSum = 0;
+
+  // When the keys drew the voice the melody drew, the two are meant to be
+  // in unison, so the register to aim at from the first bar is the one the
+  // keys are in. Item 4 corrects afterwards but only in whole octaves, and
+  // a melody sitting five semitones off can never be met by an octave; the
+  // anchor can meet it, because a chord has several tones to land on and
+  // they are only a few semitones apart.
+  const chordPitches = [];
+  const chordVoices = new Set();
+  for (const e of harmony.events) {
+    if (!e.notes || !e.notes.length) continue;
+    chordVoices.add(e.voice);
+    for (const n of e.notes) chordPitches.push(n);
+  }
+  const unison = chordPitches.length > 0
+    && chordVoices.size === 1 && chordVoices.has(voice);
+  if (unison) {
+    centreSoFar = chordPitches.reduce((a, b) => a + b, 0) / chordPitches.length;
+    while (centreSoFar < 55) centreSoFar += 12;
+    while (centreSoFar > 95) centreSoFar -= 12;
+  }
   const restPhrase = Math.max(0.02, Math.min(0.5, c.restBar * (1.5 - lf.energy * 1.2)));
 
   for (let ph = 0; ph < phraseCount; ph++) {
@@ -849,25 +876,70 @@ function genMelody(spec, harmony) {
       const slot = slotAt(harmony.slots, barStart, harmony.cycleSteps);
       const lastBarOfPhrase = bar === barsPerPhrase - 1;
 
-      shaped.forEach((m, i) => {
-        let midi = scalePitch(spec.root, scale, m.degree + lift + slot.degree, 0) + 12;
-        // Cadence: land the end of a phrase on something stable, and the
-        // end of the loop on the tonic.
-        const isLast = lastBarOfPhrase && i === shaped.length - 1;
-        // Anchor the phrase, not every bar. Snapping the first note of
-        // every bar to a chord tone moved it by up to a fifth while the
-        // note after it stayed where the figure put it, which both
-        // manufactured a leap the walk had no chance to answer and gave
-        // every bar a different opening interval. A phrase that enters on
-        // a chord tone and cadences on one is anchored; the bars in
-        // between are free to be the tune.
-        if ((bar === 0 && i === 0) || isLast) midi = nearestChordTone(midi, slot.notes);
-        if (isLast && ph === phraseCount - 1) {
-          midi = nearestChordTone(scalePitch(spec.root, scale, 0, 0) + 24, slot.notes);
+      // Anchor the bar by moving all of it.
+      //
+      // Snapping one note onto a chord tone and leaving its neighbours
+      // where the figure put them is the single largest thing standing
+      // between the motif and what you hear: measured against the emitted
+      // pitch it costs 0.12 of the contour on its own, and it manufactures
+      // a leap the walk never had a chance to answer. Shifting the whole
+      // bar by what the anchor note needed lands the anchor exactly where
+      // the harmony wants it and keeps every interval of the figure.
+      //
+      // The shift is counted in scale degrees rather than semitones, so
+      // the bar arrives transposed inside the mode rather than chromatically
+      // beside it. That is the same reason neighbourInScale exists.
+      const degreeOf = (m) => m.degree + lift + slot.degree;
+      const pitchOf = (d) => scalePitch(spec.root, scale, d, 0) + 12;
+
+      // One anchor per bar, because a bar can only be transposed once. A
+      // phrase enters on a chord tone, a phrase ends on one, and the loop
+      // closes on the tonic; where a one-bar phrase wants two of those,
+      // the closing one wins.
+      const closing = lastBarOfPhrase && ph === phraseCount - 1;
+      let anchorAt = null;
+      let landOn = null;
+      if (closing) {
+        anchorAt = shaped.length - 1;
+        landOn = new Set([((spec.root % 12) + 12) % 12]);
+      } else if (bar === 0 || lastBarOfPhrase) {
+        anchorAt = bar === 0 ? 0 : shaped.length - 1;
+        landOn = new Set(slot.notes.map((n) => ((n % 12) + 12) % 12));
+      }
+
+      // Which chord tone, not just the nearest one.
+      //
+      // Any note of the chord satisfies the anchor, and they are spread
+      // across several semitones, so the choice is free to be spent on
+      // something else: keeping the bar in the register the line is
+      // already in. Spending it on "nearest" instead lets the progression
+      // walk the bars apart -- measured, bar centres spread 7.7 semitones
+      // and the loop span went to 12.0, outside the band a melody should
+      // sit in. Choosing the chord tone that keeps the bar near the
+      // running centre costs nothing musically and is what holds it.
+      let anchorShift = 0;
+      if (anchorAt != null) {
+        const rawCentre = shaped.reduce((a, m) => a + pitchOf(degreeOf(m)), 0) / shaped.length;
+        const aim = centreSoFar == null ? rawCentre : centreSoFar;
+        const from = degreeOf(shaped[anchorAt]);
+        const at = pitchOf(from);
+        let bestScore = Infinity;
+        for (let d = -scale.length * 2; d <= scale.length * 2; d++) {
+          const p = pitchOf(from + d);
+          if (!landOn.has(((p % 12) + 12) % 12)) continue;
+          const score = Math.abs(rawCentre + (p - at) - aim);
+          if (score < bestScore) { bestScore = score; anchorShift = d; }
         }
+      }
+
+      shaped.forEach((m, i) => {
+        let midi = pitchOf(degreeOf(m) + anchorShift);
+        const isLast = lastBarOfPhrase && i === shaped.length - 1;
         if (pointillist && r.chance(pointillist)) midi += r.pick([-12, 12, 12]);
-        while (midi < 55) midi += 12;
-        while (midi > 95) midi -= 12;
+        barOf.push(absBar);
+        centreSum += midi;
+        centreCount += 1;
+        centreSoFar = centreSum / centreCount;
         events.push({
           step: ((barStart + m.offset) % total + total) % total,
           dur: m.dur,
@@ -884,6 +956,56 @@ function genMelody(spec, harmony) {
       });
     }
   }
+  // One octave per bar, chosen toward the line's own register centre.
+  //
+  // Folding each note into 55..95 on its own is what put octave-sized
+  // jumps inside figures. Deleting the fold is not the answer either: the
+  // raw line is far wider than the window, and without it the span goes to
+  // 17.8. So the bar moves as a unit, and the octave it moves to is the
+  // one nearest the centre of this line -- the same centroid item 4 reads
+  // to keep the keys out of the melody's way, rather than a second idea of
+  // register invented here. Choosing per bar without that target scatters
+  // the bars and the span goes further still.
+  if (events.length) {
+    const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+
+    // Where the line wants to sit. Its own centre, unless the keys drew
+    // the same voice the melody did -- then the two are meant to be in
+    // unison, and the register to aim at is the one the keys are already
+    // in. Item 4 moves the keys to hold that separation afterwards, but it
+    // can only move them by whole octaves, so a melody that lands five
+    // semitones off can never be met; aiming here instead is what makes
+    // the unison a unison rather than an approximate one.
+    let centre = unison
+      ? chordPitches.reduce((a, b) => a + b, 0) / chordPitches.length
+      : mean(events.map((e) => e.midi));
+    while (centre < 55) centre += 12;
+    while (centre > 95) centre -= 12;
+
+    const bars = new Map();
+    events.forEach((e, i) => {
+      const b = barOf[i];
+      if (!bars.has(b)) bars.set(b, []);
+      bars.get(b).push(e);
+    });
+
+    for (const [, list] of bars) {
+      let shift = Math.round((centre - mean(list.map((e) => e.midi))) / 12) * 12;
+      const lo = Math.min(...list.map((e) => e.midi));
+      const hi = Math.max(...list.map((e) => e.midi));
+      // Never chase the centre out of the window.
+      while (lo + shift < 55 && hi + shift + 12 <= 95) shift += 12;
+      while (hi + shift > 95 && lo + shift - 12 >= 55) shift -= 12;
+      for (const e of list) {
+        let n = e.midi + shift;
+        // A figure wider than the window itself still has to fit.
+        while (n < 55) n += 12;
+        while (n > 95) n -= 12;
+        e.midi = n;
+      }
+    }
+  }
+
   return { events, voice, motif: figure, cell: rhythm.id };
 }
 
@@ -1094,14 +1216,15 @@ function genTexture(spec, harmony) {
 // it has already been placed in a register that suits its voice; dragging
 // it up to clear the accompaniment would fix the spacing by spoiling the
 // thing the spacing is for.
-function separateRegisters(harmony, melody) {
-  const chords = harmony.events.filter((e) => e.notes && e.notes.length);
-  if (!chords.length || !melody.events.length) return;
+function separateRegisters(harmony, melody, tracks) {
+  const chords = tracks.chords.filter((e) => e.vel && e.notes && e.notes.length);
+  const sung = tracks.melody.filter((e) => e.vel);
+  if (!chords.length || !sung.length) return;
 
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   const notes = [];
   for (const e of chords) for (const n of e.notes) notes.push(n);
-  const melodyCentre = mean(melody.events.map((e) => e.midi));
+  const melodyCentre = mean(sung.map((e) => e.midi));
   const chordCentre = mean(notes);
 
   // "Same voice" means the whole keys layer drew the one the melody drew.
@@ -1114,7 +1237,7 @@ function separateRegisters(harmony, melody) {
   const highest = Math.max(...notes);
   // Octaves only, and only ones that keep the voicing somewhere a keyboard
   // would actually play it.
-  const room = (sh) => lowest + sh >= 33 && highest + sh <= 88;
+  const room = (sh) => lowest + sh >= 33 && highest + sh <= 96;
   const gap = (sh) => Math.abs(melodyCentre - (chordCentre + sh));
 
   let shift = 0;
@@ -1133,7 +1256,18 @@ function separateRegisters(harmony, melody) {
   }
 
   if (!shift) return;
-  for (const e of chords) e.notes = e.notes.map((n) => n + shift);
+  // Every copy of a chord event, in the pattern and in the layer it was
+  // built from, so a bar the repair pass puts back later comes back in the
+  // octave the rest of the keys are in. Silenced copies share their notes
+  // array with the original and are left alone; they make no sound.
+  const moved = new Set();
+  for (const list of [harmony.events, tracks.chords]) {
+    for (const e of list) {
+      if (!e.notes || moved.has(e)) continue;
+      moved.add(e);
+      e.notes = e.notes.map((n) => n + shift);
+    }
+  }
 }
 
 // --------------------------------------------------------------- render
@@ -1144,12 +1278,6 @@ export function render(spec) {
   const melody = genMelody(layerSpec(spec, 'melody'), harmony);
   const drums = genDrums(layerSpec(spec, 'drums'));
   const texture = genTexture(layerSpec(spec, 'texture'), harmony);
-
-  // Done here rather than inside genHarmony because it needs both layers,
-  // and only the chord *events* move: the slots the bass and the melody
-  // read their notes from are untouched, so the harmony is the same
-  // harmony and only its voicing has changed octave.
-  separateRegisters(harmony, melody);
 
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const form = genForm(spec);
@@ -1183,6 +1311,14 @@ export function render(spec) {
       });
     }
   }
+
+  // Kept until here, after the entry schedules and the gaps, because the
+  // question it answers is about what you hear. Deciding it on every event
+  // the generator produced gives the wrong answer once the bars of a
+  // melody sit in different octaves: silencing one bar then moves the
+  // sounding centroid by several semitones, and a separation that was
+  // correct on paper is wrong in the room.
+  separateRegisters(harmony, melody, tracks);
 
   return {
     spec,
@@ -1465,7 +1601,13 @@ export function drift(pattern, rng, amount) {
     if (rng.chance(0.09 * a)) {
       e.midi = neighbourInScale(e.midi, spec.root, scale, rng.chance(0.5) ? 1 : -1);
     }
-    if (rng.chance(0.04 * a)) e.midi += 12;
+    // Keep the jump inside the melody's own window, the way the bass jump
+    // below already does. It was unclamped and got away with it only
+    // because the old per-note fold left nothing near the top of the
+    // register; now that a bar is placed as a unit the top is reachable,
+    // and an unclamped octave on top of a scale step walks off the
+    // keyboard.
+    if (rng.chance(0.04 * a) && e.midi + 12 <= 95) e.midi += 12;
     if (rng.chance(0.07 * a)) e.vel = 0;
   }
   // Bass finds a passing tone.
