@@ -193,11 +193,63 @@ Only after item 2 ships. v2: slid attacks into some notes. v3: breath before
 phrase entries. Most of what makes a whistle sound human is articulation, so
 these subsume the old "human whistle" item rather than sitting beside it.
 
-## 10. Vowel movement within a note — **M**
+## 10. Vowel movement within a note — **M** — *shipped*
 
-Vowels are chosen per phrase and shared across a chord. The remaining step is
+Vowels are chosen per phrase and shared across a chord. The remaining step was
 movement *within* a long note -- "ah" opening into "oh" across a sustained bar
 -- which is the difference between a formant filter and something sung.
+
+**Shipped in the synth, not the composer**, and that is the whole of why it
+was cheap. Contribution rule 1 is about voices, but its reason is general:
+anything drawn from the composer's stream renumbers every decision after it,
+and every share code in circulation renders as different music. A vowel's
+*destination* is not a compositional decision in any case -- it is
+articulation, the same category as the scoop, the jitter and the vibrato,
+which have always been per-note and drawn from `Math.random`. It is also the
+only place that can answer the question: the composer knows a note's length
+in steps, and whether a vowel has time to travel is a question about seconds.
+
+The move is one rung along the open/close axis and never across it -- a to
+o or e, o to u or a, u to o, e to a. F1 is the openness formant (a 800,
+o 450, e 400, u 325), so neighbouring rungs glide and the ear hears one
+vowel changing shape. A jump across the ladder ("eh" straight into "oo") is
+two vowels in succession, which is a word, and words are in *Decided
+against*. A hum has no vowel to go to and opens instead: the same closed
+tract relaxing.
+
+**Length decides both halves.** `held` is how far a note is into "long" --
+zero below 0.5s, one from 2.0s up -- and it is both the probability of
+moving at all and, through `0.34 + held * 0.66`, how far along the way the
+note actually gets. Over 4000 loops, 26.4% of formant-voice notes move, at a
+mean depth of 0.81; the 41% of them under 0.55s never move at all. That is
+the "short notes stay put" clause, measured rather than asserted.
+
+**The filters move; there is no second bank.** Crossfading into a second set
+of peaking filters is the obvious build and it is wrong: two banks summed
+have different phase responses, so the sum combs and it sounds like a
+flanger rather than a mouth. Sliding the resonances themselves means every
+instant in between is a real vowel shape, and it adds no nodes at all.
+
+**Cost: 5 units on top of the voice**, against 22 for `vowel`, 16 for `hum`
+and 34 for `choir`, and it is passed rather than merely declared, which is
+contribution rule 4. Measured the same way the rest of the table was: the
+marginal render time of a note through the real `Synth` in an
+`OfflineAudioContext`, one build with the decision pinned off against the
+same build with it pinned on. Movement runs 27-29% of a vowel, 19-23% of a
+hum and 13-16% of a choir, which through each voice's own weight is 4.7 and
+5.0 units on two clean passes. One constant rather than three, because the
+extra is not nodes -- none are added -- but the same three biquads
+recomputing coefficients while a parameter is in motion, which is the same
+work in every case. The README has the caveats on the conversion.
+
+**Done, and how it was checked.** One 3.0s "a" pinned to drift to "o",
+rendered dry and band-integrated early (22% in) and late (90% in): the two
+builds are identical in the early window to a tenth of a dB, and in the late
+one the moving build puts 8.2 dB more into 350-600Hz (o's F1) and
+11.8 dB less into 1000-1400Hz (a's F2). The note starts on the vowel it
+was given and arrives somewhere else. `tools/stats.mjs` over 4000 loops is
+byte-identical before and after, which is the other half of the claim: no
+draw moved.
 
 ## 11. Loudness spread across the catalogue — **deferred, question first**
 

@@ -189,6 +189,11 @@ Notes worth knowing if you go digging:
   even and a quickened one breathes. The rhythmic cell's own accent stays
   underneath: the accent says which note of the figure is leaned on, the arc
   says where in the phrase the leaning happens.
+- **A held vowel moves.** The three formant voices take their vowel from the
+  composer -- one per phrase, shared across a chord -- and then open or close
+  it across the note, the way a singer's jaw gives on a long one. Both the
+  chance of moving and how far it travels follow the note's length in
+  seconds, so short notes keep their shape and only sustains change.
 - **The reverb** is six damped comb filters rather than a convolver: cheaper on
   a weak phone, and tunable while it plays, which a fixed impulse response
   isn't.
@@ -433,6 +438,81 @@ clipping even though the output never came near full scale.
 Dividing by `drive` instead makes the slope at zero exactly 1. Quiet
 passages pass through untouched and only loud ones round off, which is what
 tape does.
+
+## Vowel movement
+
+`vowel`, `hum` and `choir` are three peaking filters in series standing in
+for a vocal tract. Those filters used to be set once and left, which meant a
+two-second sustain held one mouth shape for two seconds. Nothing holds a
+mouth that still, and it is most of what separated these voices from
+something sung.
+
+**Where it goes.** One rung along the open/close axis and never across it:
+a to o or e, o to u or a, u to o, e to a. F1 is the openness formant --
+a 800Hz, o 450, e 400, u 325 -- so neighbouring rungs glide, and the ear
+hears one vowel changing shape rather than two vowels in succession. A jump
+across the ladder ("eh" straight into "oo") is a diphthong, which is a word,
+and words are deliberately out of scope. A hum has no vowel to move to and
+opens instead: the same closed tract relaxing.
+
+**When it goes.** The note holds its vowel for the first third, travels
+through the middle, and lands at 85% so the release sings the vowel it
+arrived at. Leaving at the attack reads as a filter sweep laid over the note
+rather than as a mouth.
+
+**How much it moves follows how long the note is.** `held` is how far a note
+is into "long" -- zero below 0.5s, one from 2.0s up -- and it serves as both
+the probability of moving at all and, through `0.34 + held * 0.66`, the
+fraction of the distance actually travelled. Over 4000 loops that puts 26.4%
+of formant-voice notes in motion at a mean depth of 0.81, while the 41% of
+them shorter than 0.55s never move. A mouth that crosses a whole vowel in
+half a second has sung a word.
+
+**There is no second filter bank.** Crossfading into a second set of
+peaking filters is the obvious build and it is wrong: two banks summed have
+different phase responses, so the sum combs and the result sounds like a
+flanger. The resonances themselves slide instead, so every instant in
+between is a real vowel shape, and no nodes are added.
+
+**It costs 5 units**, on top of the 22 a `vowel` already costs, the 16 a
+`hum` costs and the 34 a `choir` costs -- and it is charged, not merely
+declared: a moving note is budgeted at the higher figure and is the first
+thing to give when a dense passage runs out of room.
+
+The number is measured the way the rest of `VOICE_COST` was, as marginal
+render time of a note through the real `Synth` in an `OfflineAudioContext`,
+with one build's drift decision pinned off against the same build's pinned
+on. Movement runs 27-29% of a vowel, 19-23% of a hum and 13-16% of a choir;
+put through each voice's own weight that comes to 4.7 and 5.0 units on two
+clean passes, so 5. One constant rather than three, because in every case it
+is the same three biquads doing the same extra work.
+
+Two caveats on that figure, both of which cut the same way. The probe's
+hat-normalised column does not reproduce the table's own internal ratios on
+this machine -- a 0.05s hat against a 2.4s vowel is not a like-for-like
+per-note comparison -- so the conversion goes through each voice's own
+weight rather than through a hat. And the table's absolute weights were
+never a phone's to begin with, which the comment above them says plainly.
+5 is a ratio measured against numbers that are themselves a reasoned
+starting point.
+
+**How it was checked.** One 3.0s "a", pinned to drift to "o", rendered dry
+and band-integrated early (22% into the note) and late (90% in), against the
+same note with the drift pinned off. The two are identical in the early
+window to a tenth of a dB -- the note starts on the vowel it was given -- and
+in the late window the moving one puts 8.2 dB more into 350-600Hz, which is
+o's F1, and 11.8 dB less into 1000-1400Hz, which is a's F2. It arrives
+somewhere else.
+
+**The composer never sees any of this.** The vowel itself is still drawn
+there and still belongs to the composition; only the movement is decided in
+the synth, beside the scoop, the jitter and the vibrato, which have always
+been per-note. That is not tidiness. A draw from the composer's stream
+renumbers every decision after it, so every share code in circulation would
+render as different music -- and the composer could not answer the question
+anyway, because it knows a note's length in steps and this is a question
+about seconds. `tools/stats.mjs` over 4000 loops is byte-identical before
+and after.
 
 ## Silence
 
