@@ -151,6 +151,16 @@ function measure(spec) {
     contourRepeat: null,
     figureRepeat: null,
     audibleRepeat: null,
+    // Velocity across a phrase. Edge notes are the first and last of a
+    // phrase as it actually sounds, not as it was written: a phrase whose
+    // opening bar the form scheduled out starts where you can hear it
+    // start.
+    edgeSum: 0,
+    edgeN: 0,
+    midSum: 0,
+    midN: 0,
+    rangeSum: 0,
+    rangeN: 0,
     // Distance between the keys and melody centroids, and whether the two
     // layers drew the same voice.
     separation: null,
@@ -209,6 +219,28 @@ function measure(spec) {
       // a long way. Measured directly: adjacent bars inside one phrase
       // agree on semitone contour 9.5% of the time, and 40.1% of the time
       // once the chord underneath them is also the same.
+      const phrases = new Map();
+      for (const e of line) {
+        if (e.phrase == null) continue;
+        if (!phrases.has(e.phrase)) phrases.set(e.phrase, []);
+        phrases.get(e.phrase).push(e);
+      }
+      for (const [, group] of phrases) {
+        if (group.length < 2) continue;
+        const vs = group.map((e) => e.vel);
+        rec.rangeSum += Math.max(...vs) - Math.min(...vs);
+        rec.rangeN++;
+        // A two-note phrase is all edge and has no middle to compare
+        // against, so it counts toward the range and nothing else.
+        if (group.length < 3) continue;
+        rec.edgeSum += group[0].vel + group[group.length - 1].vel;
+        rec.edgeN += 2;
+        for (let i = 1; i < group.length - 1; i++) {
+          rec.midSum += group[i].vel;
+          rec.midN++;
+        }
+      }
+
       if (line[0].degree != null) {
         rec.figureRepeat = commonest((l) => l.slice(1).map((e, i) => e.degree - l[i].degree).join(','));
       }
@@ -318,6 +350,20 @@ function summarise(records) {
           : NaN,
       };
     })(),
+    ...(() => {
+      const sum = (key) => sung.reduce((a, r) => a + r[key], 0);
+      const edgeN = sum('edgeN');
+      const midN = sum('midN');
+      const rangeN = sum('rangeN');
+      const edgeVel = edgeN ? sum('edgeSum') / edgeN : NaN;
+      const midVel = midN ? sum('midSum') / midN : NaN;
+      return {
+        edgeVel,
+        midVel,
+        edgeOverMid: edgeVel - midVel,
+        phraseRange: rangeN ? sum('rangeSum') / rangeN : NaN,
+      };
+    })(),
     rhythmRepeat: mean(records.filter((r) => r.rhythmRepeat != null), (r) => r.rhythmRepeat),
     contourRepeat: mean(records.filter((r) => r.contourRepeat != null), (r) => r.contourRepeat),
     figureRepeat: mean(records.filter((r) => r.figureRepeat != null), (r) => r.figureRepeat),
@@ -417,6 +463,13 @@ function report(columns, opts) {
   out.push(line('mean note duration', columns.map((c) => num(c.stats.dur)), 4));
   out.push(line('mean velocity', columns.map((c) => num(c.stats.vel, 3)), 4));
   out.push(line('notes on odd steps', columns.map((c) => num(c.stats.oddFraction, 3)), 4));
+  out.push('');
+
+  out.push(line('velocity across a phrase', columns.map(() => '')));
+  out.push(line('phrase edges', columns.map((c) => num(c.stats.edgeVel, 3)), 4));
+  out.push(line('mid phrase', columns.map((c) => num(c.stats.midVel, 3)), 4));
+  out.push(line('edges above middle', columns.map((c) => num(c.stats.edgeOverMid, 3)), 4));
+  out.push(line('within-phrase range', columns.map((c) => num(c.stats.phraseRange, 3)), 4));
   out.push('');
 
   out.push(line('melodic intervals', columns.map((c) => '')));

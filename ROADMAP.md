@@ -38,20 +38,63 @@ never true, and what item 11 is waiting on.
 (`--voice templebell` printing ring time and cut-off dB). Nothing has needed
 it yet. It is a small addition to the same harness whenever something does.
 
-## 2. Articulation, v1: dropped notes and velocity by phrase position — **M**
+## 2. Articulation, v1: velocity by phrase position — **S** — *shipped*
 
-The biggest single improvement available, and it improves every pitched voice
-at once. It is four features and shipping all four at once is why it has
-stalled twice.
+Four features, and shipping all four at once is why this stalled twice.
+Splitting it is what moved it. v1 was two things and they landed apart.
 
-**v1 is exactly two things:** notes omitted mid-phrase at a rate that follows
-energy, and velocity shaped by position within the phrase (stronger on the
-first and last note of a phrase, weaker in the middle). Slid attacks and
-breath-before-entry are v2 and v3 and are explicitly out of scope.
+**The omission half shipped in #7**, though not where this item expected it.
+Notes omitted mid-phrase at a rate that follows energy now happens *in the
+motif*: which notes the figure leaves out is decided once, when the figure is
+built, so every restatement is missing the same notes. Rolling it per bar had
+been quietly undoing the motif -- dropping a note does not merely remove it,
+it fuses the two intervals either side into a third that was never in the
+figure -- and bars sharing the commonest rhythm ran at 0.55 because of it.
+Deciding it once took that to 0.85. Density still follows energy: 2.5 notes a
+bar in the low-lift bucket against 3.8 in the high, a 50% difference.
 
-**Done when** velocity variance within a phrase is at least 3x what it is
-today, and two loops from the same seed with different energy differ in note
-count by at least 25%.
+**The velocity half is this change.** Stronger on the first and last note of a
+phrase, weaker through the middle, with the depth following energy so a
+hushed loop arrives even and a quickened one breathes. The rhythmic cells'
+own note-level accent stays underneath it: the accent says which note of the
+figure is leaned on, the phrase arc says where in the phrase the leaning
+happens. Slid attacks and breath-before-entry remain v2 and v3 and are still
+out of scope.
+
+**The old criterion was "velocity variance within a phrase at least 3x what
+it is today", and it stopped meaning anything.** It was written when the
+melody had almost no velocity variation at all. The rhythmic cells then
+added a per-note accent, and within-bar velocity now measures sd 0.0906 over
+9,126 bars, mean 0.533, across 478 distinct values. Tripling *that* is a
+recipe for jitter, not for phrasing. Variance cannot tell the two apart:
+phrasing is the part of the variation that is **systematic**, the same shape
+every phrase, and a spread figure counts the random part just as happily.
+
+**Done when** the notes at a phrase's edges average at least **0.10 of
+velocity above the notes in its middle**, measured across the corpus by
+`tools/stats.mjs` as "edges above middle", **and** that gap is at least
+**1.4x** larger in the high-lift bucket than in the low one.
+
+The two numbers, and why those:
+
+- **0.10** has to be audible and has to be unmistakably deliberate. Mean
+  velocity is 0.533, so a gap of 0.10 is a ratio of about 1.21 between the
+  edges of a phrase and its middle -- roughly 1.7 dB, which reads as
+  intentional dynamics where anything under about 1 dB reads as nothing. It
+  also has to clear what the cells produce by accident: most cells accent
+  their own first note and a phrase begins on one, which was already worth
+  0.044 before any of this. Double that accident is a figure no amount of
+  luck reaches.
+- **1.4x** is the shaping following the feeling rather than being applied
+  flat. Before this change the gap was 0.041 in the low bucket against 0.045
+  in the high -- a ratio of 1.1, which is to say none. The threshold sits
+  below what the change actually achieves (1.52 to 1.62 across five corpus
+  seeds) by enough that an ordinary corpus cannot fail it.
+
+Measured on 4000 loops: edges 0.641 against 0.509 mid, a gap of **0.133**,
+and **1.62x** between the buckets (0.097 low, 0.157 high). The within-phrase
+range roughly doubles, 0.223 to 0.360, but that is a consequence rather than
+the test.
 
 ## 3. Melodic range — **M**
 
