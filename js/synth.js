@@ -39,6 +39,17 @@ const VOICE_COST = {
 };
 const DEFAULT_COST = 12; // any voice not listed above
 
+// What a formant voice is charged on top of its own cost when its vowel
+// moves within the note. Measured, not reasoned: the marginal render time
+// of a 2.4s note through the real Synth in an OfflineAudioContext, one
+// build with the drift pinned off against the same build with it pinned
+// on. Movement runs 27-29% of a vowel, 19-23% of a hum and 13-16% of a
+// choir, which through each voice's own weight above is 4.7 and 5.0 units
+// on two clean passes. It is one constant rather than three because the
+// cost is the same three biquads recomputing coefficients in every case --
+// no nodes are added at all. See "Vowel movement" in the README.
+const VOWEL_DRIFT_COST = 5;
+
 // Total budget, in the same units. Calibrated so a genuinely dense passage
 // (a four-note analogpad chord plus a busy kit plus a melody note: roughly
 // 4*32 + 6*1 + 15 = 149) fits comfortably, while a wall of the heaviest
@@ -1046,8 +1057,6 @@ export class Synth {
       case 'choir': {
         const humming = name === 'hum';
         const choral = name === 'choir';
-        const cost = choral ? 34 : humming ? 16 : 22;
-        if (!this._budget(time, choral, cost)) return;
 
         // [centre Hz, bandwidth Hz, boost dB]. Bandwidth matters as much as
         // centre: too wide and the vowel blurs into a filter sweep.
@@ -1067,6 +1076,54 @@ export class Synth {
           ? [[280, 60, 18], [1100, 100, 8], [2200, 160, 3]]
           : VOWELS[vowelKey] || VOWELS.a;
 
+        // Movement within the note.
+        //
+        // The vowel itself belongs to the composition -- one per phrase,
+        // shared across a chord -- and that is right. What it cannot say is
+        // what happens *during* a held note. A singer holding a bar does not
+        // hold one mouth shape for it: the jaw gives, the vowel opens or
+        // closes, and the formants migrate with it. That migration is most
+        // of the difference between a formant filter and something sung.
+        //
+        // It is decided here rather than in the composer for two reasons.
+        // The composer's random stream is what a share code replays, so one
+        // extra draw there renumbers every decision after it and every code
+        // in circulation renders as different music. And it is the wrong
+        // place to ask the question anyway: the composer knows a note's
+        // length in steps, and whether a vowel has time to travel is a
+        // question about seconds. So this sits beside the scoop, the jitter
+        // and the vibrato, which are per-note for the same reason.
+        //
+        // How far this note is into "long". Nothing moves under half a
+        // second: a mouth that crosses a whole vowel that fast has sung a
+        // diphthong, and a diphthong is a word. Full travel from two
+        // seconds up, which is a sustain by any reading.
+        const held = Math.min(1, Math.max(0, (dur - 0.5) / 1.5));
+        // Both the likelihood and the depth follow that, so the two never
+        // disagree: a note just over the floor seldom moves and barely moves
+        // when it does, and one held two seconds always moves and travels
+        // the whole way. A long note that kept still would be the odd one.
+        const drifts = held > 0 && Math.random() < held;
+        const depth = 0.34 + held * 0.66;
+        // Where a held vowel goes: one rung along the open/close axis,
+        // never across it. F1 is the openness formant -- a 800, o 450,
+        // e 400, u 325 -- and a neighbouring rung glides, which the ear
+        // hears as one vowel changing shape. A jump across the ladder
+        // ("eh" straight into "oo") is two vowels in succession, which is
+        // a word again.
+        const DRIFT_TO = { a: ['o', 'e'], e: ['a'], o: ['u', 'a'], u: ['o'] };
+        // A hum has no vowel to move to, and it still opens: the same
+        // closed tract relaxing, which is what a long hum does by itself.
+        const OPEN_HUM = [[330, 70, 16.5], [1200, 110, 10], [2350, 170, 5]];
+        let target = null;
+        if (drifts) {
+          const to = DRIFT_TO[vowelKey] || DRIFT_TO.a;
+          target = humming ? OPEN_HUM : VOWELS[to[Math.floor(Math.random() * to.length)]];
+        }
+
+        const cost = (choral ? 34 : humming ? 16 : 22) + (target ? VOWEL_DRIFT_COST : 0);
+        if (!this._budget(time, choral, cost)) return;
+
         const amp = ctx.createGain();
         const stopAt = time + dur + 0.9;
         amp.gain.setValueAtTime(0.0001, time);
@@ -1081,17 +1138,45 @@ export class Synth {
         // Series peaking filters, then a lowpass standing in for the steeper
         // rolloff of a glottal pulse: a raw sawtooth is far too bright and
         // reads as buzz rather than voice.
+        //
+        // A moving vowel moves these same filters rather than crossfading
+        // into a second set of them. Two banks summed is not one tract
+        // travelling: their phase responses differ, so the sum combs, which
+        // sounds like a flanger rather than like a mouth. Sliding the
+        // resonances means every instant in between is a real vowel shape,
+        // and it adds no nodes at all -- the whole of the extra cost is the
+        // filter having to recompute its coefficients while a parameter is
+        // in motion, which is what VOWEL_DRIFT_COST pays for.
         let head = null;
         let tail = null;
-        for (const [hz, bw, gainDb] of formants) {
+        // Hold the vowel, then travel. Leaving at the attack and arriving
+        // early reads as a filter sweep laid over the note; the move belongs
+        // in its second half, which is where a held note's jaw actually
+        // gives. It lands before the release so the tail sings the vowel it
+        // arrived at.
+        const leaveAt = time + dur * 0.35;
+        const landAt = time + dur * 0.85;
+        formants.forEach(([hz, bw, gainDb], i) => {
           const bq = ctx.createBiquadFilter();
           bq.type = 'peaking';
           bq.frequency.value = hz;
           bq.Q.value = hz / bw;
           bq.gain.value = gainDb;
+          if (target) {
+            // Part of the way there, not all of it, unless the note is long
+            // enough to have earned the whole distance.
+            const part = (from, to) => from + (to - from) * depth;
+            const [thz, tbw, tgain] = target[i];
+            bq.frequency.setValueAtTime(hz, leaveAt);
+            bq.frequency.linearRampToValueAtTime(part(hz, thz), landAt);
+            bq.Q.setValueAtTime(hz / bw, leaveAt);
+            bq.Q.linearRampToValueAtTime(part(hz, thz) / part(bw, tbw), landAt);
+            bq.gain.setValueAtTime(gainDb, leaveAt);
+            bq.gain.linearRampToValueAtTime(part(gainDb, tgain), landAt);
+          }
           if (!head) head = bq; else tail.connect(bq);
           tail = bq;
-        }
+        });
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 0.7;
