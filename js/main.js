@@ -1,4 +1,4 @@
-import { newSpec, rerollLayer, cloneSpec, render, LAYERS, STEPS_PER_BAR } from './generator.js';
+import { newSpec, rerollLayer, cloneSpec, render, choirOf, LAYERS, STEPS_PER_BAR } from './generator.js';
 import { Synth } from './synth.js';
 import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
@@ -8,7 +8,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v29';
+const BUILD = 'v30';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
@@ -699,6 +699,10 @@ function wire() {
     // means a dead service worker -- no offline mode -- is otherwise invisible.
     lines.push(`sw: ${swState}`);
     lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);
+    // One loop in thirty is a deliberate doubling (roadmap item 12), and
+    // "is this one of them?" is otherwise only answerable by ear, which is
+    // no use at all when the question is whether it fired.
+    lines.push(`choir: ${state.spec && choirOf(state.spec) ? 'yes' : 'no'}`);
     if (state.media) push(state.media.report());
     else lines.push('media: not built yet (press Play)');
     if (state.engine && state.engine.spec) push(state.engine.report());

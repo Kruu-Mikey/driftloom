@@ -255,6 +255,79 @@ export function feelForLayer(spec, layer) {
   };
 }
 
+// ------------------------------------------------------- the choir
+
+// Roadmap item 12. A doubling drawn on purpose, rarely.
+//
+// Melody and keys used to land on the same voice in 11.1% of loops, purely
+// because the two pools sometimes collided, and `separateRegisters` then
+// forced those loops into unison. Nothing made them sound like anything;
+// they were loops where the register separation had nothing to do. One in
+// nine is also far too often for something meant to feel like an event.
+//
+// So it is drawn, and drawn here rather than inside a layer. The salt is
+// the same pattern `feelForLayer`, `genGaps` and `genForm` already use: a
+// stream of its own hung off the loop seed, which means it consumes
+// nothing from any layer and a re-rolled bass cannot turn the choir on or
+// off. It also needs no share-format change -- `spec.seed` is already in
+// the code (`writeSpec` writes it), so a code written down last month
+// still says whether its loop sings.
+const CHOIR_SALT = 0x7c9e6b2d;
+
+// 3% of loops, which is the roadmap's 3 +/- 1%. Below about one in fifty a
+// listener never meets one; above about one in twenty it stops being an
+// event and becomes a texture the catalogue has.
+const CHOIR_RATE = 0.03;
+
+// Two of the three sung voices. The one called `choir` is left out, and
+// that is a measured exclusion rather than a taste one.
+//
+// A `choir` note is three detuned singers sharing one tract and costs 34,
+// against a vowel's 22 and a hum's 16 -- and this loop is paying for it on
+// two layers at once, one of them a chord. Putting it in the pool roughly
+// doubles what the voice budget refuses on a choir loop: melody notes
+// refused go from 8.9% to 19.7% and keys notes from 8.1% to 19.3%, against
+// an ordinary loop's 6.8% and 17.5%. Dropping one melody note in five on
+// the loops that exist to show off a doubled melody is the opposite of the
+// point.
+//
+// Worth saying that this exclusion was briefly removed on the strength of
+// a probe that appeared to show the budget coping, and put back when an
+// independent one showed the numbers above. The first probe was wrong. The
+// pull request has both.
+const CHOIR_VOICES = [['vowel', 3], ['hum', 2]];
+
+export function choirOf(spec) {
+  if (!spec || spec.seed == null) return null;
+  const r = new Rng(((spec.seed ^ CHOIR_SALT) >>> 0) || 17);
+  if (!r.chance(CHOIR_RATE)) return null;
+  // A standing few cents between the two layers.
+  //
+  // The obvious justification for this is that two identical voices at one
+  // pitch sum to 6dB of one voice rather than sounding like two, and it is
+  // not the true one here: these voices already draw their own scoop,
+  // jitter, vibrato rate and breath per note, so two of them on one pitch
+  // measure +3.3dB -- the incoherent sum, near enough -- before any detune
+  // is applied. The failure this is supposed to prevent does not happen.
+  //
+  // What it does do is make the disagreement *standing* rather than
+  // momentary. The jitter and vibrato are zero-mean, so the two layers
+  // keep crossing each other; a fixed lean means they never settle onto
+  // one pitch at all, which is the difference between two singers drifting
+  // and two singers who are simply two people. It measures as a further
+  // push away from coherence, +3.3dB to +2.9dB at eight cents, and it
+  // costs nothing: an offset on a parameter that was being set anyway.
+  const voice = r.weighted(CHOIR_VOICES);
+  const cents = 4 + r.f() * 7;
+  return {
+    voice,
+    // Opposed, so the interval between the layers is the full spread
+    // rather than each drifting the same way off a shared centre.
+    keysDetune: -cents,
+    melodyDetune: cents,
+  };
+}
+
 export function feelOf(spec) {
   if (spec.feel) return spec.feel;
   const lift = spec.mood ?? 0.5;
@@ -332,6 +405,12 @@ const CHORD_RHYTHMS = {
 function genHarmony(spec) {
   const r = new Rng(spec.layerSeeds.chords);
   const c = characterOf(spec);
+  // A choir loop relabels the voice the draw produced; it never replaces
+  // the draw. Every `r.` call below still happens in the same order with
+  // the same results, so a choir loop is the loop that seed always made,
+  // sung. That is what keeps the A/B honest and what keeps the 97% of
+  // loops that are not choirs byte-identical.
+  const choir = choirOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
   const pentatonic = scale.length <= 5;
@@ -435,20 +514,25 @@ function genHarmony(spec) {
             dur: Math.max(2, dur),
             notes: [n],
             vel: 0.45 + r.f() * 0.2,
-            voice: 'keys',
+            voice: choir ? choir.voice : 'keys',
+            ...(choir ? { vowel: slotVowel, detune: choir.keysDetune } : {}),
           });
         });
       } else {
+        // Drawn either way, so the stream does not move when the choir
+        // takes the label.
+        const drawn = voice === 'both' ? (r.chance(0.5) ? 'keys' : 'pad') : voice;
         events.push({
           step,
           dur,
           notes: notes.slice(),
           vel: 0.4 + r.f() * 0.25,
-          voice: voice === 'both' ? (r.chance(0.5) ? 'keys' : 'pad') : voice,
+          voice: choir ? choir.voice : drawn,
           // One vowel for the whole chord. Singers on a chord sing the same
           // vowel; giving each note its own is not a choir, it is four
           // people disagreeing.
           vowel: slotVowel,
+          ...(choir ? { detune: choir.keysDetune } : {}),
         });
       }
     }
@@ -683,10 +767,15 @@ function genMelody(spec, harmony) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
-  const voice = r.weighted(c.melodyVoices);
+  const drawnVoice = r.weighted(c.melodyVoices);
+  const choir = choirOf(spec);
+  const voice = choir ? choir.voice : drawnVoice;
   const lf = feelForLayer(spec, 'melody');
   const mood = lf.lift;
-  if (!forced(spec, 'melody') && r.chance(0.08)) return { events: [], voice, motif: [], cell: null };
+  // Drawn either way, so the stream does not move; a choir loop simply
+  // never takes the rest. A doubling with nothing to double is not one.
+  const silent = r.chance(0.08);
+  if (!forced(spec, 'melody') && !choir && silent) return { events: [], voice, motif: [], cell: null };
 
   // --- the motif ------------------------------------------------------
   //
@@ -823,21 +912,32 @@ function genMelody(spec, harmony) {
   let centreCount = 0;
   let centreSum = 0;
 
-  // When the keys drew the voice the melody drew, the two are meant to be
-  // in unison, so the register to aim at from the first bar is the one the
-  // keys are in. Item 4 corrects afterwards but only in whole octaves, and
-  // a melody sitting five semitones off can never be met by an octave; the
-  // anchor can meet it, because a chord has several tones to land on and
-  // they are only a few semitones apart.
+  // On a choir loop the two layers are meant to be in unison, so the
+  // register to aim at from the first bar is the one the keys are in. Item
+  // 4 corrects afterwards but only in whole octaves, and a melody sitting
+  // five semitones off can never be met by an octave; the anchor can meet
+  // it, because a chord has several tones to land on and they are only a
+  // few semitones apart.
+  //
+  // This used to read "when the keys drew the voice the melody drew",
+  // which fired on the 11.1% of loops where the two pools happened to
+  // collide. Those loops were not doublings, they were coincidences, and
+  // unison was being forced on them for no reason anybody chose. They now
+  // take the ordinary separated path; only a drawn choir asks for unison.
   const chordPitches = [];
-  const chordVoices = new Set();
   for (const e of harmony.events) {
     if (!e.notes || !e.notes.length) continue;
-    chordVoices.add(e.voice);
     for (const n of e.notes) chordPitches.push(n);
   }
-  const unison = chordPitches.length > 0
-    && chordVoices.size === 1 && chordVoices.has(voice);
+  const unison = chordPitches.length > 0 && !!choir;
+  // Singers on a chord share a vowel; a line over that chord does not sing
+  // the same one, or the doubling is one wider voice instead of two. Two
+  // rungs along VOWEL_KEYS from whatever the keys opened on, which cannot
+  // land back on it.
+  const keysVowel = choir && harmony.events.find((e) => e.vowel);
+  const vowelBase = keysVowel
+    ? (VOWEL_KEYS.indexOf(keysVowel.vowel) + 2) % VOWEL_KEYS.length
+    : 0;
   if (unison) {
     centreSoFar = chordPitches.reduce((a, b) => a + b, 0) / chordPitches.length;
     while (centreSoFar < 55) centreSoFar += 12;
@@ -982,7 +1082,8 @@ function genMelody(spec, harmony) {
           // Which phrase this note belongs to, carried through so the
           // shaping across a phrase can be measured rather than asserted.
           phrase: ph,
-          vowel: VOWEL_KEYS[(ph + (kind === 'invert' ? 1 : 0)) % VOWEL_KEYS.length],
+          vowel: VOWEL_KEYS[(ph + (kind === 'invert' ? 1 : 0) + vowelBase) % VOWEL_KEYS.length],
+          ...(choir ? { detune: choir.melodyDetune } : {}),
         });
       });
     }
@@ -1239,15 +1340,24 @@ function genTexture(spec, harmony) {
 //
 // The decision, rather than a coin flip:
 //
-//   same drawn voice  -> put them in unison, which is the case that already
-//                        sounded good by accident and should be deliberate
-//   different voices  -> at least five semitones apart
+//   a drawn choir     -> put them in unison, which is the whole point of
+//                        having drawn one
+//   anything else     -> at least five semitones apart
+//
+// The first line used to read "same drawn voice". That fired whenever the
+// two pools collided, which is 11.1% of loops, and forced unison on loops
+// where nobody had decided anything -- item 4 shipped with that clause and
+// item 12 is what replaces it. A collision now takes the separated path
+// like any other pair of voices; a collision is not a decision.
 //
 // Keys move, melody does not. The melody is the part being listened to and
 // it has already been placed in a register that suits its voice; dragging
 // it up to clear the accompaniment would fix the spacing by spoiling the
 // thing the spacing is for.
-function separateRegisters(harmony, melody, tracks) {
+// `melody` used to be passed in for its drawn voice and is not any more:
+// the question is now about the loop, not about what the two layers
+// happened to draw.
+function separateRegisters(harmony, tracks, choir) {
   const chords = tracks.chords.filter((e) => e.vel && e.notes && e.notes.length);
   const sung = tracks.melody.filter((e) => e.vel);
   if (!chords.length || !sung.length) return;
@@ -1258,11 +1368,7 @@ function separateRegisters(harmony, melody, tracks) {
   const melodyCentre = mean(sung.map((e) => e.midi));
   const chordCentre = mean(notes);
 
-  // "Same voice" means the whole keys layer drew the one the melody drew.
-  // A layer split between keys and pad is two voices and takes the
-  // separated case.
-  const voices = new Set(chords.map((e) => e.voice));
-  const same = voices.size === 1 && voices.has(melody.voice);
+  const same = !!choir;
 
   const lowest = Math.min(...notes);
   const highest = Math.max(...notes);
@@ -1304,6 +1410,7 @@ function separateRegisters(harmony, melody, tracks) {
 // --------------------------------------------------------------- render
 
 export function render(spec) {
+  const choir = choirOf(spec);
   const harmony = genHarmony(layerSpec(spec, 'chords'));
   const bass = genBass(layerSpec(spec, 'bass'), harmony);
   const melody = genMelody(layerSpec(spec, 'melody'), harmony);
@@ -1349,7 +1456,26 @@ export function render(spec) {
   // melody sit in different octaves: silencing one bar then moves the
   // sounding centroid by several semitones, and a separation that was
   // correct on paper is wrong in the room.
-  separateRegisters(harmony, melody, tracks);
+  separateRegisters(harmony, tracks, choir);
+
+  // Something has to get out of the way or the doubling is inaudible.
+  //
+  // Once the keys are singing there is no pad left in that register -- the
+  // relabel took it -- so what remains competing with two voices around
+  // MIDI 55-95 is the air layer: its bells and chimes sit an octave or two
+  // above the chord and its swells sit directly on top of the line. They
+  // step back rather than leave: deleting a layer for a loop reads as
+  // something having broken, where 0.4 of the level reads as the room
+  // making space. That is about 8dB, which is a step back anybody hears.
+  //
+  // This is a mix decision and nothing else. The air layer is charged
+  // against the same voice budget, so it looked as though thinning would
+  // also buy the doubling headroom -- it does not. Silencing the layer
+  // outright moves melody refusals from 9.1% to 8.7%, so there is no
+  // budget argument here and the depth was chosen by ear instead.
+  if (choir) {
+    tracks.texture = tracks.texture.map((e) => (e.vel ? { ...e, vel: e.vel * 0.4 } : e));
+  }
 
   return {
     spec,
@@ -1369,7 +1495,11 @@ export function render(spec) {
     },
     harmony,
     tracks,
-    meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, melodyCell: melody.cell, textureKind: texture.kind },
+    meta: { bassVoice: bass.voice, bassStyle: bass.style, kit: drums.kit, melodyVoice: melody.voice, melodyCell: melody.cell, textureKind: texture.kind,
+      // Only present when there is one, so a loop that is not a choir
+      // carries a meta object identical to the one it carried before this
+      // existed.
+      ...(choir ? { choir } : {}) },
   };
 }
 

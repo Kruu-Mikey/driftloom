@@ -179,10 +179,10 @@ Notes worth knowing if you go digging:
   than random. Two degrees of a pentatonic is a fifth where two degrees of
   a seven-note mode is a third, so the allowance narrows to match the
   scale.
-- **Keys and melody are kept apart.** Same drawn voice, they are put in
-  unison on purpose; different voices, the keys move down until the two
+- **Keys and melody are kept apart.** The keys move down until the two
   centroids are at least five semitones apart. The melody never moves: it
-  is the part being listened to.
+  is the part being listened to. The one exception is a loop that drew a
+  choir, where the two are put into unison on purpose.
 - **A phrase is leaned on at its edges.** Velocity follows a full cosine
   across the phrase -- strongest on the first and last note, easing through
   the middle -- and the depth of it follows energy, so a hushed loop arrives
@@ -194,6 +194,10 @@ Notes worth knowing if you go digging:
   it across the note, the way a singer's jaw gives on a long one. Both the
   chance of moving and how far it travels follow the note's length in
   seconds, so short notes keep their shape and only sustains change.
+- **One loop in thirty is a choir.** Melody and keys are put on the same
+  sung voice deliberately and rarely, a few cents apart and a few
+  milliseconds apart, with the air layer stepping back to make room. Drawn
+  from the loop seed, so it survives a re-roll and a share code alike.
 - **The reverb** is six damped comb filters rather than a convolver: cheaper on
   a weak phone, and tunable while it plays, which a fixed impulse response
   isn't.
@@ -438,6 +442,69 @@ clipping even though the output never came near full scale.
 Dividing by `drive` instead makes the slope at zero exactly 1. Quiet
 passages pass through untouched and only loud ones round off, which is what
 tape does.
+
+## The occasional choir
+
+About one loop in thirty puts the melody and the keys on the same sung
+voice on purpose. Before this, they landed on one voice in 11.1% of loops
+purely because the two pools sometimes collided, and the register code
+forced those loops into unison -- which made them sound like nothing in
+particular, because nobody had decided anything. One in nine is also far
+too often for something meant to feel like an event.
+
+**The draw hangs off the loop seed**, with its own salt, the way the
+feeling mixture and the entry schedules already do. Three consequences,
+all of which matter more than they look:
+
+- It consumes nothing from any layer's stream, so a choir loop is the loop
+  that seed always made, only sung. Every other loop renders exactly as it
+  did before the feature existed.
+- It survives re-rolling a layer, because a re-roll replaces a layer seed
+  and never the loop seed. You cannot roll the drums and lose the choir.
+- It needed no change to the share format. `spec.seed` has always been in
+  the code, so a code written down months ago already knows whether its
+  loop sings.
+
+**What makes it sound like several people.** The two layers take a
+standing detune of four to eleven cents in opposite directions; each gets
+an independent timing slip of up to eight milliseconds, drawn fresh every
+bar so it is a scatter rather than a delay; and they start on vowels two
+rungs apart. The air layer -- bells an octave above the chord, swells
+sitting on the line -- drops to 0.4 of its level for the loop, because a
+doubling nothing makes room for is inaudible.
+
+**A premise worth correcting.** The obvious reason to detune a doubling is
+that two identical voices at one pitch sum to 6 dB of one voice rather
+than sounding like two. That is not what happens here. These voices
+already draw their own scoop, jitter, vibrato rate and breath per note, so
+two of them on one pitch measure **+3.3 dB** -- the incoherent sum, near
+enough -- with no detune at all. The detune is still worth having, because
+a standing lean is a different thing from a zero-mean wobble: the layers
+never settle onto one pitch instead of merely crossing each other. But it
+is not load-bearing, and the collapse it is supposed to prevent was never
+going to happen.
+
+**Cost: 2.3 units a note, 14%**, counted across the melody and keys of
+12,000 loops at the weights in `VOICE_COST`. The worst single chord attack
+on a choir loop is 88 units at the 90th percentile against 125 for the
+catalogue at large, and 110 at the maximum against 170. A choir loop is
+nowhere near the heaviest thing here. It actually refuses *fewer* notes
+than an ordinary loop, because a sung chord at 16-22 a note is cheaper
+than the pad or piano it replaced -- keys refusals fall from 17.5% to
+8.1%, while melody refusals rise from 6.8% to 8.9%.
+
+The voice literally named `choir` is not one of the two. It is three
+detuned singers per note at a cost of 34, on two layers at once, and
+putting it in the pool roughly doubles what the budget refuses -- melody
+notes from 8.9% to 19.7%. A doubled melody with a fifth of its notes
+missing is not the feature.
+
+**Whether it works is a listening question**, and the answer is not in.
+The test is whether somebody who does not know the feature exists can pick
+the choirs out of twenty loops by ear. `node tools/stats.mjs --choir-quiz`
+prints twenty share codes in shuffled order, five of them choirs, and
+writes the answer key to a file instead of the screen. Nobody has sat it
+yet.
 
 ## Vowel movement
 
