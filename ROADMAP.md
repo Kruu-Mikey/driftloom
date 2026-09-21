@@ -72,13 +72,11 @@ stays above 0.9, so range is not bought with repetition.
 Both layers currently land in the same narrow band by accident. The decision,
 not a coin flip:
 
-- **Same drawn voice → force unison register.** This is the case that already
-  sounds good by luck and should be deliberate.
-- **Different voices → force a minimum separation** of 5 semitones between
-  layer centroids, moving keys down rather than melody up.
+**Different voices → force a minimum separation** of 5 semitones between
+layer centroids, moving keys down rather than melody up.
 
 **Done when** no loop has two different pitched voices whose centroids are
-within 5 semitones, and same-voice loops sit within 2.
+within 5 semitones.
 
 **Shipped.** `separateRegisters()` runs in `render()` once both layers exist
 and moves the chord *events* by whole octaves; the slots the bass and melody
@@ -87,11 +85,20 @@ its voicing moves. Measured over 4000 loops: different-voice loops inside
 five semitones went from 99.4% to **0%**, and the mean centroid gap from 1.4
 to 9.8 semitones.
 
-The same-voice half is met in spirit rather than to the letter: 81% sit
-within 2, 99.3% within 4, and the widest is 4.33. Transposition is by the
-octave, so a three-semitone gap cannot be closed -- moving an octave to fix
-it would open a nine-semitone one. Every same-voice loop is inside six
-semitones, which is one register by any reading.
+This item originally carried a second clause: when both layers drew the
+same voice, force them into unison, measured as 81% of such loops sitting
+within 2 semitones. **That clause has been removed, and the 81% should not
+be chased.** It was measuring an artefact. The old per-note octave fold
+crushed the melody into a near-fixed band that happened to sit a roughly
+constant distance from the keys, and the alignment was a side effect of
+that crushing rather than of anything this item did. Item 9's anchor work
+gave the line real register freedom, the accident went with it, and the
+figure fell to 42%. Restoring it would mean undoing that work. Same-voice
+loops still sit within six semitones, which is one register by any reading,
+and that is all this item ever needed from them.
+
+What the clause was reaching for is a different thing entirely, and it is
+now item 12.
 
 ## 5. Real-hardware budget calibration — **S**
 
@@ -184,6 +191,35 @@ verdict, and what it cannot say is whether 13 dB is wider than *wanted*.
 That part is a judgement about listening, not a measurement.
 
 No implementation until someone has sat through twenty in a row and said.
+
+## 12. An occasional choir — **M**
+
+Melody and keys currently draw the same voice in **11.1% of loops**, purely
+because the two pools sometimes collide. Nothing makes those loops sound
+like anything in particular; they are just loops where the register
+separation had nothing to do. One in nine is also far too often for
+something that is supposed to feel like an event.
+
+The intent is the opposite of an accident: a doubling drawn **on purpose,
+rarely**, and arranged so that it lands. Three parts, all of which have to
+be true at once or it is just two layers playing the same thing:
+
+- **Drawn deliberately, at roughly 1 loop in 30.** Not a consequence of the
+  two pools matching -- an explicit draw that then sets both voices.
+- **A voice that rewards doubling.** The sung and struck families are the
+  candidates; a pad doubling a pad is inaudible as an effect.
+- **The arrangement thins around it.** Doubling is only audible if something
+  gets out of the way. Whatever else is competing in that register steps
+  back for the duration.
+
+**Done when** the deliberate case fires in 3 ± 1% of loops, the incidental
+collision no longer forces unison on its own, and a listener who did not
+know the feature existed can pick the choir loops out of twenty by ear.
+That last part is the real test and it is not a number `stats.mjs` can
+produce.
+
+**Not started.** Note that the incidental 11.1% is the thing being
+replaced, not a baseline to preserve.
 
 ---
 
