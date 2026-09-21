@@ -1189,12 +1189,17 @@ export class Synth {
         // as a group rather than as one voice through a chorus pedal.
         const singers = choral ? 3 : 1;
         const sources = [];
+        // A standing offset in cents, written by the composer. Item 12
+        // gives the two layers of a choir loop opposite ones so they beat
+        // against each other for the whole loop rather than only where
+        // their own jitter happens to disagree.
+        const lean = opts.detune || 0;
         for (let i = 0; i < singers; i++) {
           const src = ctx.createOscillator();
           src.type = humming ? 'triangle' : 'sawtooth';
           src.frequency.value = f;
 
-          const spread = choral ? (i - 1) * (7 + Math.random() * 6) : 0;
+          const spread = lean + (choral ? (i - 1) * (7 + Math.random() * 6) : 0);
           // Scoop into the note. Singers arrive at a pitch, they do not
           // start on it.
           src.detune.setValueAtTime(spread - 22 - Math.random() * 14, time);

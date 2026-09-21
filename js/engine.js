@@ -294,8 +294,18 @@ export class Engine {
         this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice);
       }
     }
+    // An ensemble does not attack together. The composer's detune keeps
+    // the two layers apart in pitch; this keeps them apart in time, and it
+    // has to be drawn per note rather than written into the spec, because
+    // a layer late by the same three milliseconds every bar has simply
+    // been delayed. Drawn once per layer per step so the two scatter
+    // against each other as well as against the grid, and symmetric like
+    // the drum jitter above so the music does not walk late.
+    const ensemble = () => (p.meta && p.meta.choir ? (Math.random() - 0.5) * 0.016 : 0);
+
     if (!mutes.chords) {
       const s = at('chords');
+      const slip = ensemble();
       for (const e of p.tracks.chords) {
         if (e.step !== s || !e.vel) continue;
         if (e.voice === 'pad') {
@@ -307,18 +317,19 @@ export class Engine {
           e.notes.forEach((n, i) => {
             // Spread the notes of a chord by a few milliseconds so it
             // sounds like fingers rather than a switch closing.
-            this.synth.voice(e.voice, n, t + i * 0.011, e.dur * sd, e.vel * spread,
-              this.synth.channels.chords.gain, { vowel: e.vowel });
+            this.synth.voice(e.voice, n, t + slip + i * 0.011, e.dur * sd, e.vel * spread,
+              this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune });
           });
         }
       }
     }
     if (!mutes.melody) {
       const s = at('melody');
+      const slip = ensemble();
       for (const e of p.tracks.melody) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.voice(e.voice, e.midi, t, e.dur * sd, e.vel,
-          this.synth.channels.melody.gain, { glide: e.glide, vowel: e.vowel });
+        this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel,
+          this.synth.channels.melody.gain, { glide: e.glide, vowel: e.vowel, detune: e.detune });
       }
     }
     if (!mutes.texture) {

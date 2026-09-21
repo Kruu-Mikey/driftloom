@@ -251,7 +251,7 @@ was given and arrives somewhere else. `tools/stats.mjs` over 4000 loops is
 byte-identical before and after, which is the other half of the claim: no
 draw moved.
 
-## 11. Loudness spread across the catalogue — **deferred, question first**
+## 11. Loudness spread across the catalogue — **closed, the spread is wanted**
 
 Measured with `tools/measure.mjs` over thirty loops: peak level runs from
 about 0.17 to about 0.85, roughly 14 dB, with nothing normalising it. A
@@ -285,9 +285,23 @@ artefact of crest factor -- but one corpus of thirty is a reading, not a
 verdict, and what it cannot say is whether 13 dB is wider than *wanted*.
 That part is a judgement about listening, not a measurement.
 
-No implementation until someone has sat through twenty in a row and said.
+**Somebody has now sat through twenty in a row, and the answer is that the
+spread is intended.** Quiet tracks are wanted and so is dynamic range
+across the catalogue; a loop machine whose every loop arrives at the same
+level has had something taken away from it. Reaching for the volume
+control between two tracks is the cost of that, and it is worth paying.
 
-## 12. An occasional choir — **M**
+**So: no normalisation, and nothing to build.** Not a limiter across the
+master, not a loudness target, not a per-loop trim written into the spec.
+The 13 dB stands. If this is ever reopened it should be reopened as a
+different question -- something about the *order* loops arrive in, which is
+a sequencing problem and not a gain one -- rather than as this one.
+
+The measurement stays in `tools/measure.mjs` because it is worth knowing
+when the figure moves. A future change that quietly narrowed the spread to
+4 dB would be a regression, and this is the item that says so.
+
+## 12. An occasional choir — **M** — *shipped*
 
 Melody and keys currently draw the same voice in **11.1% of loops**, purely
 because the two pools sometimes collide. Nothing makes those loops sound
@@ -313,8 +327,91 @@ know the feature existed can pick the choir loops out of twenty by ear.
 That last part is the real test and it is not a number `stats.mjs` can
 produce.
 
-**Not started.** Note that the incidental 11.1% is the thing being
-replaced, not a baseline to preserve.
+**Shipped, with the last clause still open** -- see the bottom of this item.
+
+**The draw.** `choirOf(spec)` hangs a stream off the loop seed with its own
+salt, the same pattern `feelForLayer`, `genGaps` and `genForm` use. It
+therefore takes nothing from any layer's stream, which is what makes the
+next paragraph possible, and it survives a per-layer re-roll because
+`rerollLayer` replaces a layer seed and never the loop seed. It needed no
+share-format change either: `writeSpec` has always written `spec.seed`, so
+a code written down before this existed already says whether its loop
+sings. Measured at **3.06%** over 400,000 draws; 2.9-3.3% on 4,000-loop
+corpora.
+
+**Nothing else moved.** A choir loop *relabels* the voice its draw
+produced rather than replacing the draw, so every `r.` call in `genHarmony`
+and `genMelody` still happens in the same order with the same results. A
+choir loop is the loop that seed always made, sung. Checked against a
+worktree of `main` over 4,000 loops at each of six corpus seeds: every loop
+that is neither a choir nor one of the collisions below is byte-identical,
+0 differences out of ~3,430 per seed.
+
+**The accident is gone.** `separateRegisters`' unison branch read "the keys
+drew the voice the melody drew", which fired on 11.1% of loops and forced
+unison on pairs nobody had chosen. It now reads "this loop drew a choir".
+`genMelody` asked the same question a second time, for its register
+anchor, and that one is changed too -- leaving it would have had the melody
+aim at the keys while the keys walked away from it. Collisions still
+happen at about the same rate and are now simply separated like anything
+else; `stats.mjs` prints the count so a silent return to acting on them
+would show.
+
+**The sound.** Melody and keys take one sung voice -- `vowel` or `hum`,
+weighted 3:2 -- with a standing detune of 4-11 cents in opposite
+directions, an ensemble slip of +/-8ms drawn per layer per step, and
+starting vowels two rungs apart along `VOWEL_KEYS`. The air layer drops to
+0.4 of its level for the loop, which is the only thing left competing in
+that register once the keys stop being a pad.
+
+The voice actually named `choir` is not in the pool. It is three detuned
+singers per note at a cost of 34, and this loop pays on two layers at once,
+one of them a chord: putting it in roughly doubles what the budget refuses,
+melody notes from 8.9% to 19.7% and keys from 8.1% to 19.3%. Dropping one
+melody note in five on the loops built to show off a doubled melody is the
+opposite of the point.
+
+The unison works: choir loops sit **2.66 semitones** apart at the centroid
+against 11.75 for everything else, and 100% of them are inside six.
+
+**Two things measured here turned out to contradict the reasoning that
+produced them**, and both are worth writing down because the wrong version
+is the intuitive one:
+
+- *Two identical voices do not sum to +6dB here.* They measure +3.3dB --
+  the incoherent sum -- because each note already draws its own scoop,
+  jitter, vibrato rate and breath. The detune is still worth having, since
+  a standing lean is a different thing from a zero-mean wobble, but it is
+  not what prevents the doubling collapsing into one louder voice. Nothing
+  was going to.
+- *Thinning the air layer is not a budget lever.* It is charged against the
+  same voice budget, so it looked as though stepping it back would buy the
+  doubling headroom. Silencing it outright moves melody refusals from 9.1%
+  to 8.7%. The depth is a mix decision and was chosen as one.
+
+A third thing went the other way and is worth the same honesty: the
+`choir` voice was excluded on reasoning, the exclusion was removed on the
+strength of a probe that seemed to show the budget coping, and it was put
+back when an independent probe measured the doubling of refusals above.
+The first probe was wrong. Reasoning that a measurement appears to
+overturn is worth re-measuring before it is thrown away.
+
+**Cost: +2.3 units a note, 14%,** counted over the melody and keys of
+12,000 loops with the weights read out of `synth.js`. The worst single
+chord attack on a choir loop is 88 units at the 90th percentile against
+125 for the catalogue at large, and 110 at the maximum against 170 -- a
+choir loop is nowhere near the heaviest thing this app makes. Choir loops
+also *refuse fewer* notes overall than ordinary ones, because a sung chord
+at 16-22 a note is cheaper than the pad or piano it replaced: keys
+refusals fall from 17.5% to 8.1%, against melody refusals rising from 6.8%
+to 8.9%.
+
+**Still open: the listening test.** The acceptance line is a listener
+picking the choirs out of twenty by ear, and no amount of the above
+substitutes for it. `node tools/stats.mjs --choir-quiz` now sets that test
+up -- twenty share codes in shuffled order, five of them choirs, answers
+written to a file rather than the screen. Nobody has sat it yet. Until
+somebody does, this item is shipped but not proven.
 
 ---
 

@@ -16,9 +16,11 @@
 // numbers, which is what makes a before-and-after comparison mean anything.
 // Pass a different --seed for an independent corpus.
 
-import { newSpec, render, STEPS_PER_BAR } from '../js/generator.js';
+import fs from 'node:fs';
+import { newSpec, render, choirOf, STEPS_PER_BAR } from '../js/generator.js';
 import { Rng } from '../js/rng.js';
 import { SCALES } from '../js/theory.js';
+import { encodeSong } from '../js/share.js';
 
 // ------------------------------------------------------------ arguments
 
@@ -31,7 +33,15 @@ driftloom generation statistics
   --seed <number>     corpus seed; same seed, same loops   (default 1)
   --lift-low [value]  upper bound of the low-lift bucket   (default 0.6)
   --lift-high [value] lower bound of the high-lift bucket (default 0.78)
+  --choir-quiz [file] print a listening test instead of the report
   --help              this
+
+  --choir-quiz prints twenty share codes in shuffled order, five of which
+  are choir loops, and writes the answer key to a file (default
+  choir-quiz-key.txt) so it is not on the screen you are reading. Paste the
+  codes in one at a time and write down which five you think are the
+  choirs. That is roadmap item 12's real acceptance test and it is not a
+  number this tool can produce on its own.
 
   Giving either --lift-low or --lift-high splits the corpus by feel.lift
   and prints the two buckets side by side; the other bound takes its
@@ -45,7 +55,7 @@ const LIFT_LOW_DEFAULT = 0.6;
 const LIFT_HIGH_DEFAULT = 0.78;
 
 function parseArgs(argv) {
-  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false };
+  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -68,6 +78,18 @@ function parseArgs(argv) {
       return null;
     };
 
+    // The same, for a flag whose optional value is a path rather than a
+    // number: take the next token unless it is another flag.
+    const text = (fallback) => {
+      if (inline != null) return inline;
+      const next = argv[i + 1];
+      if (next != null && next !== '' && !next.startsWith('--')) {
+        i++;
+        return next;
+      }
+      return fallback;
+    };
+
     switch (arg) {
       case '--n': case '-n':
         opts.n = Math.max(1, Math.round(value(false)));
@@ -82,6 +104,9 @@ function parseArgs(argv) {
       case '--lift-high':
         opts.liftHigh = value(true);
         opts.bucketed = true;
+        break;
+      case '--choir-quiz':
+        opts.quiz = text('choir-quiz-key.txt');
         break;
       case '--help': case '-h':
         console.log(USAGE);
@@ -162,9 +187,13 @@ function measure(spec) {
     rangeSum: 0,
     rangeN: 0,
     // Distance between the keys and melody centroids, and whether the two
-    // layers drew the same voice.
+    // layers ended up on one voice.
     separation: null,
     sameVoice: null,
+    // Drawn on purpose (item 12) rather than by collision. A loop can have
+    // sameVoice without this, and that is exactly the case the item was
+    // written to stop forcing into unison.
+    choir: !!choirOf(spec),
   };
 
   if (notes.length) {
@@ -369,15 +398,32 @@ function summarise(records) {
     figureRepeat: mean(records.filter((r) => r.figureRepeat != null), (r) => r.figureRepeat),
     audibleRepeat: mean(records.filter((r) => r.audibleRepeat != null), (r) => r.audibleRepeat),
     separation: mean(records.filter((r) => r.separation != null), (r) => r.separation),
+    // Item 4's guarantee, and the split is by the choir rather than by the
+    // drawn voice on purpose. A collision takes the separated path now, so
+    // counting it as exempt would hide exactly the regression this line
+    // exists to catch.
     tooClose: (() => {
-      const pairs = records.filter((r) => r.separation != null && r.sameVoice === false);
+      const pairs = records.filter((r) => r.separation != null && !r.choir);
       return pairs.length ? pairs.filter((r) => r.separation < 5).length / pairs.length : NaN;
     })(),
     unison: (() => {
-      const pairs = records.filter((r) => r.separation != null && r.sameVoice === true);
+      const pairs = records.filter((r) => r.separation != null && r.choir);
       return pairs.length ? pairs.filter((r) => r.separation <= 2).length / pairs.length : NaN;
     })(),
-    sameVoiceLoops: records.filter((r) => r.sameVoice === true).length,
+    // Within 2 is a strict reading of a figure that compares a wandering
+    // line's centroid against a four-note chord's, so it never reaches 1
+    // however well the unison works. Six semitones is one register by any
+    // reading, and it is the figure that is actually a guarantee.
+    oneRegister: (() => {
+      const pairs = records.filter((r) => r.separation != null && r.choir);
+      return pairs.length ? pairs.filter((r) => r.separation <= 6).length / pairs.length : NaN;
+    })(),
+    choirRate: records.length ? records.filter((r) => r.choir).length / records.length : NaN,
+    choirLoops: records.filter((r) => r.choir).length,
+    // Loops where the two pools still collide. Nothing is done about these
+    // any more; the figure is kept because it is the thing item 12 stopped
+    // acting on, and a silent return to acting on it would be a bug.
+    collisionLoops: records.filter((r) => r.sameVoice === true && !r.choir).length,
   };
 }
 
@@ -489,9 +535,75 @@ function report(columns, opts) {
 
   out.push(line('keys against melody', columns.map((c) => '')));
   out.push(line('mean centroid gap', columns.map((c) => num(c.stats.separation, 2)), 4));
-  out.push(line('different voice, under 5', columns.map((c) => num(c.stats.tooClose, 3)), 4));
-  out.push(line('same voice, within 2', columns.map((c) => num(c.stats.unison, 3)), 4));
-  out.push(line('loops drawing one voice', columns.map((c) => c.stats.sameVoiceLoops), 4));
+  out.push(line('not a choir, under 5', columns.map((c) => num(c.stats.tooClose, 3)), 4));
+  out.push(line('choir loops, within 2', columns.map((c) => num(c.stats.unison, 3)), 4));
+  out.push(line('choir loops, within 6', columns.map((c) => num(c.stats.oneRegister, 3)), 4));
+  out.push(line('deliberate choir rate', columns.map((c) => num(c.stats.choirRate, 3)), 4));
+  out.push(line('deliberate choir loops', columns.map((c) => c.stats.choirLoops), 4));
+  out.push(line('incidental collisions', columns.map((c) => c.stats.collisionLoops), 4));
+  out.push('');
+  return out.join('\n');
+}
+
+// ------------------------------------------------------------- the quiz
+
+// Item 12's acceptance line is "a listener who did not know the feature
+// existed can pick the choir loops out of twenty by ear", and it says
+// outright that this is not a number stats.mjs can produce. What it can do
+// is set the test up so somebody can actually sit it: draw a corpus, take
+// five choirs and fifteen that are not, shuffle them, print the codes, and
+// put the answers somewhere other than the screen being read.
+//
+// Deterministic in --seed, so a quiz can be handed to two people and be
+// the same quiz, and so a disputed answer can be regenerated rather than
+// argued about.
+const QUIZ_TOTAL = 20;
+const QUIZ_CHOIRS = 5;
+
+function quiz(opts) {
+  const master = new Rng(opts.seed || 1);
+  const choirs = [];
+  const others = [];
+  // Choirs are 3% of loops, so filling five of them needs a few hundred
+  // draws. Bounded so a future rate of zero fails loudly instead of
+  // spinning.
+  for (let i = 0; i < 200000; i++) {
+    if (choirs.length >= QUIZ_CHOIRS && others.length >= QUIZ_TOTAL - QUIZ_CHOIRS) break;
+    const seed = master.seed32();
+    const spec = newSpec(seed);
+    const bucket = choirOf(spec) ? choirs : others;
+    const want = bucket === choirs ? QUIZ_CHOIRS : QUIZ_TOTAL - QUIZ_CHOIRS;
+    if (bucket.length < want) bucket.push(spec);
+  }
+  if (choirs.length < QUIZ_CHOIRS) {
+    fail(`only found ${choirs.length} choir loops; is the draw still firing?`);
+  }
+
+  const items = master.shuffle(
+    choirs.map((spec) => ({ spec, choir: true }))
+      .concat(others.map((spec) => ({ spec, choir: false })))
+  ).map((item) => ({ ...item, code: encodeSong(item.spec) }));
+
+  const key = [
+    'driftloom choir quiz -- answer key',
+    `corpus seed ${opts.seed}. Regenerate with:  node tools/stats.mjs --seed ${opts.seed} --choir-quiz`,
+    '',
+    ...items.map((it, n) => `${String(n + 1).padStart(2)}. ${it.choir ? 'CHOIR   ' : 'not     '} ${it.code}   seed ${it.spec.seed}`),
+    '',
+    `The five choirs are ${items.map((it, n) => (it.choir ? n + 1 : null)).filter(Boolean).join(', ')}.`,
+    '',
+  ].join('\n');
+  fs.writeFileSync(opts.quiz, key);
+
+  const out = [''];
+  out.push('driftloom choir quiz');
+  out.push(`  ${QUIZ_TOTAL} loops, ${QUIZ_CHOIRS} of them choirs, shuffled. Corpus seed ${opts.seed}.`);
+  out.push('  Paste each code into the app and listen. Write down the five you');
+  out.push('  think are doublings before you open the key.');
+  out.push('');
+  items.forEach((it, n) => out.push(`  ${String(n + 1).padStart(2)}.  ${it.code}`));
+  out.push('');
+  out.push(`  Answers written to ${opts.quiz} -- do not open it first.`);
   out.push('');
   return out.join('\n');
 }
@@ -499,6 +611,12 @@ function report(columns, opts) {
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
+
+if (opts.quiz) {
+  console.log(quiz(opts));
+  process.exit(0);
+}
+
 const records = collect(opts);
 
 const columns = opts.bucketed
