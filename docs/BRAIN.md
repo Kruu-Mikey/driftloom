@@ -60,6 +60,11 @@ every loop in order. So any set of loops can be handed to Mikey as one paste.
 - **A/B across a PR**: synth-only changes leave share codes rendering the
   same loops, so the same album on production and on the PR preview is a
   clean A/B.
+- **Never type a code out.** Print it in tool output and copy it from there,
+  then decode what you are about to send. The first brain session wrote one
+  album to a file, printed only its length, and then produced a plausible
+  code from nothing; the app's checksum rejected it as a typo. A code that
+  was never on screen is not a code.
 - `tools/listen.mjs` is meant to make all of this one command (pending).
 
 Results so far:
