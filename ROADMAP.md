@@ -528,6 +528,27 @@ target, normalisation. The master already carries a gentle compressor (3:1
 above -10 dBFS) and a ceiling at -3 dBFS. Both only touch the loud end;
 they stay the backstop they are and are not to be leaned on harder.
 
+**One behaviour for everybody** (decided 2026-09-22). No Room/Car switch, no
+range slider, nothing for the user to scroll past. That also rules out the
+slow leveler: it is defensible as an opt-in for noisy places and nothing
+else, because always on it is the compressor this item exists to avoid.
+The reaching goes both ways about equally -- some loops too quiet, some
+jumping out -- and all three listening patterns happen: one loop for an
+hour, new loops back to back, saved albums in order. Ordering therefore
+helps the album case only and cannot be the whole fix.
+
+**The target.** Played back to back the catalogue is one programme, and the
+spread between loops is that programme's loudness range. Online and mobile
+content generally sits around -16 to -14 LUFS with a loudness range of
+6-8 LU; this catalogue measures about 13 dB. The authored profile trims are
+4.6 dB and fit inside that band with room to spare, which is the argument of
+this whole item: the accidental spread is the entire problem, and removing
+it lands the catalogue in the band on its own, with no per-loop mechanism at
+all. Two things to establish alongside it -- a house level taken from a loop
+Mikey already likes, and whether the loudest loops are riding the master
+compressor (-10 dBFS, 3:1), since a loud loop that is also squeezed is
+exactly the one that jumps out.
+
 **Why there is something to find.** The per-profile `level` trims in
 `characters.js` run from 0.62 to 1.05, about 4.6 dB. That is the spread
 somebody chose. Item 11 measured about 13 dB. The rest comes from things
@@ -586,8 +607,11 @@ one command.
 **Done when** a fresh twenty-in-a-row run, on a new seed, draws **at most
 one** reach for the volume, **and** the corpus loudness spread has not
 fallen below what 13d shows Mikey is comfortable with -- that number gets
-written here once it exists. Item 11's warning stands: a change that passes
-the first half by collapsing the spread toward 4 dB has failed the item.
+written here once it exists -- 6-8 LU is the expectation, not the rule.
+Crest factor and within-loop range must be unchanged: the macro spread is
+what moves, and the phrase-level dynamics are not to be touched by anything
+done here. Item 11's warning stands too: a change that passes the first half
+by collapsing the spread toward 4 dB has failed the item.
 
 ---
 
