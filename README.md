@@ -643,6 +643,41 @@ still ringing is a different and much more benign failure than one turned
 away because the accompaniment took everything, and it wants a different
 fix -- most likely a shorter tail, which is a change to the sound.
 
+## The keys were on the wrong bus
+
+Found while fixing the budget starvation above, and fixed separately so
+that one could be A/B'd on its own.
+
+`voice()` is the single entry point for every tuned sound, and it takes the
+channel to play into. Voices without an explicit case fall through to
+`pluck()` -- and `pluck()` did not take a channel. It hardcoded the melody
+one, because that is where most of the voices reaching it play.
+
+Exactly one chord voice falls through that way: `keys`. So **every keys
+chord in the app was playing through the melody bus**: gain 0.58, reverb
+0.28, echo 0.12, where the chords channel is 0.44 / 0.35 / 0.15. Louder,
+drier and with less echo than intended, which quietly undid the "keys give
+up a little to make the room" balance set a few lines above the channel
+table itself.
+
+It measures exactly as that description predicts. Tapping each layer at its
+own channel gain, on 25 corpus loops whose keys layer draws the keys voice:
+
+| | before | after |
+|---|---|---|
+| loops whose chords channel was **entirely silent** | **25 of 25** | 0 |
+| melody channel level | — | **-2.8 dB** |
+| drums, bass | — | unchanged |
+
+The chords channel was not quiet, it was **zero** -- nothing was reaching
+it at all. And the melody channel falls by 2.8dB not because the tune got
+quieter, but because it stops carrying an entire second layer stacked on
+top of it.
+
+The budget is untouched: refusals on the test loop are identical to the
+figure before this change, at both quality settings. This moves where the
+notes go, not whether they play.
+
 ## Slid attacks
 
 The wind voices had vibrato and breath and still did not sound played,

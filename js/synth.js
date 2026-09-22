@@ -879,8 +879,14 @@ export class Synth {
     }
   }
 
-  pluck(midi, time, dur, vel, voice = 'pluck', soft = false) {
-    const out = this.channels.melody.gain;
+  // `out` defaults to the melody channel because that is where most of
+  // these play, but it has to be passable: `keys` is a chord voice and
+  // reaches here through `voice()`'s default branch. For as long as this
+  // signature ended at `soft`, every keys chord in the app was routed to
+  // the melody bus -- louder, drier and with less echo than the chords
+  // channel it was supposed to use, and it quietly undid the "keys give up
+  // a little to make the room" balance set in `_build`.
+  pluck(midi, time, dur, vel, voice = 'pluck', soft = false, out = this.channels.melody.gain) {
     if (voice === 'bell') {
       this.fm(midi, time, dur * 0.9, vel, { out, soft, ratio: 3.51, index: 420, decay: 0.5, cost: VOICE_COST.bell });
     } else if (voice === 'keys') {
@@ -1620,7 +1626,7 @@ export class Synth {
         return;
 
       default:
-        this.pluck(midi, time, dur, vel, name, soft);
+        this.pluck(midi, time, dur, vel, name, soft, dest);
     }
   }
 
