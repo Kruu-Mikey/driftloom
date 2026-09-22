@@ -42,8 +42,12 @@ can do except him is hear it. Numbers check the ear; they do not replace it.
   and `CACHE` in `sw.js` together on every app change), `sw` state, and
   `choir`.
 - Also read `ROADMAP.md` and `README.md`. `Mikey's Thoughts.md` is his.
-- Credentials: brain sessions do not need write access. Mikey manages his
-  own tokens; don't relitigate that.
+- Credentials: Mikey may paste a GitHub token in the session's opening
+  message. With it the brain may commit and merge **docs-only** changes —
+  `docs/BRAIN.md`, `ROADMAP.md`, `README.md` — as it did for #10, #16 and
+  #17. Code stays with the hands. Never write the token into a file, a
+  commit, memory, or a brief. Mikey manages his own tokens; don't
+  relitigate that.
 - If this project's knowledge files contain an old snapshot of the repo,
   prefer GitHub. The snapshot goes stale the moment anything merges.
 
@@ -139,14 +143,22 @@ measure.mjs · #7 motif-level omission, stepwise walk, register separation ·
 roadmap item 4/12 · #11 phrase velocity · #12 vowel drift · #13 choir ·
 #14 glottal source for sung voices.
 
-Open: **#15**, item 9 v2 — slides into notes for ocarina, flute, whistle,
-18.1% of wind notes. Not yet heard. A/B album: production vs the branch
-preview.
+Open: **#15**, item 9 v2 — slides into notes for ocarina, flute, whistle.
+Mikey heard it: "okay", no further test wanted. Merge at his discretion.
+
+**Bug found by ear — the melody starves when the keys are busy.** Loop
+`DL1-0C05A-2RD20-61FJN-H85W9-VA4VS-FCVV3-6E060-6M25E-4MZMQ-CE9J5-TVT08-1ZW0G-5ZZ0V-6M4BF-0M003-G0000-9T90`
+(glade, 117 bpm, 6/8, ocarina melody, 199 keys notes). A Node simulation of
+`_budget` with the real costs puts **~53% of melody notes refused** at the
+260 cap (70% on lite). Keys cost 25 a note and hold that for `dur + 1.2 s`,
+so a busy keys part reserves nearly the whole budget; layers schedule
+`drums, bass, chords, melody`, so the melody asks last and loses. Simulation
+only — the bass tail is approximated — but the size is far past its error.
 
 Next, in order:
 
-1. Listen to #15, merge or tune the rate.
-2. Build `tools/listen.mjs` (brief in the session that wrote this).
+1. Fix the melody starvation (brief in the session that wrote this).
+2. Build `tools/listen.mjs`, if not already done.
 3. Fix the harsh sawtooth leads: saw, then moog and analoglead; stab lightly
    or not at all. Same approach as #14 — soften at the source — then
    re-run the blind lead audition. Leads may keep more bite than the
