@@ -339,7 +339,7 @@ was given and arrives somewhere else. `tools/stats.mjs` over 4000 loops is
 byte-identical before and after, which is the other half of the claim: no
 draw moved.
 
-## 11. Loudness spread across the catalogue — **closed, the spread is wanted**
+## 11. Loudness spread across the catalogue — **closed, the spread is wanted; reopened narrower as 13**
 
 Measured with `tools/measure.mjs` over thirty loops: peak level runs from
 about 0.17 to about 0.85, roughly 14 dB, with nothing normalising it. A
@@ -388,6 +388,11 @@ a sequencing problem and not a gain one -- rather than as this one.
 The measurement stays in `tools/measure.mjs` because it is worth knowing
 when the figure moves. A future change that quietly narrowed the spread to
 4 dB would be a regression, and this is the item that says so.
+
+**Reopened, narrower, as item 13** (2026-09-22). The spread stays wanted.
+Reaching for the volume every other track does not: the aim is loops that
+are dynamic but sensible, still with no limiter, compressor or
+normalisation doing the work.
 
 ## 12. An occasional choir — **M** — *shipped*
 
@@ -509,6 +514,80 @@ numbers.
 Worth recording that the marker is *audible* and not just statistical: an
 effect that only a spectrum reveals is not an event, and this one does not
 need the spectrum.
+
+## 13. Level, by ear — **M**
+
+Item 11 in the narrower form it asked to be reopened in. The spread across
+the catalogue is still wanted: a hushed loop stays hushed, a busy one stays
+bigger, and nothing pulls them to one level. What is no longer accepted is
+the cost item 11 wrote off as worth paying -- a listener reaching for the
+volume every other track. **Dynamic, but sensible.**
+
+**Not the answer:** a limiter or compressor doing the work, a loudness
+target, normalisation. The master already carries a gentle compressor (3:1
+above -10 dBFS) and a ceiling at -3 dBFS. Both only touch the loud end;
+they stay the backstop they are and are not to be leaned on harder.
+
+**Why there is something to find.** The per-profile `level` trims in
+`characters.js` run from 0.62 to 1.05, about 4.6 dB. That is the spread
+somebody chose. Item 11 measured about 13 dB. The rest comes from things
+nobody set as a level decision -- density, which voices a loop draws, how
+loud each voice is for a given velocity, and bugs like the one #20 fixed,
+where every `keys` chord in the app's history played through the melody
+bus. The aim is to keep the authored spread and find the accidental one.
+
+**Albums first, fixes second.** Each question gets a listening album,
+chosen with `tools/measure.mjs` numbers attached, answered blind in one word
+per track with the key in a file. The tracks Mikey flags, matched against
+their measurements, say where "sensible" actually sits -- a target from his
+ears rather than a number anyone guessed.
+
+- **13a. Keys, after #20.** `dust` loops with `keys` chords against `dust`
+  loops with `pad` chords, then the other four profiles that draw `keys`.
+  Same profile, different chord voice, so only the voice differs. One word
+  for the chords: *buried / fine / forward*. If keys read as buried and pad
+  does not, the fix is inside the keys voice, not the channel table.
+  `keys` is the main chord voice of `dust`, the commonest profile, so this
+  is the change most widely heard.
+- **13b. Melody voices.** Does the tune sit in front whichever voice draws
+  it? The same melody voice across similar loops, extremes picked by
+  `measure.mjs --voice` and the per-layer levels. *lost / fine / loud*.
+  After the sawtooth-lead fix, since softening those at the source moves
+  their level too.
+- **13c. Kinds of loop.** Sparse against busy, low energy against high,
+  across profiles. The question is whether a quiet loop reads as a quiet
+  *piece* or as a loop that has merely been turned down -- the first is
+  the spread working, the second is the accident. *hushed / fine / loud*.
+- **13d. Twenty in a row.** A shuffled run at the catalogue's natural
+  spread, straight through at one volume. Mikey marks every track where he
+  would have reached for the volume, and which way. The measured loudness
+  of those tracks, and the jump from the track before, turns "too much
+  spread" into a number.
+
+**Tooling.** `measure.mjs` reports peak and RMS. It wants a perceived
+loudness figure as well -- K-weighted, as in ITU-R BS.1770, the basis of
+LUFS -- because raw RMS over-counts bass and the albums should be chosen and
+read on what the ear weights. `tools/listen.mjs` is what makes each album
+one command.
+
+**Candidate fixes, chosen by the albums rather than before them:**
+
+- *Per-voice calibration.* A voice that is inherently louder or quieter than
+  its family at the same velocity is trimmed at the source. This is
+  calibration, the same kind of fix as the `keys` cost weight in #19, and
+  not normalisation.
+- *Pull in the tails, leave the middle.* If only the extremes send a hand to
+  the volume, narrow the extremes and touch nothing else. Anything per-loop
+  is derived from the spec and draws no random numbers, so codes stay stable.
+- *Order, not level.* If the reach comes from big jumps between neighbours
+  rather than from any one track, smoothing the shuffle or playlist order
+  fixes it without changing a single gain. Item 11 pointed here.
+
+**Done when** a fresh twenty-in-a-row run, on a new seed, draws **at most
+one** reach for the volume, **and** the corpus loudness spread has not
+fallen below what 13d shows Mikey is comfortable with -- that number gets
+written here once it exists. Item 11's warning stands: a change that passes
+the first half by collapsing the spread toward 4 dB has failed the item.
 
 ---
 
