@@ -153,6 +153,22 @@ already reports `lateTicks` and `worstLateMs`.
 mix available, reports zero late ticks — or the totals are lowered until it
 does, and the number that worked is written down here.
 
+**This got more urgent, not less.** A melody-starvation bug (fixed in v33)
+turned out to be the budget refusing the tune on 28.6% of loops, and part
+of the cause was a weight that was simply wrong: `keys` was priced at 25,
+the same as a piano, when it is *half* of a piano -- one FM voice against
+two. If one weight was that far out, others may be. The tool to check is
+now in the repo: `node tools/measure.mjs --voice` for tone and the
+marginal-render-time method for cost, both documented in the README.
+
+The same fix also found that `SOFT_BUDGET` did nothing on lite, because
+`Math.min(170, 140)` is 140. So two of the three numbers in this item's
+title were not doing what the title claims, and neither failure was
+visible from reading them. **Calibrating the totals on real hardware is
+worth less than it looks until the weights they are spent on are checked**,
+and this item should probably be done in that order: weights first, then
+totals.
+
 ## 6. Cover art floor — **M**
 
 "Occasionally amateurish" is not testable. The specific failure is the sparse

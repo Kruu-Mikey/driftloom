@@ -49,7 +49,14 @@ driftloom offline audio measurement
   --port <n>        port for the local file server     (default 8731)
   --chrome <path>   an explicit Chromium executable
   --voice <names>   per-voice tone probe instead of the corpus report
+  --refusals [code] count voice-budget refusals per layer
   --help            this
+
+  --refusals reports what the voice budget turned away, layer by layer,
+  through the real Engine and Synth. Given a share code it reports that
+  one loop; given nothing it draws a corpus and reports the distribution
+  of per-loop melody refusal rates, because a mean hides the loops where
+  the tune is actually being eaten.
 
   --voice takes a comma-separated list (--voice vowel,hum,kalimba) and
   reports, for each one, the share of its A-weighted energy that lands in
@@ -72,7 +79,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const opts = { n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null, voices: null };
+  const opts = { n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null, voices: null, refusals: null };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -104,6 +111,14 @@ function parseArgs(argv) {
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
         if (!opts.voices.length) fail('--voice needs at least one voice name');
         break;
+      case '--refusals': {
+        // Optional: a share code to inspect, or nothing for a corpus.
+        const next = inline != null ? inline : argv[i + 1];
+        if (inline == null && next != null && !String(next).startsWith('--')) i++;
+        opts.refusals = (inline != null || (next != null && !String(next).startsWith('--')))
+          ? String(next) : 'corpus';
+        break;
+      }
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${arg}`);
     }
@@ -323,6 +338,168 @@ window.probeVoice = async (o) => {
 };
 `;
 
+// ------------------------------------------------------ budget refusals
+
+// What the voice budget turns away, layer by layer.
+//
+// The budget is a running total of cost reserved by notes that have not yet
+// finished. The engine asks for layers in a fixed order -- drums, bass,
+// chords, melody, texture -- so on a dense loop the melody asks fourth,
+// after the chords have already reserved theirs, and is refused for want of
+// room it never had a chance at.
+//
+// A refusal is attributed to the layer whose entry point was on the stack,
+// which is the only way to tell chords from melody: both arrive through
+// `voice()` and differ only by the channel they are handed.
+const REFUSAL_PAGE = `
+import { Engine } from '/js/engine.js';
+import { Synth } from '/js/synth.js';
+import { newSpec } from '/js/generator.js';
+import { decodeSong } from '/js/share.js';
+import { Rng } from '/js/rng.js';
+
+const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
+
+// Render one loop and count what each layer asked for and lost.
+async function runOne(spec, quality, rate) {
+  const spb = spec.stepsPerBar || 16;
+  const seconds = Math.min(60, spec.bars * spb * (60 / spec.bpm / 4) + 3);
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
+  const synth = new Synth(ctx, quality);
+  const engine = new Engine(ctx, synth);
+
+  const asked = {}; const refused = {}; const calls = {}; const callsRefused = {};
+  for (const l of LAYERS) { asked[l] = 0; refused[l] = 0; calls[l] = 0; callsRefused[l] = 0; }
+
+  let layer = null;
+  let noteFailed = false;
+  const realBudget = synth._budget.bind(synth);
+  synth._budget = (...a) => {
+    const ok = realBudget(...a);
+    if (layer) { calls[layer]++; if (!ok) { callsRefused[layer]++; noteFailed = true; } }
+    return ok;
+  };
+  // One "note" is one entry-point call. It counts as refused if any budget
+  // question inside it was answered no -- for the single-oscillator voices
+  // that means silence, and for the two-operator ones it means thinned.
+  const wrap = (name, layerOf) => {
+    const real = synth[name].bind(synth);
+    synth[name] = (...a) => {
+      const l = layerOf(a);
+      const outer = layer; layer = l; noteFailed = false;
+      try {
+        const out = real(...a);
+        asked[l]++;
+        if (noteFailed) refused[l]++;
+        return out;
+      } finally { layer = outer; }
+    };
+  };
+  wrap('drum', () => 'drums');
+  wrap('bass', () => 'bass');
+  wrap('pad', () => 'chords');
+  wrap('texture', () => 'texture');
+  wrap('voice', (a) => (a[5] === synth.channels.chords.gain ? 'chords' : 'melody'));
+
+  engine.load(spec);
+  engine.playing = true;
+  engine.nextStepTime = 0.05;
+  let guard = 0;
+  while (engine.nextStepTime < seconds && guard++ < 200000) {
+    engine._scheduleStep(engine.step, engine.nextStepTime);
+    engine._advance();
+  }
+  await ctx.startRendering();
+  return { asked, refused, calls, callsRefused, seconds };
+}
+
+window.refusalsOne = async (o) => {
+  const spec = decodeSong(o.code);
+  const out = {};
+  for (const q of ['full', 'lite']) out[q] = await runOne(spec, q, o.rate);
+  out.spec = {
+    name: spec.name, bpm: spec.bpm, bars: spec.bars,
+    stepsPerBar: spec.stepsPerBar || 16, seed: spec.seed,
+  };
+  return out;
+};
+
+window.refusalsCorpus = async (o) => {
+  const master = new Rng(o.seed);
+  const rows = [];
+  for (let i = 0; i < o.n; i++) {
+    const spec = newSpec(master.seed32());
+    const r = await runOne(spec, o.quality, o.rate);
+    rows.push({
+      name: spec.name, seed: spec.seed,
+      asked: r.asked, refused: r.refused,
+      profile: Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '?',
+    });
+  }
+  return rows;
+};
+`;
+
+function reportRefusalsOne(data, opts) {
+  const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
+  const out = [''];
+  out.push('driftloom voice-budget refusals, one loop');
+  out.push(`  ${data.spec.name}, ${data.spec.bpm}bpm, ${data.spec.bars} bars of ${data.spec.stepsPerBar}, seed ${data.spec.seed}`);
+  out.push('');
+  for (const q of ['full', 'lite']) {
+    const r = data[q];
+    out.push(`  quality '${q}'  (${q === 'lite' ? 'LITE_BUDGET 140' : 'MAX_BUDGET 260'})`);
+    out.push('    layer      notes   silenced or thinned      budget asks   refused');
+    for (const l of LAYERS) {
+      const a = r.asked[l];
+      if (!a) continue;
+      const pc = (x, y) => (y ? `${(100 * x / y).toFixed(1)}%` : '-');
+      out.push(`    ${l.padEnd(9)} ${String(a).padStart(6)}   ${`${r.refused[l]}  (${pc(r.refused[l], a)})`.padStart(20)}   ${String(r.calls[l]).padStart(11)}   ${`${r.callsRefused[l]} (${pc(r.callsRefused[l], r.calls[l])})`.padStart(9)}`);
+    }
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+function reportRefusalsCorpus(rows, opts) {
+  const out = [''];
+  out.push('driftloom voice-budget refusals, corpus');
+  out.push(`  ${rows.length} loops, corpus seed ${opts.seed}, quality '${opts.quality}'`);
+  out.push('');
+  const rate = (r, l) => (r.asked[l] ? r.refused[l] / r.asked[l] : null);
+  const melody = rows.map((r) => rate(r, 'melody')).filter((x) => x != null);
+  const sorted = melody.slice().sort((a, b) => a - b);
+  const q = (f) => (sorted.length ? sorted[Math.floor(f * (sorted.length - 1))] : NaN);
+  const pc = (v) => `${(100 * v).toFixed(1)}%`;
+  out.push('  per-loop melody refusal rate');
+  out.push(`    loops with a melody      ${melody.length}`);
+  out.push(`    mean                     ${pc(mean(melody))}`);
+  out.push(`    median                   ${pc(q(0.5))}`);
+  out.push(`    p75 / p90 / p99          ${pc(q(0.75))} / ${pc(q(0.9))} / ${pc(q(0.99))}`);
+  out.push(`    max                      ${pc(q(1))}`);
+  out.push('');
+  for (const t of [0.001, 0.05, 0.2, 0.5]) {
+    const n = melody.filter((x) => x > t).length;
+    out.push(`    losing more than ${`${(100 * t).toFixed(1)}%`.padStart(5)}    ${String(n).padStart(5)} loops  (${pc(n / melody.length)})`);
+  }
+  out.push('');
+  out.push('  other layers, mean per-loop refusal rate');
+  for (const l of ['drums', 'bass', 'chords', 'texture']) {
+    const xs = rows.map((r) => rate(r, l)).filter((x) => x != null);
+    out.push(`    ${l.padEnd(9)} ${pc(mean(xs)).padStart(7)}   over ${xs.length} loops`);
+  }
+  out.push('');
+  out.push('  worst loops by melody refusal rate');
+  const worst = rows.filter((r) => r.asked.melody)
+    .sort((a, b) => rate(b, 'melody') - rate(a, 'melody')).slice(0, 8);
+  out.push('    loop             profile        melody   refused      keys notes');
+  for (const r of worst) {
+    out.push(`    ${r.name.padEnd(16)} ${r.profile.padEnd(12)} ${String(r.asked.melody).padStart(7)}   ${`${r.refused.melody} (${pc(rate(r, 'melody'))})`.padStart(12)}   ${String(r.asked.chords).padStart(10)}`);
+  }
+  out.push('');
+  return out.join('\n');
+}
+
 // -------------------------------------------------------------- printing
 
 const dbfs = (v) => (v > 0 ? 20 * Math.log10(v) : -Infinity);
@@ -464,6 +641,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' });
     return res.end(`<!doctype html><meta charset="utf-8"><title>probe</title>\n<script type="module">${PROBE_PAGE}</script>`);
   }
+  if (url === '/__refusals.html') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end(`<!doctype html><meta charset="utf-8"><title>refusals</title>\n<script type="module">${REFUSAL_PAGE}</script>`);
+  }
   const file = path.join(ROOT, path.normalize(url));
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404);
@@ -497,11 +678,15 @@ const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
 const probing = !!opts.voices;
-await page.goto(`http://127.0.0.1:${opts.port}/${probing ? '__probe' : '__measure'}.html`);
+const counting = !!opts.refusals;
+const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
+await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
 
-const ready = probing
-  ? () => typeof window.probeVoice === 'function'
-  : () => typeof window.measure === 'function';
+const ready = counting
+  ? () => typeof window.refusalsOne === 'function'
+  : probing
+    ? () => typeof window.probeVoice === 'function'
+    : () => typeof window.measure === 'function';
 try {
   await page.waitForFunction(ready, null, { timeout: 15000 });
 } catch {
@@ -510,6 +695,20 @@ try {
   console.error('measure: the page never finished loading the app modules.');
   if (pageErrors.length) console.error(`  ${pageErrors.join('\n  ')}`);
   process.exit(1);
+}
+
+if (counting) {
+  const corpus = opts.refusals === 'corpus';
+  const data = corpus
+    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate })
+    : await page.evaluate((o) => window.refusalsOne(o), { code: opts.refusals, rate: opts.rate });
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  console.log(corpus ? reportRefusalsCorpus(data, opts) : reportRefusalsOne(data, opts));
+  process.exit(0);
 }
 
 if (probing) {

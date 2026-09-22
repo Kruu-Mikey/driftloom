@@ -30,7 +30,13 @@ const VOICE_COST = {
   sub: 8, round: 8, fifths: 8, pluckbass: 9, rhodesbass: 10, moogbass: 7,
   stab: 4, sine: 4, pluck: 11, saw: 8,
   rhodes: 15, moog: 18, whistle: 14, harp: 20,
-  keys: 25, prepared: 25, piano: 26,
+  // keys is ONE two-operator FM note. piano below is two of them, and the
+  // table used to price them the same, which cannot both be right. Measured
+  // marginal render time puts keys at 2.1x a sine and 0.47x a piano -- the
+  // structure exactly -- so it is half of piano rather than equal to it.
+  // At 25 it was reserving twice what an actual piano note costs and
+  // starving the melody behind it; see "Why the melody was losing notes".
+  keys: 12, prepared: 25, piano: 26,
   pad: 25, moogpad: 25,
   choir: 34, analogpad: 32, softpad: 25,
   kalimba: 11, marimba: 9, vowel: 22, hum: 16,
@@ -78,6 +84,22 @@ const VOWEL_DRIFT_COST = 5;
 const MAX_BUDGET = 260;
 const SOFT_BUDGET = 170;
 const LITE_BUDGET = 140;
+// What the soft cap holds back for the layers that ask after the
+// accompaniment -- the melody, and the air behind it. Written this way
+// rather than as an absolute cap so it means the same thing at either
+// ceiling; see `_budget`.
+const LATE_LAYER_RESERVE = MAX_BUDGET - SOFT_BUDGET;
+// ...but never more than this share of a smaller ceiling. On lite the full
+// 90 would be 64% of everything, which stops being "leave room for the
+// tune" and becomes "delete the accompaniment".
+//
+// 0.42 is where the curve turns, measured on the loop that found this bug.
+// At 0.35 the melody still loses 6.5% of its notes on lite; at 0.42 it
+// loses none, and every step past that only costs the keys more -- 79.1%
+// of chord notes refused at 0.42, 85.0% at 0.50, 90.9% at 0.58, for no
+// further gain to the tune. Full quality is unaffected by this number at
+// any of those values, because 90 is the smaller term there.
+const RESERVE_SHARE = 0.42;
 
 // Tape saturation, not a maximizer.
 //
@@ -510,7 +532,17 @@ export class Synth {
     while (this._releases.length && this._releases[0].at <= time) this._releases.shift();
     const spent = this._releases.reduce((sum, r) => sum + r.cost, 0);
     const ceiling = this.quality === 'lite' ? LITE_BUDGET : MAX_BUDGET;
-    const cap = soft ? Math.min(SOFT_BUDGET, ceiling) : ceiling;
+    // The soft cap is a *reserve*, not a flat number.
+    //
+    // SOFT_BUDGET was already MAX_BUDGET minus 90, which is to say it always
+    // meant "leave ninety units for whatever asks later". Written as
+    // Math.min(SOFT_BUDGET, ceiling) that meaning was lost on lite: 170
+    // against a 140 ceiling is no cap at all, so the one mechanism that
+    // keeps room for the tune did nothing on exactly the devices that
+    // needed it most. Subtracting the reserve says the same thing at both
+    // ceilings -- full is unchanged at 170, and lite gets 50.
+    const reserve = Math.min(LATE_LAYER_RESERVE, Math.round(ceiling * RESERVE_SHARE));
+    const cap = soft ? Math.max(40, ceiling - reserve) : ceiling;
     if (spent + cost > cap) return false;
     return true;
   }
@@ -847,14 +879,14 @@ export class Synth {
     }
   }
 
-  pluck(midi, time, dur, vel, voice = 'pluck') {
+  pluck(midi, time, dur, vel, voice = 'pluck', soft = false) {
     const out = this.channels.melody.gain;
     if (voice === 'bell') {
-      this.fm(midi, time, dur * 0.9, vel, { out, ratio: 3.51, index: 420, decay: 0.5, cost: VOICE_COST.bell });
+      this.fm(midi, time, dur * 0.9, vel, { out, soft, ratio: 3.51, index: 420, decay: 0.5, cost: VOICE_COST.bell });
     } else if (voice === 'keys') {
-      this.fm(midi, time, dur, vel, { out, ratio: 2, index: 260, decay: 0.4, cost: VOICE_COST.keys });
+      this.fm(midi, time, dur, vel, { out, soft, ratio: 2, index: 260, decay: 0.4, cost: VOICE_COST.keys });
     } else if (voice === 'saw') {
-      if (!this._budget(time, false, VOICE_COST.saw)) return;
+      if (!this._budget(time, soft, VOICE_COST.saw)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'sawtooth';
@@ -874,7 +906,7 @@ export class Synth {
       this._release(time, dur + 0.6, VOICE_COST.saw);
     } else {
       // Square-wave beep with a touch of vibrato. The Adventure Time voice.
-      if (!this._budget(time, false, VOICE_COST.pluck)) return;
+      if (!this._budget(time, soft, VOICE_COST.pluck)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -909,6 +941,19 @@ export class Synth {
     const ctx = this.ctx;
     const dest = out || this.channels.melody.gain;
     const f = midiToFreq(midi);
+    // Accompaniment yields before the tune.
+    //
+    // The engine asks for layers in a fixed order -- drums, bass, chords,
+    // melody, texture -- so the melody asks fourth, after the chords have
+    // reserved theirs, and on a dense loop it is refused for want of room
+    // it never had a chance at. Measured over 150 loops before this: 28.6%
+    // of them lost more than 5% of their melody, and one lost 52%.
+    //
+    // The mechanism already existed and only pads were using it. A voice
+    // handed the chords channel now bills against the soft cap, which
+    // leaves the rest of the ceiling for whatever asks later. Pads keep
+    // billing soft wherever they play, which is what they already did.
+    const soft = dest === this.channels.chords.gain;
 
     switch (name) {
       // Zelda's harp: bright, short, two-operator, with a second voice a
@@ -916,8 +961,8 @@ export class Synth {
       case 'harp':
         // Two fm() calls, no outer gate; measured harp end-to-end is ~20x a
         // hat, split across the two layered strikes.
-        this.fm(midi, time, dur * 0.8, vel, { out: dest, ratio: 3, index: 200, decay: 0.35, cost: 13 });
-        this.fm(midi, time + 0.006, dur * 0.6, vel * 0.4, { out: dest, ratio: 3, index: 140, decay: 0.3, detune: 7, cost: 7 });
+        this.fm(midi, time, dur * 0.8, vel, { soft, out: dest, ratio: 3, index: 200, decay: 0.35, cost: 13 });
+        this.fm(midi, time + 0.006, dur * 0.6, vel * 0.4, { soft, out: dest, ratio: 3, index: 140, decay: 0.3, detune: 7, cost: 7 });
         return;
 
       // Ocarina and flute are the same idea at different mixes: a nearly pure
@@ -926,7 +971,7 @@ export class Synth {
       case 'ocarina':
       case 'flute': {
         const breathy = name === 'flute';
-        if (!this._budget(time, false, VOICE_COST[name])) return;
+        if (!this._budget(time, soft, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = breathy ? 'triangle' : 'sine';
         // The vibrato below rides on detune, so the frequency param is free
@@ -972,8 +1017,8 @@ export class Synth {
       case 'piano': {
         // Measured piano end-to-end is ~26x a hat, split across the two
         // struck-string partials.
-        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002, cost: 19 });
-        this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4, cost: 7 });
+        this.fm(midi, time, dur, vel * 0.9, { soft, out: dest, ratio: 1, index: 340, decay: 0.16, attack: 0.002, cost: 19 });
+        this.fm(midi + 12, time, dur * 0.5, vel * 0.16, { soft, out: dest, ratio: 1, index: 120, decay: 0.1, detune: 4, cost: 7 });
         return;
       }
 
@@ -1012,7 +1057,7 @@ export class Synth {
       case 'analoglead': {
         // Two detuned saws through one resonant filter, no pad-scale energy
         // building up: closer in weight to the moog lead than to analogpad.
-        if (!this._budget(time, false, VOICE_COST.moog)) return;
+        if (!this._budget(time, soft, VOICE_COST.moog)) return;
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 5;
@@ -1042,10 +1087,10 @@ export class Synth {
       case 'prepared': {
         // Measured ~25x a hat, split across the strike, the knock, and the
         // detuned second strike.
-        this.fm(midi, time, dur * 0.7, vel * 0.85, {
+        this.fm(midi, time, dur * 0.7, vel * 0.85, { soft,
           out: dest, ratio: 1, index: 200, decay: 0.1, attack: 0.002, cost: 15,
         });
-        if (!this._budget(time, false, 3)) return;
+        if (!this._budget(time, soft, 3)) return;
         const knock = this._noiseSource(time, 0.05);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
@@ -1056,7 +1101,7 @@ export class Synth {
         kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
         knock.connect(bp).connect(kg).connect(dest);
         // A touch of detuning: nothing prepared stays in tune.
-        this.fm(midi, time + 0.004, dur * 0.45, vel * 0.2, {
+        this.fm(midi, time + 0.004, dur * 0.45, vel * 0.2, { soft,
           out: dest, ratio: 1, index: 90, decay: 0.08, detune: 9, cost: 7,
         });
         this._release(time, dur + 0.4, 3);
@@ -1064,14 +1109,14 @@ export class Synth {
       }
 
       case 'celeste':
-        this.fm(midi, time, dur, vel * 0.9, { out: dest, ratio: 4, index: 200, decay: 0.5, cost: VOICE_COST.celeste });
+        this.fm(midi, time, dur, vel * 0.9, { soft, out: dest, ratio: 4, index: 200, decay: 0.5, cost: VOICE_COST.celeste });
         return;
 
       // Short filtered chord stab. The repeating fragment that hypnotic
       // house is built from: too brief to be a chord, too pitched to be a
       // drum, and it survives being heard a thousand times.
       case 'stab': {
-        if (!this._budget(time)) return;
+        if (!this._budget(time, soft)) return;
         const len = Math.min(dur, 0.22);
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
@@ -1100,9 +1145,10 @@ export class Synth {
       // shortness is the character -- a tine has almost no sustain.
       case 'kalimba': {
         this.fm(midi, time, Math.min(dur, 1.1), vel, {
+          soft,
           out: dest, ratio: 3.7, index: 260, decay: 0.09, attack: 0.002, cost: 8,
         });
-        if (!this._budget(time, false, 3)) return;
+        if (!this._budget(time, soft, 3)) return;
         const body = ctx.createOscillator();
         body.type = 'sine';
         body.frequency.setValueAtTime(midiToFreq(midi - 12), time);
@@ -1121,6 +1167,7 @@ export class Synth {
       // makes it read as wooden, and it decays slower and darker than a tine.
       case 'marimba': {
         this.fm(midi, time, Math.min(dur, 1.6), vel, {
+          soft,
           out: dest, ratio: 4, index: 190, decay: 0.16, attack: 0.003, cost: 9,
         });
         return;
@@ -1212,7 +1259,7 @@ export class Synth {
         }
 
         const cost = (choral ? 34 : humming ? 16 : 22) + (target ? VOWEL_DRIFT_COST : 0);
-        if (!this._budget(time, choral, cost)) return;
+        if (!this._budget(time, soft, cost)) return;
 
         const amp = ctx.createGain();
         const stopAt = time + dur + 0.9;
@@ -1388,7 +1435,7 @@ export class Synth {
       // bowl. A single FM voice cannot do that however inharmonic it is,
       // which is why the existing bell voices all sound like the same object.
       case 'templebell': {
-        if (!this._budget(time, false, VOICE_COST.templebell)) return;
+        if (!this._budget(time, soft, VOICE_COST.templebell)) return;
         const hold = Math.max(dur, 6.5);
         const stopAt = time + hold + 1.4;
         const g = ctx.createGain();
@@ -1435,7 +1482,7 @@ export class Synth {
       // bowl, with the strong minor-third partial that gives chimes their
       // particular sourness, and a long even decay.
       case 'tubular': {
-        if (!this._budget(time, false, VOICE_COST.tubular)) return;
+        if (!this._budget(time, soft, VOICE_COST.tubular)) return;
         const hold = Math.max(dur, 5);
         const stopAt = time + hold + 1.2;
         const g = ctx.createGain();
@@ -1464,12 +1511,12 @@ export class Synth {
       }
 
       case 'musicbox':
-        this.fm(midi, time, dur * 0.9, vel, { out: dest, ratio: 5.1, index: 420, decay: 0.45, cost: VOICE_COST.musicbox });
+        this.fm(midi, time, dur * 0.9, vel, { soft, out: dest, ratio: 5.1, index: 420, decay: 0.45, cost: VOICE_COST.musicbox });
         return;
 
       // Fender Rhodes: the classic 2:1 bell-ish FM electric piano.
       case 'rhodes':
-        this.fm(midi, time, dur, vel, { out: dest, ratio: 2, index: 190, decay: 0.5, attack: 0.004, cost: VOICE_COST.rhodes });
+        this.fm(midi, time, dur, vel, { soft, out: dest, ratio: 2, index: 190, decay: 0.5, attack: 0.004, cost: VOICE_COST.rhodes });
         return;
 
       // Garson's Moog: one oscillator, portamento, and a resonant filter
@@ -1477,7 +1524,7 @@ export class Synth {
       case 'moog':
       case 'whistle': {
         const whistle = name === 'whistle';
-        if (!this._budget(time, false, VOICE_COST[name])) return;
+        if (!this._budget(time, soft, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = whistle ? 'triangle' : 'sawtooth';
         // Only the whistle slides: the moog shares this case but is a lead
@@ -1552,7 +1599,7 @@ export class Synth {
       }
 
       case 'sine': {
-        if (!this._budget(time)) return;
+        if (!this._budget(time, soft)) return;
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = f;
@@ -1573,7 +1620,7 @@ export class Synth {
         return;
 
       default:
-        this.pluck(midi, time, dur, vel, name);
+        this.pluck(midi, time, dur, vel, name, soft);
     }
   }
 
@@ -1603,7 +1650,7 @@ export class Synth {
     } else if (kind === 'chime') {
       this.fm(notes[0], time, dur, vel, { out, ratio: 2.76, index: 230, decay: 1.6, attack: 0.004, cost: VOICE_COST.chime });
     } else if (kind === 'drop') {
-      if (!this._budget(time)) return;
+      if (!this._budget(time, soft)) return;
       const src = this._noiseSource(time, 0.12);
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
@@ -1616,7 +1663,7 @@ export class Synth {
       src.connect(bp).connect(g).connect(out);
       this._release(time, 0.15);
     } else if (kind === 'wind') {
-      if (!this._budget(time)) return;
+      if (!this._budget(time, soft)) return;
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       src.loop = true;
