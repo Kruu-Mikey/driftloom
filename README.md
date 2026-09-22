@@ -571,6 +571,25 @@ three between runs -- the scoop, the jitter, the vibrato and the breath are
 all redrawn per note and swamped the thing being measured. The chain's
 magnitude response is exact and has no randomness in it at all.
 
+The chain cannot answer everything, though. It says where the resonances
+are; it cannot say whether anything is left to resonate, and a steeper
+source puts less energy up where F2 sits. So that one was measured on the
+emitted sound after all, averaged over five notes and both builds. F2 is
+still a peak and not a shoulder:
+
+| | a | e | o | u |
+|---|---|---|---|---|
+| F2 above the F1-F2 dip, before | 45.4dB | 55.9dB | 58.9dB | 63.1dB |
+| after | 46.7dB | **38.2dB** | 49.8dB | 65.6dB |
+| F2 above the 6-8kHz floor, before | 32.0dB | 28.8dB | 38.8dB | 39.8dB |
+| after | 59.0dB | 40.2dB | 57.9dB | 69.9dB |
+
+"e" gives up the most, which is what should happen: its F2 sits at 1600Hz,
+higher than any of the others, so a steeper source costs it most. 38dB is
+still an unmistakable formant. Every vowel ends up further clear of the
+noise floor than it started, because the thing that was crowding it has
+gone.
+
 **Level is compensated**, because a fix that quietly turns a voice down is
 a trade nobody agreed to. A `PeriodicWave` is normalised when it is built
 and a 1/n^2.5 wave is a far smoother shape than a sawtooth, so it arrives
