@@ -1407,6 +1407,50 @@ function separateRegisters(harmony, tracks, choir) {
   }
 }
 
+// ------------------------------------------- where the line came from
+
+// Roadmap item 9 v2. A wind player slides into notes, and a slide needs a
+// pitch to slide *from* -- which is the one thing the synth cannot work
+// out. It sees one note at a time and has no idea what came before it.
+//
+// So the composer writes it down. `prev` is the pitch of the previous
+// sounding note, and it is derived rather than drawn: a pass over the
+// finished track, reading pitches that were already decided. Nothing is
+// taken from any random stream, which is why every existing share code
+// still renders the loop it always rendered.
+//
+// It is annotated only when the two notes are close enough in time to be
+// one gesture. A slide joins notes a player did not re-articulate between;
+// across a rest you take a breath and start the next note cleanly. Over
+// the corpus, 64% of consecutive wind-melody notes are legato or
+// overlapping outright, so this is the common case rather than a rare one.
+//
+// Run after the entry schedules and the gaps, because the question is
+// about what is *heard*: a note whose predecessor was scheduled out has
+// nothing to slide from, and the note before that one may be half a bar
+// away.
+const SLIDE_JOIN = 0.12;
+
+function annotatePrev(events, spec, cycleSteps) {
+  const sd = 60 / spec.bpm / 4;
+  const sounding = events.filter((e) => e.vel).sort((a, b) => a.step - b.step);
+  if (sounding.length < 2) return;
+  const joined = (fromEnd, toStart) => (toStart - fromEnd) * sd <= SLIDE_JOIN;
+  for (let i = 1; i < sounding.length; i++) {
+    const prev = sounding[i - 1];
+    const cur = sounding[i];
+    if (joined(prev.step + prev.dur, cur.step)) cur.prev = prev.midi;
+  }
+  // The loop repeats, so the first note's predecessor is the last one --
+  // one note a loop, and the one a listener hears most often, since it is
+  // the seam.
+  const first = sounding[0];
+  const last = sounding[sounding.length - 1];
+  if (cycleSteps && joined(last.step + last.dur - cycleSteps, first.step)) {
+    first.prev = last.midi;
+  }
+}
+
 // --------------------------------------------------------------- render
 
 export function render(spec) {
@@ -1457,6 +1501,9 @@ export function render(spec) {
   // sounding centroid by several semitones, and a separation that was
   // correct on paper is wrong in the room.
   separateRegisters(harmony, tracks, choir);
+
+  // After the register work, so the pitch written down is the pitch played.
+  annotatePrev(tracks.melody, spec, (spec.cycles && spec.cycles.melody) || spec.bars * spb);
 
   // Something has to get out of the way or the doubling is inaudible.
   //

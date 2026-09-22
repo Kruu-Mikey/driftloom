@@ -34,6 +34,7 @@ driftloom generation statistics
   --lift-low [value]  upper bound of the low-lift bucket   (default 0.6)
   --lift-high [value] lower bound of the high-lift bucket (default 0.78)
   --choir-quiz [file] print a listening test instead of the report
+  --voice-codes <v>   print share codes whose melody draws voice <v>
   --help              this
 
   --choir-quiz prints twenty share codes in shuffled order, five of which
@@ -49,13 +50,18 @@ driftloom generation statistics
   defaults are roughly the lower and upper quartiles of feel.lift, which
   is skewed high, so a bound picked by eye puts almost nothing in the
   low column.
+
+  --voice-codes exists because a change to one voice is otherwise hard to
+  hear: the three wind voices together are 12.4% of melody draws, so
+  rolling the dice in the app until one turns up is a poor use of an
+  evening. Give it a voice name and it prints codes to paste straight in.
 `;
 
 const LIFT_LOW_DEFAULT = 0.6;
 const LIFT_HIGH_DEFAULT = 0.78;
 
 function parseArgs(argv) {
-  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null };
+  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null, voiceCodes: null };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -107,6 +113,10 @@ function parseArgs(argv) {
         break;
       case '--choir-quiz':
         opts.quiz = text('choir-quiz-key.txt');
+        break;
+      case '--voice-codes':
+        opts.voiceCodes = text(null);
+        if (!opts.voiceCodes) fail('--voice-codes needs a voice name');
         break;
       case '--help': case '-h':
         console.log(USAGE);
@@ -608,12 +618,74 @@ function quiz(opts) {
   return out.join('\n');
 }
 
+// -------------------------------------------------------- finding a voice
+
+// A change to one voice is close to unfindable by rolling dice in the app.
+// The three wind voices are 12.4% of melody draws between them, and any
+// single one is nearer 4%, so hearing a change to the ocarina means
+// re-rolling twenty-five times and hoping. This prints codes that are
+// guaranteed to have it.
+//
+// The loops are picked for being worth listening to as well as for the
+// voice: a melody the entry schedules have left two notes of tells you
+// nothing about how its attacks sound, so a loop needs a reasonable number
+// of sounding notes to be offered.
+const VOICE_CODES = 6;
+const VOICE_CODES_MIN_NOTES = 10;
+
+function voiceCodes(opts) {
+  const master = new Rng(opts.seed || 1);
+  const found = [];
+  let scanned = 0;
+  for (let i = 0; i < 400000 && found.length < VOICE_CODES; i++) {
+    scanned++;
+    const spec = newSpec(master.seed32());
+    const pattern = render(spec);
+    if (pattern.meta.melodyVoice !== opts.voiceCodes) continue;
+    const notes = pattern.tracks.melody.filter((e) => e.vel);
+    if (notes.length < VOICE_CODES_MIN_NOTES) continue;
+    const spb = spec.stepsPerBar || STEPS_PER_BAR;
+    const sd = 60 / spec.bpm / 4;
+    found.push({
+      spec,
+      code: encodeSong(spec),
+      notes: notes.length,
+      // How much of this loop the change can actually touch, so a listener
+      // knows whether they are hearing a fair example.
+      annotated: notes.filter((e) => e.prev != null).length,
+      bars: Math.round(pattern.totalSteps / spb),
+      secs: +(pattern.totalSteps * sd).toFixed(1),
+    });
+  }
+  if (!found.length) {
+    fail(`no loops drew '${opts.voiceCodes}' in ${scanned} draws -- is that a melody voice?`);
+  }
+
+  const out = [''];
+  out.push(`driftloom loops whose melody draws '${opts.voiceCodes}'`);
+  out.push(`  ${found.length} found in ${scanned} draws, corpus seed ${opts.seed}`);
+  out.push('');
+  for (const f of found) {
+    out.push(`  ${f.spec.name}  --  ${f.bars} bars, ${f.secs}s, ${f.notes} melody notes, ${f.annotated} of them joined to the one before`);
+    out.push(`    ${f.code}`);
+    out.push('');
+  }
+  out.push('  Paste a code into the app to hear it. Same --seed, same codes.');
+  out.push('');
+  return out.join('\n');
+}
+
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
 
 if (opts.quiz) {
   console.log(quiz(opts));
+  process.exit(0);
+}
+
+if (opts.voiceCodes) {
+  console.log(voiceCodes(opts));
   process.exit(0);
 }
 

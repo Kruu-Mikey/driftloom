@@ -39,6 +39,24 @@ const VOICE_COST = {
 };
 const DEFAULT_COST = 12; // any voice not listed above
 
+// Slid attacks, for the wind voices. See `_slide`.
+//
+// The rate is the one number here that is a judgement rather than a
+// measurement, so: roughly one note in five of those long enough to take
+// one, which over the corpus works out at about one wind note in six
+// overall. A player leans into some notes. Much above this and the line
+// reads as an effect applied to it; much below and nobody ever meets one.
+const SLIDE_CHANCE = 0.22;
+// A fourth. Wider than this and a glide is a siren.
+const SLIDE_MAX_STEP = 5;
+// How far below a note to come up from when there is no previous note to
+// come from. A tone and a half reads as reaching the note; a fourth, which
+// is what the old unreachable `glide` branch used, reads as a swoop.
+const SLIDE_SCOOP = 1.5;
+// Seconds. The 25th percentile of wind-melody note lengths, so the
+// shortest quarter of them arrive clean.
+const SLIDE_MIN_DUR = 0.18;
+
 // What a formant voice is charged on top of its own cost when its vowel
 // moves within the note. Measured, not reasoned: the marginal render time
 // of a 2.4s note through the real Synth in an OfflineAudioContext, one
@@ -128,6 +146,52 @@ export class Synth {
     const imag = new Float32Array(harmonics + 1);
     for (let n = 1; n <= harmonics; n++) imag[n] = 1 / Math.pow(n, 2.5);
     return this.ctx.createPeriodicWave(real, imag);
+  }
+
+  // Slid attacks (roadmap item 9 v2).
+  //
+  // The wind voices had vibrato and breath and still did not sound played,
+  // because nothing ever arrived at a pitch -- every note simply began on
+  // one. A player reaches the note: from the note before it when the two
+  // are joined, and from just underneath it when they are not.
+  //
+  // Which notes get one is articulation, so it is decided here with
+  // Math.random, beside the scoop, the jitter and the vibrato, and for the
+  // same reason: a draw from the composer's stream would renumber every
+  // decision after it and rewrite every share code in circulation. What
+  // the synth cannot know is where the line came from, so the composer
+  // writes that down as `prev` (see `annotatePrev`).
+  //
+  // The rate is flat, and deliberately not tied to lift or energy. It
+  // does not need to be: the material already carries that relationship.
+  // A driven loop has shorter notes and fewer joined pairs, so the share
+  // of its notes a slide can touch falls from 96.8% at low energy to 67.5%
+  // at high, and 88.2% to 71.2% across lift. Consulting the feeling as
+  // well would count the same thing twice.
+  _slide(param, midi, time, dur, opts) {
+    // Scaled to note length, so a staccato line stays clean. A quarter of
+    // the corpus's wind notes are shorter than this and none of them slide.
+    if (dur < SLIDE_MIN_DUR) return false;
+    if (Math.random() >= SLIDE_CHANCE) return false;
+
+    const f = midiToFreq(midi);
+    const prev = opts.prev;
+    const step = prev == null ? null : midi - prev;
+    // From the previous note when it is near enough to be one gesture --
+    // up to a fourth. A glide across a big leap is a siren, not a player,
+    // so a wide interval takes the scoop below instead of refusing.
+    // A repeated note has nowhere to come from and takes it too.
+    const from = step !== null && step !== 0 && Math.abs(step) <= SLIDE_MAX_STEP
+      ? midiToFreq(prev)
+      : f * Math.pow(2, -SLIDE_SCOOP / 12);
+
+    // Short, and landing well before the midpoint: the note has to be
+    // *on* pitch for most of its length or the slide stops being an
+    // attack and becomes the note.
+    const reach = Math.min(0.09, Math.max(0.03, dur * 0.22));
+    param.setValueAtTime(from, time);
+    param.exponentialRampToValueAtTime(f, time + reach);
+    return true;
   }
 
   _build() {
@@ -865,7 +929,9 @@ export class Synth {
         if (!this._budget(time, false, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = breathy ? 'triangle' : 'sine';
-        o.frequency.value = f;
+        // The vibrato below rides on detune, so the frequency param is free
+        // for the slide to use without the two fighting each other.
+        if (!this._slide(o.frequency, midi, time, dur, opts)) o.frequency.value = f;
         const vib = ctx.createOscillator();
         vib.frequency.value = 5.2;
         const vibAmt = ctx.createGain();
@@ -1414,7 +1480,17 @@ export class Synth {
         if (!this._budget(time, false, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
         o.type = whistle ? 'triangle' : 'sawtooth';
-        if (opts.glide) {
+        // Only the whistle slides: the moog shares this case but is a lead
+        // synth and not a wind instrument, and item 9 is about winds.
+        //
+        // The `opts.glide` branch below is kept because the bass voices
+        // set `glide` and a future melody could, but note that nothing
+        // reaches it today: `glide` is written onto bass events only, and
+        // the bass has its own method. It has been dead since it was
+        // written, which is part of why nothing here ever glided.
+        if (whistle && this._slide(o.frequency, midi, time, dur, opts)) {
+          // slid into
+        } else if (opts.glide) {
           o.frequency.setValueAtTime(f * 0.75, time);
           o.frequency.exponentialRampToValueAtTime(f, time + 0.09);
         } else {

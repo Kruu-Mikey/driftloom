@@ -189,9 +189,81 @@ closed, or codes are 35%+ shorter with a working no-compression fallback.
 
 ## 9. Articulation v2 and v3 — **M each**
 
-Only after item 2 ships. v2: slid attacks into some notes. v3: breath before
-phrase entries. Most of what makes a whistle sound human is articulation, so
-these subsume the old "human whistle" item rather than sitting beside it.
+Only after item 2 ships. Most of what makes a whistle sound human is
+articulation, so these subsume the old "human whistle" item rather than
+sitting beside it. They had one shared done-when between them, which is
+no use to either; they have their own now.
+
+### v2, slid attacks — *shipped*
+
+The wind voices -- `ocarina`, `flute`, `whistle` -- had vibrato and breath
+and still did not sound played, because nothing ever arrived at a pitch.
+Every note simply began on one. A player reaches the note.
+
+**Where it lives** is the split vowel drift established. Which notes get a
+slide is articulation, decided in `_slide` with `Math.random` beside the
+scoop, the jitter and the vibrato. Where the line came from is not
+something the synth can know -- it sees one note at a time -- so the
+composer writes it down: `annotatePrev` walks the finished melody and
+records the previous sounding pitch on each event. That pass is derived and
+draws nothing, so `tools/stats.mjs` is byte-identical at four corpus seeds
+and 4,000 codes written on `main` decode and render the same music on both
+trees, re-encoding to the same string.
+
+**The shape.** From the previous note when the two are joined -- within
+120ms, which over the corpus is 63.4% of notes -- and no wider than a
+fourth, because a glide across a big leap is a siren. Anything else takes a
+scoop from a tone and a half below, which is what a player reaching a note
+after a breath actually does. The reach is `dur * 0.22` clamped to
+30-90ms, so it lands well inside the first quarter of the note, and notes
+under 180ms -- the shortest quarter of the corpus -- do not slide at all.
+
+**The rate is 0.22 of eligible notes, which measures 18.1% of wind melody
+notes overall**: 9.8% from the previous note, 8.3% scooped. About one note
+in five and a half, which is a player leaning into some of them rather than
+an effect applied to the line. It holds across the three voices, 16.8% to
+19.1%.
+
+**It is not tied to lift or energy, and does not need to be.** The material
+already carries that relationship: a driven loop has shorter notes and
+fewer joined pairs, so the share of its notes a slide can touch falls from
+96.8% at low energy to 67.5% at high, and 88.2% to 71.2% across lift.
+Consulting the feeling as well would count the same thing twice.
+
+**Cost: nothing.** It is parameter automation on an oscillator that already
+exists, lasting 30-90ms. With *every* eligible note sliding -- an upper
+bound the 0.22 rate never approaches -- marginal render time moves -3.2%,
++2.0% and +0.6% for the three voices, which is noise either side of zero.
+`VOICE_COST` is unchanged.
+
+**Found by ear** with `node tools/stats.mjs --voice-codes ocarina`, which
+exists because the three wind voices are 12.4% of melody draws between them
+and any single one is nearer 4%.
+
+**Done when** a slide lands on 15-25% of wind melody notes, no slide
+crosses more than a fourth, every slide is on pitch before the note's
+quarter point, `stats.mjs` is byte-identical and existing codes render
+unchanged. All five hold.
+
+### v3, breath before phrase entries — **not started**
+
+A wind player inhales before a phrase, and the sound of that breath before
+the first note is a large part of why a recording sounds like a person in a
+room. The voices already have continuous breath noise *under* the note;
+this is a separate, louder, unpitched event placed *before* an entry.
+
+`annotatePrev` is half of what this needs already: a phrase entry is
+exactly a note with no `prev`, which is the same test the scoop uses. What
+it additionally needs is somewhere to put the breath, and that is the
+problem -- it has to sound *before* the note, so either the engine
+schedules it early (the note's own start time minus the breath length,
+which can fall in the past at the top of a loop) or the composer leaves
+room for it.
+
+**Done when** a phrase-initial wind note is preceded by an audible breath
+in 40-70% of entries, the breath never delays or clips the note it
+precedes, and no breath is scheduled at a negative time. The last of those
+is the one that will bite.
 
 ## 10. Vowel movement within a note — **M** — *shipped*
 

@@ -329,7 +329,8 @@ export class Engine {
       for (const e of p.tracks.melody) {
         if (e.step !== s || !e.vel) continue;
         this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel,
-          this.synth.channels.melody.gain, { glide: e.glide, vowel: e.vowel, detune: e.detune });
+          this.synth.channels.melody.gain,
+          { glide: e.glide, vowel: e.vowel, detune: e.detune, prev: e.prev });
       }
     }
     if (!mutes.texture) {

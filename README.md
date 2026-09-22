@@ -194,6 +194,11 @@ Notes worth knowing if you go digging:
   it across the note, the way a singer's jaw gives on a long one. Both the
   chance of moving and how far it travels follow the note's length in
   seconds, so short notes keep their shape and only sustains change.
+- **The wind voices slide into notes.** `ocarina`, `flute` and `whistle`
+  reach a pitch rather than beginning on it: from the previous note when
+  the two are joined and the interval is small, and from a tone and a half
+  below when they are not. About one note in five and a half, which is a
+  player leaning into some of them rather than an effect on all of them.
 - **One loop in thirty is a choir.** Melody and keys are put on the same
   sung voice deliberately and rarely, a few cents apart and a few
   milliseconds apart, with the air layer stepping back to make room. Drawn
@@ -259,6 +264,19 @@ skewed high.
 
 The corpus is deterministic -- same `--seed`, same loops -- which is what
 makes a before-and-after comparison mean anything.
+
+### Finding one voice
+
+```sh
+node tools/stats.mjs --voice-codes ocarina
+```
+
+Prints share codes whose melody draws a given voice, with the bar count,
+length, note count and how many of those notes are joined to the one
+before. A change to one voice is otherwise close to unfindable by rolling
+dice in the app: the three wind voices are 12.4% of melody draws between
+them and any single one is nearer 4%. Deterministic in `--seed`, so the
+same codes come back.
 
 ## Measurement
 
@@ -523,6 +541,61 @@ the choirs out of twenty loops by ear. `node tools/stats.mjs --choir-quiz`
 prints twenty share codes in shuffled order, five of them choirs, and
 writes the answer key to a file instead of the screen. Nobody has sat it
 yet.
+
+## Slid attacks
+
+The wind voices had vibrato and breath and still did not sound played,
+because nothing ever *arrived* at a pitch -- every note simply began on
+one. A player reaches the note.
+
+**Where the decision lives** is the split vowel drift established. Which
+notes get a slide is articulation, so it is drawn in the synth beside the
+scoop, the jitter and the vibrato. Where the line came *from* is not
+something the synth can know, since it sees one note at a time -- so the
+composer writes it down. A pass over the finished melody records the
+previous sounding pitch on each event, which is derived rather than drawn:
+it reads pitches that were already decided and takes nothing from any
+random stream. That is what keeps every share code in circulation
+rendering the loop it always rendered.
+
+The annotation runs after the entry schedules and the gaps, because the
+question is about what is *heard*. A note whose predecessor was scheduled
+out has nothing to slide from, and the note before that one may be half a
+bar away.
+
+**The shape.** From the previous note when the two are joined -- within
+120ms, which turns out to be 63% of notes, since most of this melody is
+legato -- and no wider than a fourth, because a glide across a big leap is
+a siren rather than a player. Everything else gets a scoop from a tone and
+a half below, which is what reaching a note after a breath sounds like. The
+reach is 22% of the note clamped to 30-90ms, landing inside the first
+quarter: the note has to be *on* pitch for most of its length, or the slide
+stops being an attack and becomes the note. Notes under 180ms, the shortest
+quarter of the corpus, stay clean.
+
+**The rate is one judgement rather than a measurement**, so it is worth
+stating plainly: 0.22 of eligible notes, which measures **18.1%** of wind
+melody notes overall -- 9.8% from the previous note, 8.3% scooped. About
+one note in five and a half. Much above that and the line reads as an
+effect applied to it; much below and nobody ever meets one.
+
+**It is not tied to lift or energy.** It does not need to be, because the
+material already carries the relationship: a driven loop has shorter notes
+and fewer joined pairs, so the share of its notes a slide can touch falls
+from 96.8% at low energy to 67.5% at high, and 88.2% to 71.2% across lift.
+Consulting the feeling as well would count the same thing twice. Energy
+influences the slide rate without ever being asked.
+
+**Cost: nothing.** It is parameter automation on an oscillator that already
+exists, over 30-90ms. With every eligible note sliding -- an upper bound
+the real rate never approaches -- marginal render time moves -3.2%, +2.0%
+and +0.6% across the three voices, noise either side of zero. `VOICE_COST`
+is unchanged.
+
+One thing found on the way in: the `whistle` voice already had a glide
+branch, reading `opts.glide`, and nothing has ever reached it. `glide` is
+written onto bass events only, and the bass has its own method. It has been
+dead since it was written, which is part of why nothing here ever glided.
 
 ## Why the vowel voice was harsh
 
