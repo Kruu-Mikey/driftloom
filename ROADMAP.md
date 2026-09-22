@@ -406,12 +406,21 @@ at 16-22 a note is cheaper than the pad or piano it replaced: keys
 refusals fall from 17.5% to 8.1%, against melody refusals rising from 6.8%
 to 8.9%.
 
-**Still open: the listening test.** The acceptance line is a listener
-picking the choirs out of twenty by ear, and no amount of the above
-substitutes for it. `node tools/stats.mjs --choir-quiz` now sets that test
-up -- twenty share codes in shuffled order, five of them choirs, answers
-written to a file rather than the screen. Nobody has sat it yet. Until
-somebody does, this item is shipped but not proven.
+**The listening test passed.** The acceptance line was a listener picking
+the choirs out of twenty by ear, and no amount of the above substitutes
+for it. `node tools/stats.mjs --seed 4127 --choir-quiz` produced the
+quiz -- twenty share codes shuffled, five of them choirs, answers written
+to a file rather than the screen.
+
+**5 of 5 picked, 0 false picks.** Two of the five were not immediate: they
+registered a moment after the loop started rather than on the first phrase,
+which is about what a rare event should feel like. The other three were
+obvious at once. Item 12 is done on its own terms, not merely on its
+numbers.
+
+Worth recording that the marker is *audible* and not just statistical: an
+effect that only a spectrum reveals is not an event, and this one does not
+need the spectrum.
 
 ---
 

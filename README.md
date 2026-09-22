@@ -288,6 +288,24 @@ npm install -g playwright && npx playwright install chromium
 That is a dependency of this one tool. The app still has no build step and
 still runs from a folder.
 
+### Per-voice tone
+
+```sh
+node tools/measure.mjs --voice vowel,hum,kalimba
+```
+
+Takes one voice at a time through two octaves and reports the share of its
+A-weighted energy that lands between 2 and 5kHz -- the band where hearing is
+most sensitive, and where a voice reads as harsh. A-weighted because the
+complaint is about what the ear does, and two octaves because the answer
+moves with pitch: formants sit still while the harmonics climb through
+them, so one note is one sample of the problem.
+
+The figure means nothing on its own. It is only useful next to the same
+figure for a voice nobody complains about, which is why the tool takes a
+list. This is the probe roadmap item 1 described and left unbuilt on the
+grounds that nothing had needed it; the vowel voice needed it.
+
 ## Track length
 
 Off by default: a loop machine should loop until you say stop. Set it and a
@@ -505,6 +523,93 @@ the choirs out of twenty loops by ear. `node tools/stats.mjs --choir-quiz`
 prints twenty share codes in shuffled order, five of them choirs, and
 writes the answer key to a file instead of the screen. Nobody has sat it
 yet.
+
+## Why the vowel voice was harsh
+
+It was arithmetic, not taste. A sawtooth falls at 6dB an octave. A real
+voiced source falls at about 12. So every harmonic above the first formant
+arrived at roughly twice the level a throat would have sent it -- and the
+lowpass that was meant to stand in for that difference sat at 3400Hz, which
+is above the whole region that matters. A filter contributes nothing below
+its own corner, so between 1kHz and 3.4kHz there was no rolloff at all:
+full sawtooth brightness, with a narrow F3 resonance of +6 to +9dB sitting
+on top of it at 2.5-2.9kHz, which is precisely where hearing is sharpest.
+
+Measured with `--voice`, **12.2%** of this voice's A-weighted energy landed
+in 2-5kHz, and **28%** on the worst note of two octaves. The struck voices
+it shares a mix with sit at 0.0-0.2%. A hum -- the same code with a closed
+tract and a 1700Hz corner -- sits at 0.2%.
+
+**The fix is at the source rather than after it.** A high shelf taking
+24dB off everything above 1800Hz was built first and worked -- 12.2% down
+to 0.2% -- but it cost a filter node on every note forever, measured at 12%
+of the voice, to remove a slope that never had to be generated. So instead
+the oscillator is given the slope a voice actually has: a `PeriodicWave`
+whose harmonics fall as 1/n^2.5 rather than a sawtooth's 1/n, built once in
+the constructor and shared by every note. The lowpass corner comes down
+from 3400 to 2600Hz to finish the job.
+
+That lands the vowel at **0.1% mean and 0.8% max**, inside the range of the
+voices nobody complains about on both figures, rather than at a number
+chosen for being comfortable.
+
+1/n^2.5 is 15dB an octave. The textbook figure for a voiced source is 12,
+and it was tried first: it leaves 0.32% in the band, which is outside the
+target. 15dB an octave is the soft, breathy end of the real range, which is
+the register this app sings in anyway.
+
+**The vowels survive it, and that is provable rather than hopeful.** Both
+the source change and the shelf apply the same curve to a/e/o/u alike, so
+neither can pull them toward each other: measured on the filter chain
+itself, the closest pair of vowels stays **3.82dB** apart, identical to
+before. F2 is still a peak and not a bump on a slope. What is lost is
+brightness, which is the thing being removed.
+
+That check had to be done on the filter chain rather than on rendered
+notes. The rendered version of it disagreed with itself by a factor of
+three between runs -- the scoop, the jitter, the vibrato and the breath are
+all redrawn per note and swamped the thing being measured. The chain's
+magnitude response is exact and has no randomness in it at all.
+
+The chain cannot answer everything, though. It says where the resonances
+are; it cannot say whether anything is left to resonate, and a steeper
+source puts less energy up where F2 sits. So that one was measured on the
+emitted sound after all, averaged over five notes and both builds. F2 is
+still a peak and not a shoulder:
+
+| | a | e | o | u |
+|---|---|---|---|---|
+| F2 above the F1-F2 dip, before | 45.4dB | 55.9dB | 58.9dB | 63.1dB |
+| after | 46.7dB | **38.2dB** | 49.8dB | 65.6dB |
+| F2 above the 6-8kHz floor, before | 32.0dB | 28.8dB | 38.8dB | 39.8dB |
+| after | 59.0dB | 40.2dB | 57.9dB | 69.9dB |
+
+"e" gives up the most, which is what should happen: its F2 sits at 1600Hz,
+higher than any of the others, so a steeper source costs it most. 38dB is
+still an unmistakable formant. Every vowel ends up further clear of the
+noise floor than it started, because the thing that was crowding it has
+gone.
+
+**Level is compensated**, because a fix that quietly turns a voice down is
+a trade nobody agreed to. A `PeriodicWave` is normalised when it is built
+and a 1/n^2.5 wave is a far smoother shape than a sawtooth, so it arrives
+several dB hotter; the trim is set from A-weighted loudness, since that is
+what "no quieter in the mix" means to a listener. Both voices come back
+within a couple of tenths of a dB of where they were, and **peak level
+falls about 2dB** on its own -- free headroom, because a smoother wave is a
+less peaky one.
+
+**It costs nothing.** The source change is one `PeriodicWave` built in the
+constructor and shared by every note, so there is no node to pay for:
+marginal render time measures -2.4% for the vowel and +1.0% for the choir,
+which is noise either side of zero, and `VOICE_COST` is unchanged. The
+shelf it replaced measured +12%. That is the whole argument for fixing a
+slope at the source rather than filtering it back out afterwards.
+
+**The choir voice shares this code path** and gets the same treatment:
+12.4% to 0.1% mean, 27.9% to 0.8% max. **The hum is left alone** -- its
+source is already a triangle, its corner is already at 1700 and it already
+measured 0.2%, so there was nothing in it to fix.
 
 ## Vowel movement
 

@@ -87,6 +87,7 @@ export class Synth {
     this.quality = quality;
     this._releases = [];
     this.noise = this._makeNoise(2.0);
+    this.glottal = this._makeGlottal();
     this._build();
   }
 
@@ -104,6 +105,29 @@ export class Synth {
       d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.22;
     }
     return buf;
+  }
+
+  // A voiced source, rather than a sawtooth with the difference filtered
+  // back out afterwards.
+  //
+  // A sawtooth's harmonics fall as 1/n, which is 6dB an octave. A real
+  // voiced source falls at about 12, and softer or breathier phonation --
+  // which is the register this whole app sings in -- falls faster still,
+  // 15 to 18. Building the wave with the slope it should have had is both
+  // more honest than correcting it downstream and free: one PeriodicWave
+  // made once and shared by every note, against a filter node per note
+  // forever.
+  //
+  // 1/n^2.5 is 15dB an octave. 1/n^2 is the textbook figure and was tried
+  // first; it leaves 0.32% of the voice's A-weighted energy in 2-5kHz
+  // against the 0.0-0.2% of the voices this one shares a mix with, so the
+  // textbook slope is not quite enough here and the soft-phonation end of
+  // the real range is what lands.
+  _makeGlottal(harmonics = 64) {
+    const real = new Float32Array(harmonics + 1);
+    const imag = new Float32Array(harmonics + 1);
+    for (let n = 1; n <= harmonics; n++) imag[n] = 1 / Math.pow(n, 2.5);
+    return this.ctx.createPeriodicWave(real, imag);
   }
 
   _build() {
@@ -1130,7 +1154,16 @@ export class Synth {
         // Levels measured, not guessed. The humming tract puts an 18dB boost
         // at 280Hz, which lands directly on a triangle wave's fundamental
         // and made it four times louder than every other voice.
-        amp.gain.linearRampToValueAtTime(vel * (choral ? 0.16 : humming ? 0.085 : 0.26),
+        //
+        // The open voices carry a trim for the glottal source. A
+        // PeriodicWave is normalised when it is built, and a 1/n^2.5 wave
+        // is a far smoother shape than a sawtooth, so the same nominal
+        // amplitude arrives several dB louder. The figures below are
+        // measured A-weighted rather than as raw RMS: what "no quieter, and
+        // no louder, in the mix" means is what a listener hears, and
+        // changing the top of a spectrum moves the two by different
+        // amounts.
+        amp.gain.linearRampToValueAtTime(vel * (choral ? 0.112 : humming ? 0.085 : 0.174),
           time + Math.min(0.3, dur * 0.25));
         this._release2(amp.gain, time + dur * 0.72, stopAt);
         amp.connect(dest);
@@ -1177,10 +1210,38 @@ export class Synth {
           if (!head) head = bq; else tail.connect(bq);
           tail = bq;
         });
+        // The corner, brought down to where it does some work.
+        //
+        // This voice was harsh, and the cause was arithmetic rather than
+        // taste. The source was a sawtooth, falling at 6dB an octave where
+        // a voice falls at 12 or more, so every harmonic above the first
+        // formant arrived at roughly twice the level a throat would have
+        // sent it. The lowpass that was supposed to stand in for the
+        // difference sat at 3400Hz -- above the entire region that matters,
+        // and a filter contributes nothing below its own corner. What was
+        // left was full sawtooth brightness from 1kHz to 3.4kHz with a
+        // narrow F3 resonance of +6 to +9dB sitting on top of it at
+        // 2.5-2.9kHz, which is exactly where hearing is sharpest.
+        //
+        // Measured with `node tools/measure.mjs --voice`: 12.2% of this
+        // voice's A-weighted energy landed between 2 and 5kHz, and 28% of
+        // it on the worst note of two octaves. The struck voices it shares
+        // a mix with are at 0.0-0.2%, and a hum -- the same code with a
+        // closed tract and a 1700Hz corner -- is at 0.2%.
+        //
+        // The fix is at the source (see `_makeGlottal`), not here. A high
+        // shelf taking 24dB off everything above 1800Hz was built first and
+        // worked, but it cost a filter node on every note forever -- 12% of
+        // the voice, measured -- to undo a slope that could simply not be
+        // generated in the first place. This corner moved from 3400 to 2600
+        // to finish the job, and that is the whole of the change in here.
+        //
+        // A hum is left alone: its corner is already at 1700, its source is
+        // already a triangle, and it already measured 0.2%.
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 0.7;
-        lp.frequency.value = humming ? 1700 : 3400;
+        lp.frequency.value = humming ? 1700 : 2600;
         tail.connect(lp).connect(amp);
 
         // A choir is several of these sharing one tract: the filters are the
@@ -1196,7 +1257,10 @@ export class Synth {
         const lean = opts.detune || 0;
         for (let i = 0; i < singers; i++) {
           const src = ctx.createOscillator();
-          src.type = humming ? 'triangle' : 'sawtooth';
+          // A hum keeps its triangle: a closed mouth is a different source
+          // and it was never the harsh one.
+          if (humming) src.type = 'triangle';
+          else src.setPeriodicWave(this.glottal);
           src.frequency.value = f;
 
           const spread = lean + (choral ? (i - 1) * (7 + Math.random() * 6) : 0);

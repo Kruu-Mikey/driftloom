@@ -48,7 +48,16 @@ driftloom offline audio measurement
   --quality <q>     'full' or 'lite'                   (default full)
   --port <n>        port for the local file server     (default 8731)
   --chrome <path>   an explicit Chromium executable
+  --voice <names>   per-voice tone probe instead of the corpus report
   --help            this
+
+  --voice takes a comma-separated list (--voice vowel,hum,kalimba) and
+  reports, for each one, the share of its A-weighted energy that lands in
+  the 2-5kHz presence band, note by note across two octaves. That band is
+  where hearing is most sensitive and where a voice reads as harsh, so the
+  figure is a stand-in for "how much does this one grate". It is a
+  comparison between voices, not an absolute: what makes it useful is
+  putting a voice next to one nobody complains about.
 
   Needs Playwright and Chromium, which are a dependency of this tool and
   not of the app:  npm install -g playwright && npx playwright install chromium
@@ -63,7 +72,7 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const opts = { n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null };
+  const opts = { n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null, voices: null };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -91,6 +100,10 @@ function parseArgs(argv) {
       case '--quality': opts.quality = value() === 'lite' ? 'lite' : 'full'; break;
       case '--port': opts.port = Math.round(number()); break;
       case '--chrome': opts.chrome = value(); break;
+      case '--voice':
+        opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
+        if (!opts.voices.length) fail('--voice needs at least one voice name');
+        break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${arg}`);
     }
@@ -187,6 +200,129 @@ window.measure = async (opts) => {
 };
 </script>`;
 
+// ------------------------------------------------------ the voice probe
+
+// Roadmap item 1 described a per-voice probe and never built it, on the
+// grounds that nothing had needed one. Something does now: the vowel voice
+// is harsh, and "harsh" has to become a number before it can be fixed
+// without breaking something else.
+//
+// The number is the share of a note's A-weighted energy that falls between
+// 2 and 5kHz. A-weighting because the ear is not flat and the complaint is
+// about what the ear does; 2-5kHz because that is where it is most
+// sensitive, and where a sawtooth that has not been rolled off puts energy
+// a real voice does not. The figure means nothing on its own -- it is only
+// useful against the same figure for a voice nobody complains about, which
+// is why the favourites are measured beside it.
+//
+// Two octaves because the harshness is pitch-dependent: formants sit at
+// fixed frequencies while the harmonics move through them, so a note an
+// octave up lands different partials on the same resonance. One note would
+// be one sample of that.
+const PROBE_LOW = 55;    // G3, the bottom of the melody window
+const PROBE_HIGH = 79;   // G5, two octaves up
+const PROBE_PAGE = `
+import { Synth } from '/js/synth.js';
+
+// Radix-2 FFT, in place.
+function fft(re, im) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { const tr = re[i]; re[i] = re[j]; re[j] = tr; const ti = im[i]; im[i] = im[j]; im[j] = ti; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len;
+    const wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < len / 2; k++) {
+        const ur = re[i + k], ui = im[i + k];
+        const vr = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+        const vi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+        re[i + k] = ur + vr; im[i + k] = ui + vi;
+        re[i + k + len / 2] = ur - vr; im[i + k + len / 2] = ui - vi;
+        const nr = cr * wr - ci * wi;
+        ci = cr * wi + ci * wr; cr = nr;
+      }
+    }
+  }
+}
+
+// IEC 61672 A-weighting, as a linear magnitude factor.
+function aWeight(f) {
+  if (f <= 0) return 0;
+  const f2 = f * f;
+  const num = 12194 * 12194 * f2 * f2;
+  const den = (f2 + 20.6 * 20.6)
+    * Math.sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9))
+    * (f2 + 12194 * 12194);
+  return (num / den) * Math.pow(10, 2.0 / 20);
+}
+
+window.probeVoice = async (o) => {
+  const N = 4096;
+  const out = {};
+  // Precompute the weight per bin: it depends only on the transform size.
+  for (const name of o.voices) {
+    const notes = [];
+    for (let midi = o.low; midi <= o.high; midi++) {
+      let share = 0;
+      let band = 0;
+      let total = 0;
+      for (let rep = 0; rep < o.reps; rep++) {
+        const seconds = o.dur + 2.2;
+        const ctx = new OfflineAudioContext(1, Math.ceil(seconds * o.rate), o.rate);
+        const synth = new Synth(ctx, 'full');
+        // The budget is a runtime guard and would only refuse notes here.
+        synth._budget = () => true;
+        // Dry, straight out. The reverb return is shared between layers and
+        // would put one voice's tail inside another voice's reading.
+        const vowels = ['a', 'e', 'o', 'u'];
+        synth.voice(name, midi, 0.05, o.dur, 0.8, ctx.destination,
+          { vowel: vowels[(midi - o.low) % 4] });
+        const buf = await ctx.startRendering();
+        const d = buf.getChannelData(0);
+
+        // Summed periodograms across the whole note, so the figure is over
+        // the energy that actually leaves the voice -- attack included,
+        // which is where a struck voice does its brightest work.
+        const re = new Float64Array(N);
+        const im = new Float64Array(N);
+        const power = new Float64Array(N / 2);
+        const hop = N / 2;
+        for (let start = 0; start + N <= d.length; start += hop) {
+          for (let i = 0; i < N; i++) {
+            re[i] = d[start + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+            im[i] = 0;
+          }
+          fft(re, im);
+          for (let i = 0; i < N / 2; i++) power[i] += re[i] * re[i] + im[i] * im[i];
+        }
+        const df = o.rate / N;
+        let b = 0;
+        let t = 0;
+        for (let i = 1; i < N / 2; i++) {
+          const f = i * df;
+          if (f > 20000) break;
+          const w = aWeight(f);
+          const p = power[i] * w * w;
+          t += p;
+          if (f >= 2000 && f <= 5000) b += p;
+        }
+        band += b;
+        total += t;
+      }
+      notes.push({ midi, share: total > 0 ? band / total : 0 });
+    }
+    out[name] = notes;
+  }
+  return out;
+};
+`;
+
 // -------------------------------------------------------------- printing
 
 const dbfs = (v) => (v > 0 ? 20 * Math.log10(v) : -Infinity);
@@ -250,9 +386,43 @@ function report(rows, opts) {
   return out.join('\n');
 }
 
+function reportVoices(data, opts) {
+  const out = [''];
+  out.push('driftloom per-voice tone probe');
+  out.push(`  A-weighted share of energy in 2-5kHz, ${PROBE_LOW}-${PROBE_HIGH} MIDI (two octaves),`);
+  out.push(`  ${opts.reps} render(s) a note at ${(opts.rate / 1000).toFixed(1)}k, dry, straight off the voice`);
+  out.push('');
+  out.push('  voice        mean     min     max   spread      sd');
+  out.push(`  ${'-'.repeat(52)}`);
+  for (const [name, notes] of Object.entries(data)) {
+    const xs = notes.map((r) => r.share);
+    const m = mean(xs);
+    const lo = Math.min(...xs);
+    const hi = Math.max(...xs);
+    const sd = Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
+    const pc = (v) => `${(100 * v).toFixed(1)}%`;
+    out.push(`  ${name.padEnd(10)} ${pc(m).padStart(6)}  ${pc(lo).padStart(6)}  ${pc(hi).padStart(6)}  ${pc(hi - lo).padStart(7)}  ${pc(sd).padStart(6)}`);
+  }
+  out.push('');
+  out.push('  per note');
+  const names = Object.keys(data);
+  out.push(`    midi  ${names.map((n) => n.padStart(9)).join('')}`);
+  for (let i = 0; i < data[names[0]].length; i++) {
+    const row = names.map((n) => `${(100 * data[n][i].share).toFixed(1)}%`.padStart(9)).join('');
+    out.push(`    ${String(data[names[0]][i].midi).padStart(4)}  ${row}`);
+  }
+  out.push('');
+  out.push('    A "spread" is max minus min across the two octaves: a voice whose');
+  out.push('    harshness depends on which note it is playing is harder to mix than');
+  out.push('    one that is evenly bright, because no single fix covers it.');
+  out.push('');
+  return out.join('\n');
+}
+
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
+opts.reps = 3;
 
 function loadPlaywright() {
   const require = createRequire(import.meta.url);
@@ -290,6 +460,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'text/html' });
     return res.end(PAGE);
   }
+  if (url === '/__probe.html') {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end(`<!doctype html><meta charset="utf-8"><title>probe</title>\n<script type="module">${PROBE_PAGE}</script>`);
+  }
   const file = path.join(ROOT, path.normalize(url));
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
     res.writeHead(404);
@@ -322,16 +496,34 @@ try {
 const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-await page.goto(`http://127.0.0.1:${opts.port}/__measure.html`);
+const probing = !!opts.voices;
+await page.goto(`http://127.0.0.1:${opts.port}/${probing ? '__probe' : '__measure'}.html`);
 
+const ready = probing
+  ? () => typeof window.probeVoice === 'function'
+  : () => typeof window.measure === 'function';
 try {
-  await page.waitForFunction(() => typeof window.measure === 'function', null, { timeout: 15000 });
+  await page.waitForFunction(ready, null, { timeout: 15000 });
 } catch {
   await browser.close();
   server.close();
   console.error('measure: the page never finished loading the app modules.');
   if (pageErrors.length) console.error(`  ${pageErrors.join('\n  ')}`);
   process.exit(1);
+}
+
+if (probing) {
+  const data = await page.evaluate((o) => window.probeVoice(o), {
+    voices: opts.voices, low: PROBE_LOW, high: PROBE_HIGH,
+    rate: opts.rate, reps: opts.reps, dur: 1.6,
+  });
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  console.log(reportVoices(data, opts));
+  process.exit(0);
 }
 
 const rows = await page.evaluate((o) => window.measure(o), opts);
