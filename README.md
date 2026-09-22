@@ -306,6 +306,24 @@ npm install -g playwright && npx playwright install chromium
 That is a dependency of this one tool. The app still has no build step and
 still runs from a folder.
 
+### Budget refusals
+
+```sh
+node tools/measure.mjs --refusals <share-code>     # one loop
+node tools/measure.mjs --refusals --n 150          # a corpus
+```
+
+What the voice budget turned away, layer by layer, through the real
+`Engine` and `Synth`. Given a code it reports that loop at both quality
+settings; given nothing it draws a corpus and reports the *distribution*
+of per-loop melody refusal rates rather than the mean, because a mean of
+6.3% hid the fact that 28.6% of loops were losing more than 5% of their
+tune and one was losing half of it.
+
+Refusals are attributed to the layer whose entry point was on the stack,
+which is the only way to tell chords from melody: both arrive through
+`voice()` and differ only by the channel they are handed.
+
 ### Per-voice tone
 
 ```sh
@@ -541,6 +559,89 @@ the choirs out of twenty loops by ear. `node tools/stats.mjs --choir-quiz`
 prints twenty share codes in shuffled order, five of them choirs, and
 writes the answer key to a file instead of the screen. Nobody has sat it
 yet.
+
+## Why the melody was losing notes
+
+Found by ear, on a busy `glade` loop: the tune kept dropping notes. It was
+the voice budget, and the melody was losing to it on **28.6% of loops**.
+
+The budget is a running total of cost reserved by notes that have not
+finished. The engine asks layer by layer, in a fixed order -- drums, bass,
+chords, melody, air -- so the melody asks **fourth**, after the
+accompaniment has already reserved. On a dense loop it is refused for want
+of room it never had a chance at. Measured on the loop that found it: 53.7%
+of its melody notes turned away at the default ceiling, 63.0% on lite.
+
+Three things were wrong, and only one of them was the obvious one.
+
+**`keys` was priced at 25, the same as a piano.** A `keys` note is one
+two-operator FM voice. A `piano` note is *two* of them. They cannot cost
+the same, and measured marginal render time says they do not: keys is 2.1x
+a sine and 0.47x a piano -- the structure exactly. It is now 12. At 25 a
+busy keys part was reserving twice what an actual piano would.
+
+**Only pads used the soft cap.** The mechanism for "yield to whatever asks
+later" already existed and exactly one family of voices was using it. Any
+voice handed the chords channel now bills against it, which is the whole
+of the fix in one line: accompaniment yields before the tune.
+
+**The soft cap did nothing on lite.** It read `Math.min(SOFT_BUDGET,
+ceiling)`, and 170 against a 140 ceiling is 140 -- no cap at all. The one
+mechanism that keeps room for the tune was inert on exactly the devices
+that needed it. It is now a *reserve* subtracted from whatever ceiling is
+in force, which is what `SOFT_BUDGET` always meant: 260 - 170 = 90 held
+back. Capped at 42% of the ceiling so that on lite it holds back 59 rather
+than 90, because 90 of 140 stops being "leave room for the tune" and
+becomes "delete the accompaniment".
+
+### What it cost the keys
+
+| | melody before | melody after | keys before | keys after |
+|---|---|---|---|---|
+| the loop that found it | 53.7% | **0.0%** | 38.6% | 38.2% |
+| the same, lite | 63.0% | **0.0%** | 69.5% | 79.1% |
+| corpus of 150, mean | 6.3% | **0.0%** | 23.2% | 27.9% |
+| corpus, loops losing >5% of melody | 28.6% | **0.0%** | | |
+| corpus, lite, mean | 31.6% | **1.9%** | 46.0% | 66.0% |
+| corpus, lite, loops losing >5% | 81.2% | **12.0%** | | |
+
+At the default ceiling the keys pay almost nothing: 23.2% to 27.9% across
+the corpus, and on the loop that started this, 38.6% to 38.2% -- *lower*,
+because halving the keys weight gave back more room than the soft cap took
+away. On lite they pay 46.0% to 66.0%, which is the real price of the fix;
+lite was already thinning the keys heavily before any of this, and the
+alternative was the tune. Drums and bass stop losing anything either way:
+1.2% to 0.0% and 7.1% to 0.5% on lite.
+
+### The tail is not the problem, and that was worth checking
+
+The obvious next suspicion is the reservation: `dur + 1.2s` looks arbitrary
+for a short pluck. Measured, it is not arbitrary and it is not too long. It
+is exactly the time the note's oscillators are scheduled to run, and the
+sound really is still there: a `keys` note with a 0.6s body is 40dB down at
+1.86s, against a reservation that ends at 1.92s. Across `keys`, `piano` and
+`pluck` the reservation expires within 0.1-0.4s of the note reaching -40dB.
+
+So shortening the reservation alone would be claiming headroom that does
+not exist -- reporting less CPU than is actually being spent, which is the
+one thing a budget must not do. Shortening the *synthesis* tail would work
+and would change the sound, so it is not bundled in here.
+
+### What is left, on lite
+
+Lite is 16x better and still not zero: 12.0% of loops lose more than 5% of
+their melody. The cause is not the keys, which is why no further tightening
+of the accompaniment cap would help, and tightening it anyway would have
+destroyed the keys for nothing.
+
+Tagging every reservation with the layer that made it and reading them back
+at the moment of each refusal: on the worst lite loops the melody is
+refused by **its own earlier notes**. One holds 120 units of melody against
+a 140 ceiling with the keys at zero. Another is refused by the bass, which
+is holding 78. A note turned away because three of its own predecessors are
+still ringing is a different and much more benign failure than one turned
+away because the accompaniment took everything, and it wants a different
+fix -- most likely a shorter tail, which is a change to the sound.
 
 ## Slid attacks
 
