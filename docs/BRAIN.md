@@ -88,7 +88,10 @@ These are stated decisions, not inferences.
 - Whimsy in the Ocarina of Time sense, sometimes: catchy, childlike,
   hummable. Rhythm cells, stepwise motion and figure repetition got there.
 - **Quiet tracks and dynamic range across the catalogue are wanted.** No
-  loudness normalisation (roadmap item 11, closed).
+  loudness normalisation (roadmap item 11, closed). But the listener should
+  not need the volume every other track: dynamic *and* sensible, found by
+  ear and fixed at the source, never by a limiter or compressor on the mix
+  (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
 - Voices he likes: struck and sung — kalimba, musicbox, marimba, hum, and
   vowel since #14 darkened it. Raw-sawtooth leads read as harsh (above).
@@ -134,39 +137,54 @@ These are stated decisions, not inferences.
   A-weighted share of 2–5 kHz note by note.
 - `tools/listen.mjs` — pending; see State.
 
-## State — 2026-09-22
+## State — 2026-09-22, evening
 
-`main` at v31. Shipped: #1 rhythm cells + stats tool · #2–#4 Cloudflare
-deploy, build stamp, offline fix · #5 melody forward in the mix · #6
-measure.mjs · #7 motif-level omission, stepwise walk, register separation ·
-#8 audible-contour metric and bisect · #9 anchor by transposition · #10
-roadmap item 4/12 · #11 phrase velocity · #12 vowel drift · #13 choir ·
-#14 glottal source for sung voices.
+`main` at **v34** (`2253ab9`), deployed. No open PRs. Shipped: #1 rhythm
+cells + stats tool · #2–#4 Cloudflare deploy, build stamp, offline fix · #5
+melody forward in the mix · #6 measure.mjs · #7 motif-level omission,
+stepwise walk, register separation · #8 audible-contour metric and bisect ·
+#9 anchor by transposition · #10 roadmap item 4/12 · #11 phrase velocity ·
+#12 vowel drift · #13 choir · #14 glottal source (v31) · #15 slid attacks
+(v32) · #16–#18 this file · #19 melody starvation (v33) · #20 keys routing
+(v34).
 
-Open: **#15**, item 9 v2 — slides into notes for ocarina, flute, whistle.
-Mikey heard it: "okay", no further test wanted. Merge at his discretion.
+**#19, the melody starvation fix.** The ear-found bug was real: measured
+through the real Engine, 53.7% of melody notes refused on the glade loop at
+the 260 cap, and 28.6% of corpus loops losing more than 5% of their melody
+while the mean said 6.3%. Three causes: `keys` priced at 25 when it is one
+FM voice (now 12); only pads used the soft cap; and the soft cap was inert
+on lite because `Math.min(170, 140)` is 140 (now a reserve subtracted from
+whatever ceiling is in force). Full quality: 0.0% mean, max 2.7%. Keys pay
+23.2% → 27.9% across the corpus. **Lite is 16× better but 12% of loops still
+lose >5%**, and there the melody is refused by its own earlier notes, so the
+remaining fix is a shorter tail -- a change to the sound, parked.
 
-**Bug found by ear — the melody starves when the keys are busy.** Loop
-`DL1-0C05A-2RD20-61FJN-H85W9-VA4VS-FCVV3-6E060-6M25E-4MZMQ-CE9J5-TVT08-1ZW0G-5ZZ0V-6M4BF-0M003-G0000-9T90`
-(glade, 117 bpm, 6/8, ocarina melody, 199 keys notes). A Node simulation of
-`_budget` with the real costs puts **~53% of melody notes refused** at the
-260 cap (70% on lite). Keys cost 25 a note and hold that for `dur + 1.2 s`,
-so a busy keys part reserves nearly the whole budget; layers schedule
-`drums, bass, chords, melody`, so the melody asks last and loses. Simulation
-only — the bass tail is approximated — but the size is far past its error.
+**#20, keys on the keys bus.** `pluck()` hardcoded the melody channel, so
+every `keys` chord in the app's history played through the melody bus
+(0.58 / 0.28 / 0.12) instead of chords (0.44 / 0.35 / 0.15): the chords
+channel measured silent on 25 of 25 keys loops. Mikey hears the keys as
+quieter now, as predicted. Whether they are *too* far back is album 13a.
+`keys` is the main chord voice of `dust`, the commonest profile, so this is
+the most widely heard change of the session.
+
+The brain did not independently re-measure #19 or #20; the #20 diff and the
+channel table were read and match the report.
 
 Next, in order:
 
-1. Fix the melody starvation (brief in the session that wrote this).
-2. Build `tools/listen.mjs`, if not already done.
+1. Item 13, level by ear. Album 13a (keys) can be built now from
+   `share.js`. Hands: add a K-weighted loudness figure to `measure.mjs`.
+2. Build `tools/listen.mjs`.
 3. Fix the harsh sawtooth leads: saw, then moog and analoglead; stab lightly
-   or not at all. Same approach as #14 — soften at the source — then
+   or not at all. Same approach as #14 -- soften at the source -- then
    re-run the blind lead audition. Leads may keep more bite than the
-   sung voices; the re-audition decides.
+   sung voices; the re-audition decides. Album 13b comes after this.
 4. Item 9 v3, breath before phrase entries.
 5. Item 3: Mikey to decide whether to reframe it as a *spread* of melodic
    range across loops rather than a higher mean.
 6. Before adding new content: the balance lock (`stats.mjs --check` against
    a committed baseline; pin melodic character, not per-profile shares).
 
-Roadmap item 5 is blocked on a phone that isn't Mikey's.
+Parked: the residual lite starvation (shorter tails, a sound change).
+Roadmap item 5 is blocked on a phone that isn't Mikey's, and wants the
+voice weights checked before the totals.
