@@ -659,3 +659,9 @@ nothing is broken, the statistics say whether the change did what it claimed.
 4. **A declared cost that is not passed is worse than no cost.** `VOICE_COST`
    only applies where the call site passes it; several weights sat declared
    and ignored for a while, charging the default instead.
+5. **A new voice arrives measured, not guessed.** Its `VOICE_COST` weight and
+   its loudness beside the voices it will sit next to are measured when it is
+   added, not estimated and corrected in a later project. `keys` was priced
+   at 25 -- one FM voice charged like `piano`'s two -- and quietly ate the
+   melody on real phones until #19; the same kind of guess about level is
+   what item 13 is now unpicking. Both get cheaper the earlier they are taken.

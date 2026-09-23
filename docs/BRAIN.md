@@ -170,21 +170,29 @@ the most widely heard change of the session.
 The brain did not independently re-measure #19 or #20; the #20 diff and the
 channel table were read and match the report.
 
-Next, in order:
+Next, in order (agreed with Mikey, 2026-09-22). The catalogue-wide albums
+13b/13c/13d wait for the new content, since they measure a shape that is
+about to change. The yardstick does not wait: new instruments authored
+against mis-gained neighbours bake the error in, and the work grows with
+every voice added.
 
-1. Item 13, level by ear. Album 13a (keys) can be built now from
-   `share.js`. Hands: add a K-weighted loudness figure to `measure.mjs`.
-2. Build `tools/listen.mjs`.
-3. Fix the harsh sawtooth leads: saw, then moog and analoglead; stab lightly
-   or not at all. Same approach as #14 -- soften at the source -- then
-   re-run the blind lead audition. Leads may keep more bite than the
-   sung voices; the re-audition decides. Album 13b comes after this.
-4. Item 9 v3, breath before phrase entries.
-5. Item 3: Mikey to decide whether to reframe it as a *spread* of melodic
-   range across loops rather than a higher mean.
-6. Before adding new content: the balance lock (`stats.mjs --check` against
-   a committed baseline; pin melodic character, not per-profile shares).
+1. Tooling (brief written): a K-weighted loudness figure in `measure.mjs`
+   alongside peak and RMS, and loudness at equal velocity in the `--voice`
+   probe. Tools only, no app change. Gives a before/after baseline across
+   the new content as well.
+2. Fix whatever the voice table shows is off, at the source.
+3. The balance lock (`stats.mjs --check` against a committed baseline).
+4. New instruments and profiles -- each arriving with its measured cost
+   weight and level, per contribution rule 5.
+5. The harsh sawtooth leads (saw, then moog and analoglead; stab lightly or
+   not at all), then the articulation items: item 9 v3, item 3 if Mikey
+   reframes it.
+6. Albums 13b, 13c and 13d on the finished catalogue.
 
-Parked: the residual lite starvation (shorter tails, a sound change).
-Roadmap item 5 is blocked on a phone that isn't Mikey's, and wants the
-voice weights checked before the totals.
+Album 13a, the keys after #20, is the exception and can run any time: ten
+minutes of Mikey's ears on a change that has already shipped, and every new
+chord voice would otherwise be authored against a reference nobody checked.
+
+Also open: `tools/listen.mjs`; the residual lite starvation (shorter tails,
+a change to the sound); roadmap item 5, blocked on a phone that isn't
+Mikey's and wanting the voice weights checked before the totals.
