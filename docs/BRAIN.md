@@ -140,7 +140,7 @@ These are stated decisions, not inferences.
   the outliers). Seeded: same `--seed`, same numbers.
 - `tools/listen.mjs` — pending; see State.
 
-## State — 2026-09-22, evening
+## State — 2026-09-23
 
 `main` at **v34**, deployed (`edb6d4b`; #21-#24 since `2253ab9` are docs
 and tools only). No open PRs. Shipped: #1 rhythm
@@ -164,6 +164,32 @@ in ROADMAP item 13. Note for next time: this container has one core, a
 30-loop corpus outlasts a single tool call, and a background run must be
 started with `setsid` or it dies when the call returns.
 
+
+**#26, three level bugs, v35 -- verified.** The diff was read line by line
+and does exactly what the brief asked: bells take velocity once (partials
+and strike fixed at their 0.8 values), pad chords get the same 0.8 as every
+other chord voice through one `CHORD_SPREAD`, rhodesbass loses its second
+trim. Tests, stats and refusals byte-identical. One effect understated in
+the report: the bells rise by 0.8/v, so at the velocities the app actually
+plays shrine's chord bells they come up roughly 8-10 dB -- from 10+ LU
+under the chord layer to inside it. Intended, but it is the most audible
+change in the PR for shrine (4.3% of loops), more than the pads. A
+five-track "Shrine bells" album went to Mikey to check they sit right.
+
+**Drums, heard.** The 100-loop corpus shows the music under the drums is
+equally loud with or without them (-27.5 LUFS both), and the drums are a
+near-fixed level (-22.1 over the quietest quarter of the music, -22.0 over
+the loudest), so they sit 3-8 LU over it depending on what is underneath.
+Blind album of 12 drum loops spread across that gap, heard on v35: 10
+fine, and the only two flags ("a little loud, maybe fine") were the 10th
+and 12th of 12 by gap (+7.3, +12.3). The loudest loops overall were all
+fine. So within a loop the drums are mostly right; the extreme tail of the
+gap is mild at worst. Working hypothesis: the "drum loops are too loud"
+experience is the *jump* from a drumless loop into a drum loop, not the
+drums themselves. Being tested with a 14-track "Coming in" album mixing
+drumless and drum loops, rated per track as the volume reach coming in
+(up / down / none). Keys for both albums are derivable: decode the album,
+measure each loop.
 
 **#19, the melody starvation fix.** The ear-found bug was real: measured
 through the real Engine, 53.7% of melody notes refused on the glade loop at
@@ -198,8 +224,8 @@ every voice added.
    velocity squared, pad skipping the 0.8, rhodesbass trimmed twice) go in
    one synth-only brief with an A/B album. The taste calls (ocarina and
    flute, hum's resonance, formant jackpots in vowel/choir/hum, swell and
-   wind) go to Mikey's ears first. Open question for Mikey: are drumless
-   loops meant to sit about 5 LU under loops with drums?
+   wind) go to Mikey's ears first. Plain bugs done (#26). Drums: see
+   above -- the question is now the drum/drumless jump, album out.
 3. The balance lock (`stats.mjs --check` against a committed baseline).
 4. New instruments and profiles -- each arriving with its measured cost
    weight and level, per contribution rule 5.
