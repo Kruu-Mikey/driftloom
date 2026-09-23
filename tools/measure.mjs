@@ -15,11 +15,11 @@
 // rendering. The synth draws noise, jitter and drift from it, so without
 // that the same seed gave slightly different numbers on every run; with it,
 // same seed, same numbers, and the two renders of one loop that the chain
-// comparison needs differ by the chain and nothing else. "Same" is to every
-// digit printed. The raw figures --json writes can move in the sixth decimal
-// place on voices that sum several oscillators into one node: Chromium does
-// not fix the order it adds a node's inputs in, and float addition is not
-// associative.
+// comparison needs differ by the chain and nothing else. "Same" to about a
+// ten-thousandth of a dB, not to the bit: Chromium does not fix the order it
+// adds a node's inputs in, and float addition is not associative, so where
+// several sources meet in one node the last few bits move between runs. A
+// printed digit can flip when a value sits exactly on a rounding boundary.
 //
 // Web Audio does not exist in Node, and a reimplementation of the graph
 // would measure the reimplementation. So the real `Synth` and the real
@@ -80,7 +80,7 @@ driftloom offline audio measurement
   it is mono. Crest is sample peak minus integrated loudness. Each loop is
   rendered a second time with the master compressor and ceiling routed
   around -- in this harness only -- and the difference is what the chain
-  does to that loop. Same --seed, same report, whatever --jobs is.
+  does to that loop. Same --seed, same numbers, whatever --jobs is.
 
   --refusals reports what the voice budget turned away, layer by layer,
   through the real Engine and Synth. Given a share code it reports that
@@ -456,7 +456,10 @@ window.measure = async (opts) => {
     const left = scan(buf.getChannelData(0));
     const right = scan(buf.getChannelData(1));
     const layers = {};
-    LAYERS.forEach((name, n) => { layers[name] = scan(buf.getChannelData(n + 2)); });
+    LAYERS.forEach((name, n) => {
+      const d = buf.getChannelData(n + 2);
+      layers[name] = { ...scan(d), lufs: loudnessOf(d, opts.rate).integrated };
+    });
     // The meter reads channel 0 alone because the bus is mono; this is the
     // check that it still is.
     let stereo = 0;
@@ -916,8 +919,10 @@ function report(rows, opts, chain) {
   // count is printed beside it.
   out.push('');
   out.push('  per-layer dry level, tapped at the channel gain before the bus');
-  out.push('    layer      loops    peak      rms   rms dBFS   vs melody');
+  out.push('    layer      loops    peak      rms   rms dBFS   vs melody     LUFS   vs melody');
   const melodyRms = mean(rows.filter((r) => r.layers.melody.rms > 1e-6).map((r) => r.layers.melody.rms));
+  // Loudness while the layer plays: the gates leave out the bars it sits out.
+  const melodyLufs = mean(rows.filter((r) => r.layers.melody.rms > 1e-6).map((r) => r.layers.melody.lufs));
   for (const name of LAYERS) {
     const sounding = rows.filter((r) => r.layers[name].rms > 1e-6);
     if (!sounding.length) {
@@ -927,12 +932,16 @@ function report(rows, opts, chain) {
     const peak = Math.max(...sounding.map((r) => r.layers[name].peak));
     const rms = mean(sounding.map((r) => r.layers[name].rms));
     const rel = name === 'melody' ? '' : `${fmtDb(dbfs(melodyRms) - dbfs(rms))} dB`;
-    out.push(`    ${LAYER_LABELS[name].padEnd(9)} ${String(sounding.length).padStart(5)}   ${peak.toFixed(4)}   ${rms.toFixed(4)}     ${fmtDb(dbfs(rms)).padStart(6)}   ${rel.padStart(9)}`);
+    const lufs = mean(sounding.map((r) => r.layers[name].lufs));
+    const relLufs = name === 'melody' ? '' : `${fmtDb(melodyLufs - lufs)} LU`;
+    out.push(`    ${LAYER_LABELS[name].padEnd(9)} ${String(sounding.length).padStart(5)}   ${peak.toFixed(4)}   ${rms.toFixed(4)}     ${fmtDb(dbfs(rms)).padStart(6)}   ${rel.padStart(9)}   ${fmtDb(lufs).padStart(6)}   ${relLufs.padStart(9)}`);
   }
   out.push('');
   out.push('    "vs melody" is how far the melody sits above that layer. Positive');
   out.push('    means the melody is louder. Dry only: the reverb and echo returns');
   out.push('    are shared and cannot be attributed back to the layer that sent them.');
+  out.push('    LUFS is K-weighted and gated, so it is the layer\'s loudness while it');
+  out.push('    plays, and it does not over-count the kick and the bass as RMS does.');
   out.push('');
   out.push(reportLoudness(rows, opts, chain));
   return out.join('\n');
@@ -1012,7 +1021,7 @@ function reportLoudness(rows, opts, chain) {
   out.push(`    ${'-'.repeat(82)}`);
   const byInput = loops.slice().sort((a, b) => b.bypass.lufs - a.bypass.lufs);
   for (const r of byInput) {
-    out.push(`    ${r.name.padEnd(16)} ${' '.repeat(10)}${fmt(dbfs(r.bypass.peak), 7)} ${fmt(r.bypass.lufs, 7)} ${fmt(crest(r.bypass.peak, r.bypass.lufs), 7, 1, false)}   ${' '.repeat(6)}${fmt(delta(r), 7)} ${fmt(reduction(r), 7, 1, false)} ${fmt(crestChange(r), 7)}`);
+    out.push(`    ${r.name.padEnd(16)} ${' '.repeat(12)}${fmt(dbfs(r.bypass.peak), 7)} ${fmt(r.bypass.lufs, 7)} ${fmt(crest(r.bypass.peak, r.bypass.lufs), 7, 1, false)}   ${' '.repeat(5)}${fmt(delta(r), 7)} ${fmt(reduction(r), 7, 1, false)} ${fmt(crestChange(r), 7)}`);
   }
   out.push('');
   out.push('                                mean      min      max    spread');

@@ -310,11 +310,12 @@ before it squeezes anything; the report measures that lift and separates
 the two. `--no-chain` skips the second render.
 
 Every render seeds `Math.random` from the loop it is rendering, so the same
-`--seed` gives the same report on every run and at any `--jobs`, and
+`--seed` gives the same numbers on every run and at any `--jobs`, and
 `--json <file>` writes every figure out for anything the tables do not show.
-Those raw figures can differ in the sixth decimal place between runs on the
-voices that sum several oscillators into one node, because Chromium does not
-fix the order it adds them in.
+The same to about a ten-thousandth of a dB rather than to the bit: where
+several sources meet in one node Chromium does not fix the order it adds
+them in, so the last few bits move, and once in a while a printed digit
+that sits on a rounding boundary flips.
 
 It drives the real `Engine` and `Synth` against an `OfflineAudioContext` --
 same nodes, same envelopes, same saturator, same ceiling, same scheduling
