@@ -293,6 +293,26 @@ hoped for. The per-layer figures are dry on purpose: reverb and echo returns
 arrive through one shared pair of nodes, so a wet tail cannot be attributed
 back to the layer that sent it.
 
+Beside peak and RMS it reports loudness as the ear weights it: K-weighted
+integrated loudness in LUFS and loudness range in LU, per ITU-R BS.1770 and
+EBU Tech 3342, with the mono bus measured as one channel at weight 1.0, and
+crest as sample peak minus loudness. Raw RMS over-counts bass, which is why
+roadmap item 13 wanted this before anything is levelled. `--selftest` checks
+the meter against reference tones and Tech 3342's range cases, no browser
+needed.
+
+Each loop is also rendered a second time with the master compressor and
+ceiling routed around -- inside the tool only -- so the report can say what
+the chain does to each loop: how much louder it arrives, how much of that
+is taken back as gain reduction, and what happens to its crest. Web Audio's
+compressor applies an automatic makeup gain, so the chain lifts everything
+before it squeezes anything; the report measures that lift and separates
+the two. `--no-chain` skips the second render.
+
+Every render seeds `Math.random` from the loop it is rendering, so the same
+`--seed` gives the same numbers on every run and at any `--jobs`, and
+`--json <file>` writes every figure out for anything the tables do not show.
+
 It drives the real `Engine` and `Synth` against an `OfflineAudioContext` --
 same nodes, same envelopes, same saturator, same ceiling, same scheduling
 code that runs when you press play. Web Audio does not exist in Node, and a
@@ -341,6 +361,28 @@ The figure means nothing on its own. It is only useful next to the same
 figure for a voice nobody complains about, which is why the tool takes a
 list. This is the probe roadmap item 1 described and left unbuilt on the
 grounds that nothing had needed it; the vowel voice needed it.
+
+### Per-voice loudness
+
+```sh
+node tools/measure.mjs --voice all
+```
+
+The same probe also measures each voice's K-weighted loudness, note by note
+across two octaves, at velocities 0.4 and 0.8 reported separately -- a voice
+can match its neighbours at one and not the other, and one whose velocity
+also brightens it gets louder faster than one whose velocity is only a
+level. Each voice is measured in every layer `characters.js` draws it for,
+across the two octaves that layer actually plays in, and through that
+layer's own path in the engine: a chord voice is heard as the engine plays
+a chord, not as a tune. Everything is in LU against kalimba as a melody at
+the same velocity, a voice nobody has complained about.
+
+With `all`, every voice is set against the median of its own layer, and
+anything more than 3 LU from it, or whose two velocities disagree, is listed
+at the end. `--note <seconds>` changes how long each note is held (1.6 by
+default); a sustained voice and a plucked one compare differently at the
+length a melody note actually is.
 
 ## Track length
 

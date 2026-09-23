@@ -133,8 +133,11 @@ These are stated decisions, not inferences.
 - `tools/stats.mjs` — corpus statistics. `--seed`, `--n`,
   `--lift-low/--lift-high`, `--choir-quiz [file]`, `--voice-codes <voice>`.
 - `tools/measure.mjs` — offline audio through the real Engine and Synth in
-  headless Chromium: peak, RMS, per-layer levels; `--voice` reports a voice's
-  A-weighted share of 2–5 kHz note by note.
+  headless Chromium: peak, RMS, per-layer levels, K-weighted LUFS, LRA and
+  crest per loop, and what the master chain does to each loop; `--voice`
+  reports a voice's A-weighted share of 2–5 kHz note by note, and its
+  loudness at 0.4 and 0.8 by layer against kalimba (`--voice all` lists
+  the outliers). Seeded: same `--seed`, same numbers.
 - `tools/listen.mjs` — pending; see State.
 
 ## State — 2026-09-22, evening
