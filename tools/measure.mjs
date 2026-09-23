@@ -15,7 +15,11 @@
 // rendering. The synth draws noise, jitter and drift from it, so without
 // that the same seed gave slightly different numbers on every run; with it,
 // same seed, same numbers, and the two renders of one loop that the chain
-// comparison needs differ by the chain and nothing else.
+// comparison needs differ by the chain and nothing else. "Same" is to every
+// digit printed. The raw figures --json writes can move in the sixth decimal
+// place on voices that sum several oscillators into one node: Chromium does
+// not fix the order it adds a node's inputs in, and float addition is not
+// associative.
 //
 // Web Audio does not exist in Node, and a reimplementation of the graph
 // would measure the reimplementation. So the real `Synth` and the real
@@ -76,7 +80,7 @@ driftloom offline audio measurement
   it is mono. Crest is sample peak minus integrated loudness. Each loop is
   rendered a second time with the master compressor and ceiling routed
   around -- in this harness only -- and the difference is what the chain
-  does to that loop. Same --seed, same numbers, whatever --jobs is.
+  does to that loop. Same --seed, same report, whatever --jobs is.
 
   --refusals reports what the voice budget turned away, layer by layer,
   through the real Engine and Synth. Given a share code it reports that
