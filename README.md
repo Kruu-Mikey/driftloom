@@ -301,6 +301,16 @@ roadmap item 13 wanted this before anything is levelled. `--selftest` checks
 the meter against reference tones and Tech 3342's range cases, no browser
 needed.
 
+Integrated loudness averages across the hits, and the ear does not: in
+blind listening a drum loop 0.6 LU over the reference drew a reach for the
+volume where a drumless one 2.7 LU over it drew nothing. So the report also
+gives each loop's punch, for the whole mix and for the drums layer alone:
+the loudest momentary (400 ms) and short-term (3 s) loudness, as EBU R128's
+M and S, the 95th percentile of momentary loudness because a single maximum
+is one block, and PSR, the sample peak against the loudest short-term
+loudness, beside the existing crest. `--selftest` holds them to EBU Tech
+3341's constancy signals.
+
 Each loop is also rendered a second time with the master compressor and
 ceiling routed around -- inside the tool only -- so the report can say what
 the chain does to each loop: how much louder it arrives, how much of that

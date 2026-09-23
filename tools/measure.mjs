@@ -78,7 +78,10 @@ driftloom offline audio measurement
   The corpus report adds K-weighted loudness to peak and RMS: integrated
   loudness (LUFS) and loudness range (LRA) per loop, per ITU-R BS.1770 and
   EBU Tech 3342, with the bus measured as one channel at weight 1.0 because
-  it is mono. Crest is sample peak minus integrated loudness. Each loop is
+  it is mono. Crest is sample peak minus integrated loudness. Beside them,
+  the punch figures, for the mix and the drums layer alone: the loudest
+  momentary (400ms) and short-term (3s) loudness, the 95th percentile of
+  momentary, and PSR, sample peak minus the loudest short-term. Each loop is
   rendered a second time with the master compressor and ceiling routed
   around -- in this harness only -- and the difference is what the chain
   does to that loop. Same --seed, same numbers, whatever --jobs is.
@@ -200,12 +203,15 @@ function kWeighting(rate) {
 }
 
 // One channel at weight 1.0: the bus is mono. Returns integrated loudness
-// in LUFS (-Infinity for silence) and loudness range in LU.
+// in LUFS (-Infinity for silence) and loudness range in LU, and the punch
+// figures: the loudest momentary (400ms) and short-term (3s) loudness, as
+// EBU R128's M and S, and the 95th percentile of momentary loudness,
+// because a single maximum is one block and one block is fragile.
 //
-// Both are built from K-weighted energy summed in 100ms hops, since every
+// All are built from K-weighted energy summed in 100ms hops, since every
 // block either standard asks for is a whole number of them: 400ms blocks
-// stepping 100ms (75% overlap) for integrated loudness, 3s short-term
-// blocks at the same 10Hz for the range.
+// stepping 100ms (75% overlap) for integrated and momentary loudness, 3s
+// short-term blocks at the same 10Hz for the range and short-term.
 function loudnessOf(data, rate) {
   const [s, h] = kWeighting(rate);
   const hop = Math.round(rate / 10);
@@ -244,12 +250,25 @@ function loudnessOf(data, rate) {
     const gate = lufs(meanOf(loud)) + relative;
     return loud.filter((z) => lufs(z) > gate);
   };
-  const momentary = gated(blocks(4), -10);
+  const m = blocks(4);
+  const st = blocks(30);
+  const momentary = gated(m, -10);
   const integrated = momentary.length ? lufs(meanOf(momentary)) : -Infinity;
-  const shortTerm = gated(blocks(30), -20).map(lufs).sort((a, b) => a - b);
-  const at = (p) => shortTerm[Math.round((shortTerm.length - 1) * p)];
-  const lra = shortTerm.length ? at(0.95) - at(0.1) : 0;
-  return { integrated, lra };
+  const shortTerm = gated(st, -20).map(lufs).sort((a, b) => a - b);
+  const pick = (sorted, p) => sorted[Math.round((sorted.length - 1) * p)];
+  const lra = shortTerm.length ? pick(shortTerm, 0.95) - pick(shortTerm, 0.1) : 0;
+  // The maxima are ungated, as a meter's are. The percentile is over the
+  // blocks that clear the absolute gate, so the digital silence of a
+  // scheduled rest does not count as a quiet moment of the music.
+  const peakOf = (zs) => (zs.length ? lufs(Math.max(...zs)) : -Infinity);
+  const audible = m.map(lufs).filter((l) => l > -70).sort((a, b) => a - b);
+  return {
+    integrated,
+    lra,
+    momentaryMax: peakOf(m),
+    momentaryP95: audible.length ? pick(audible, 0.95) : -Infinity,
+    shortTermMax: peakOf(st),
+  };
 }
 
 // Reference signals with known answers. A 997Hz sine at full scale in one
@@ -260,6 +279,14 @@ function loudnessOf(data, rate) {
 // differences and so do not care that this meter has one channel where
 // theirs has two. The gating cases get 0.1: the few blocks straddling an
 // edge are partly tone and pass the gates, as the standard has them do.
+//
+// The punch figures are held to EBU Tech 3341's constancy signals: a tone
+// alternating 0.18s at -20 and 0.22s at -30 dBFS has a period of exactly one
+// momentary window, so every 400ms block reads -23.0 LUFS, and 1.34s against
+// 1.66s does the same for the 3s short-term window. Theirs are stereo, so
+// this meter's one channel takes them 3 dB hotter to read the same. A steady
+// sine has every maximum equal to its integrated loudness, and a peak 3.01
+// dB above it, which is what PSR has to report.
 function selftest() {
   const tone = (rate, parts) => {
     const n = parts.reduce((a, [, sec]) => a + Math.round(sec * rate), 0);
@@ -271,6 +298,7 @@ function selftest() {
     }
     return d;
   };
+  const times = (k, parts) => Array.from({ length: k }, () => parts).flat();
   const cases = [
     ['full-scale 997Hz sine, 48k', () => loudnessOf(tone(48000, [[0, 10]]), 48000).integrated, -3.01, 0.05],
     ['full-scale 997Hz sine, 44.1k', () => loudnessOf(tone(44100, [[0, 10]]), 44100).integrated, -3.01, 0.05],
@@ -281,6 +309,14 @@ function selftest() {
     ['Tech 3342 #2: -20 then -15 dB', () => loudnessOf(tone(44100, [[-20, 20], [-15, 20]]), 44100).lra, 5, 1],
     ['Tech 3342 #3: -40 then -20 dB', () => loudnessOf(tone(44100, [[-40, 20], [-20, 20]]), 44100).lra, 20, 1],
     ['Tech 3342 #4: -50/-35/-20/-35/-50 dB', () => loudnessOf(tone(44100, [[-50, 20], [-35, 20], [-20, 20], [-35, 20], [-50, 20]]), 44100).lra, 15, 1],
+    ['-20 dB sine: max momentary', () => loudnessOf(tone(44100, [[-20, 10]]), 44100).momentaryMax, -23.01, 0.05],
+    ['-20 dB sine: momentary 95th percentile', () => loudnessOf(tone(44100, [[-20, 10]]), 44100).momentaryP95, -23.01, 0.05],
+    ['-20 dB sine: max short-term', () => loudnessOf(tone(44100, [[-20, 10]]), 44100).shortTermMax, -23.01, 0.05],
+    ['-20 dB sine: PSR, peak less max short-term', () => -20 - loudnessOf(tone(44100, [[-20, 10]]), 44100).shortTermMax, 3.01, 0.05, 'dB'],
+    ['Tech 3341 momentary: 0.18/0.22s, max M', () => loudnessOf(tone(44100, times(25, [[-17, 0.18], [-27, 0.22]])), 44100).momentaryMax, -23, 0.1],
+    ['Tech 3341 momentary: 0.18/0.22s, 95th pct', () => loudnessOf(tone(44100, times(25, [[-17, 0.18], [-27, 0.22]])), 44100).momentaryP95, -23, 0.1],
+    ['Tech 3341 short-term: 1.34/1.66s, max S', () => loudnessOf(tone(44100, times(5, [[-17, 1.34], [-27, 1.66]])), 44100).shortTermMax, -23, 0.1],
+    ['the same, max M is the louder tone', () => loudnessOf(tone(44100, times(5, [[-17, 1.34], [-27, 1.66]])), 44100).momentaryMax, -20.01, 0.1],
   ];
   const [shelf, hp] = kWeighting(48000);
   const published = [1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585, -1.99004745483398, 0.99007225036621];
@@ -295,7 +331,7 @@ function selftest() {
     out.push(`  ${ok ? 'pass' : 'FAIL'}  ${label.padEnd(44)} ${got.toFixed(3).padStart(8)} ${unit}  (want ${want} +/- ${tol})`);
   };
   line('K-weighting against the published 48k filter', coeffErr, 0, 1e-8, '  ');
-  for (const [label, fn, want, tol] of cases) line(label, fn(), want, tol, label.startsWith('Tech') ? 'LU' : 'LUFS');
+  for (const [label, fn, want, tol, unit] of cases) line(label, fn(), want, tol, unit || (label.startsWith('Tech 3342') ? 'LU' : 'LUFS'));
   out.push('');
   out.push(failed ? `  ${failed} failed` : '  all passed');
   out.push('');
@@ -459,7 +495,14 @@ window.measure = async (opts) => {
     const layers = {};
     LAYERS.forEach((name, n) => {
       const d = buf.getChannelData(n + 2);
-      layers[name] = { ...scan(d), lufs: loudnessOf(d, opts.rate).integrated };
+      const ld = loudnessOf(d, opts.rate);
+      layers[name] = {
+        ...scan(d),
+        lufs: ld.integrated,
+        mMax: ld.momentaryMax,
+        mP95: ld.momentaryP95,
+        sMax: ld.shortTermMax,
+      };
     });
     // The meter reads channel 0 alone because the bus is mono; this is the
     // check that it still is.
@@ -490,6 +533,9 @@ window.measure = async (opts) => {
       full: left.full + right.full,
       lufs: loud.integrated,
       lra: loud.lra,
+      mMax: loud.momentaryMax,
+      mP95: loud.momentaryP95,
+      sMax: loud.shortTermMax,
       stereo,
       layers,
       bypass,
@@ -965,6 +1011,9 @@ const middle = (a) => {
 };
 const spreadOf = (xs) => Math.max(...xs) - Math.min(...xs);
 
+// One row of a mean / min / max / spread summary.
+const summaryLine = (label, xs, unit, sign = true) => `    ${label.padEnd(24)} ${fmt(mean(xs), 7, 1, sign)}  ${fmt(Math.min(...xs), 7, 1, sign)}  ${fmt(Math.max(...xs), 7, 1, sign)}  ${fmt(spreadOf(xs), 7, 1, false)} ${unit}`;
+
 // Loudness, per loop and across the corpus, and what the master chain does.
 function reportLoudness(rows, opts, chain) {
   const out = [];
@@ -986,9 +1035,7 @@ function reportLoudness(rows, opts, chain) {
     out.push('    left channel alone because the bus has been mono; it no longer is.');
   }
 
-  const line = (label, xs, unit, sign = true) => {
-    out.push(`    ${label.padEnd(24)} ${fmt(mean(xs), 7, 1, sign)}  ${fmt(Math.min(...xs), 7, 1, sign)}  ${fmt(Math.max(...xs), 7, 1, sign)}  ${fmt(spreadOf(xs), 7, 1, false)} ${unit}`);
-  };
+  const line = (...a) => out.push(summaryLine(...a));
   out.push('');
   out.push(`  across the corpus, ${rows.length} loops (means are of the per-loop figures)`);
   out.push('                                mean      min      max    spread');
@@ -1024,6 +1071,8 @@ function reportLoudness(rows, opts, chain) {
   if (withDrums.length && without.length) {
     out.push(`    loops with drums ${fmt(mean(withDrums.map((r) => r.lufs)), 5)} LUFS on average (${withDrums.length}), without ${fmt(mean(without.map((r) => r.lufs)), 5)} (${without.length})`);
   }
+
+  out.push(...reportPunch(rows));
 
   if (!chain) return out.join('\n');
   const loops = rows.filter((r) => r.bypass);
@@ -1140,6 +1189,58 @@ function probeJobs(names, layers) {
 }
 
 const noteName = (midi) => `${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][midi % 12]}${Math.floor(midi / 12) - 1}`;
+
+// Punch: how loud the loudest moments are, not the average. Integrated
+// loudness averages across the hits and the ear does not -- in blind
+// listening a drum loop 0.6 LU over the reference drew a reach for the
+// volume where a drumless one 2.7 LU over it drew nothing. These are the
+// candidates for a figure that tracks that: EBU R128's momentary (400ms)
+// and short-term (3s) loudness at their loudest, the 95th percentile of
+// momentary because one block is fragile, and PSR, the peak against the
+// loudest short-term loudness, beside the existing crest.
+function reportPunch(rows) {
+  const out = [];
+  const line = (...a) => out.push(summaryLine(...a));
+  const hasDrums = (r) => r.layers.drums.rms > 1e-6;
+  const psr = (peak, sMax) => dbfs(peak) - sMax;
+  out.push('');
+  out.push('  punch: loudness at its loudest -- max momentary (400ms), its 95th');
+  out.push('    percentile, max short-term (3s), as EBU R128\'s M and S. PSR is sample');
+  out.push('    peak less max short-term; crest, beside it, is peak less integrated.');
+  out.push('    Loudest first by max momentary.');
+  out.push('');
+  out.push('    loop             profile     drums     LUFS    max M    M p95    max S     PSR   crest');
+  out.push(`    ${'-'.repeat(86)}`);
+  for (const r of rows.slice().sort((a, b) => b.mMax - a.mMax)) {
+    out.push(`    ${r.name.padEnd(16)} ${r.profile.padEnd(10)} ${(hasDrums(r) ? 'yes' : '-').padStart(5)}  ${fmt(r.lufs, 7)}  ${fmt(r.mMax, 7)}  ${fmt(r.mP95, 7)}  ${fmt(r.sMax, 7)}  ${fmt(psr(r.peak, r.sMax), 6, 1, false)}  ${fmt(dbfs(r.peak) - r.lufs, 6, 1, false)}`);
+  }
+  out.push('');
+  out.push('                                mean      min      max    spread');
+  line('max momentary, LUFS', rows.map((r) => r.mMax), 'LU');
+  line('momentary p95, LUFS', rows.map((r) => r.mP95), 'LU');
+  line('max short-term, LUFS', rows.map((r) => r.sMax), 'LU');
+  line('PSR, dB', rows.map((r) => psr(r.peak, r.sMax)), 'dB', false);
+
+  const drummed = rows.filter(hasDrums);
+  if (drummed.length) {
+    out.push('');
+    out.push('  the drums layer alone, dry at its channel gain, on the loops that have it');
+    out.push('');
+    out.push('    loop             profile        LUFS    max M    M p95    max S     PSR');
+    out.push(`    ${'-'.repeat(71)}`);
+    for (const r of drummed.slice().sort((a, b) => b.layers.drums.mMax - a.layers.drums.mMax)) {
+      const d = r.layers.drums;
+      out.push(`    ${r.name.padEnd(16)} ${r.profile.padEnd(10)}  ${fmt(d.lufs, 7)}  ${fmt(d.mMax, 7)}  ${fmt(d.mP95, 7)}  ${fmt(d.sMax, 7)}  ${fmt(psr(d.peak, d.sMax), 6, 1, false)}`);
+    }
+    out.push('');
+    out.push('                                mean      min      max    spread');
+    line('drums max momentary', drummed.map((r) => r.layers.drums.mMax), 'LU');
+    line('drums momentary p95', drummed.map((r) => r.layers.drums.mP95), 'LU');
+    line('drums max short-term', drummed.map((r) => r.layers.drums.sMax), 'LU');
+    line('drums PSR, dB', drummed.map((r) => psr(r.layers.drums.peak, r.layers.drums.sMax)), 'dB', false);
+  }
+  return out;
+}
 
 function reportVoices(data, opts, context) {
   const { all, survey } = context;
