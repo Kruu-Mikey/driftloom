@@ -142,14 +142,28 @@ These are stated decisions, not inferences.
 
 ## State — 2026-09-22, evening
 
-`main` at **v34** (`2253ab9`), deployed. No open PRs. Shipped: #1 rhythm
+`main` at **v34**, deployed (`edb6d4b`; #21-#24 since `2253ab9` are docs
+and tools only). No open PRs. Shipped: #1 rhythm
 cells + stats tool · #2–#4 Cloudflare deploy, build stamp, offline fix · #5
 melody forward in the mix · #6 measure.mjs · #7 motif-level omission,
 stepwise walk, register separation · #8 audible-contour metric and bisect ·
 #9 anchor by transposition · #10 roadmap item 4/12 · #11 phrase velocity ·
 #12 vowel drift · #13 choir · #14 glottal source (v31) · #15 slid attacks
 (v32) · #16–#18 this file · #19 melody starvation (v33) · #20 keys routing
-(v34).
+(v34) · #21-#23 item 13 and its order · #24 the loudness
+yardstick in `measure.mjs`.
+
+**#24, verified.** `js/` untouched, `--selftest` passes, and the brain's own
+12-loop run matched the report's table to the decimal, chain section
+included. The four "plain bug" causes were read in the code and hold. One
+claim downgraded: arpeggiated keys notes at full chord velocity are equal
+power to the struck chord by construction (n x (0.8/sqrt n)^2), so only
+overlapping tails could make an arpeggio louder -- not a bug on this
+evidence. The brain's loud-and-squeezed hypothesis was wrong; findings are
+in ROADMAP item 13. Note for next time: this container has one core, a
+30-loop corpus outlasts a single tool call, and a background run must be
+started with `setsid` or it dies when the call returns.
+
 
 **#19, the melody starvation fix.** The ear-found bug was real: measured
 through the real Engine, 53.7% of melody notes refused on the glade loop at
@@ -179,11 +193,13 @@ about to change. The yardstick does not wait: new instruments authored
 against mis-gained neighbours bake the error in, and the work grows with
 every voice added.
 
-1. Tooling (brief written): a K-weighted loudness figure in `measure.mjs`
-   alongside peak and RMS, and loudness at equal velocity in the `--voice`
-   probe. Tools only, no app change. Gives a before/after baseline across
-   the new content as well.
-2. Fix whatever the voice table shows is off, at the source.
+1. ~~Tooling~~ -- done, #24.
+2. Fix at the source, in two halves. The plain bugs (templebell/tubular
+   velocity squared, pad skipping the 0.8, rhodesbass trimmed twice) go in
+   one synth-only brief with an A/B album. The taste calls (ocarina and
+   flute, hum's resonance, formant jackpots in vowel/choir/hum, swell and
+   wind) go to Mikey's ears first. Open question for Mikey: are drumless
+   loops meant to sit about 5 LU under loops with drums?
 3. The balance lock (`stats.mjs --check` against a committed baseline).
 4. New instruments and profiles -- each arriving with its measured cost
    weight and level, per contribution rule 5.

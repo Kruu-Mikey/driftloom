@@ -525,8 +525,11 @@ volume every other track. **Dynamic, but sensible.**
 
 **Not the answer:** a limiter or compressor doing the work, a loudness
 target, normalisation. The master already carries a gentle compressor (3:1
-above -10 dBFS) and a ceiling at -3 dBFS. Both only touch the loud end;
-they stay the backstop they are and are not to be leaned on harder.
+above -10 dBFS) and a ceiling at -3 dBFS. They stay the backstop they are
+and are not to be leaned on harder. (Measured in #24: they do not "only
+touch the loud end". Web Audio's compressor applies makeup gain, so the
+chain lifts every loop by a flat +3.8 dB and takes back 0-0.9 dB, moving
+the spread by about half a LU.)
 
 **One behaviour for everybody** (decided 2026-09-22). No Room/Car switch, no
 range slider, nothing for the user to scroll past. That also rules out the
@@ -546,8 +549,31 @@ this whole item: the accidental spread is the entire problem, and removing
 it lands the catalogue in the band on its own, with no per-loop mechanism at
 all. Two things to establish alongside it -- a house level taken from a loop
 Mikey already likes, and whether the loudest loops are riding the master
-compressor (-10 dBFS, 3:1), since a loud loop that is also squeezed is
-exactly the one that jumps out.
+compressor. (They are not -- see below.)
+
+**Measured, #24** (`tools/measure.mjs`, seed 1; the brain reproduced the
+first 12 loops to the decimal). Integrated loudness spans 15.1 LU across
+100 loops, but the middle of the catalogue -- 10th to 95th percentile, as
+LRA takes a range -- is **8.9 LU**, so the band is close and the problem is
+mostly the tails. The authored trims account for about 1.3 LU of it. The
+single biggest factor is **drums**: loops with drums average -23.2 LUFS,
+loops without -28.0. The loud-and-squeezed theory was wrong: the loud end
+arrives loud before the chain sees it. RMS misled in both directions -- it
+over-counts the bass and under-counts the drums.
+
+The voice table splits in two. **Plain bugs**, where a voice's code does
+not do what it says: `templebell` and `tubular` apply velocity twice, so
+level goes with its square; `pad` reaches `pad()` directly and skips the
+engine's 0.8 chord spread, measuring exactly 1.9 LU over `moogpad`, the
+same sound; `rhodesbass` is trimmed twice. **Taste calls**, where the
+number is a question for the ear: `ocarina` and `flute` sit 5-7 LU over the
+melody layer from their sustained envelopes; the saw leads 4-9 LU over at
+realistic note lengths (queued already, and possibly part of why they read
+as harsh); `hum` trimmed 8-9 LU down to tame one fixed 280 Hz resonance;
+single notes of `vowel`, `choir` and `hum` jumping 10-15 LU when a harmonic
+lands on a formant peak; `swell` over the other texture voices and `wind`
+well under. `stab` measures 12 LU quiet, but a 220 ms sound is the wrong
+shape for a 400 ms meter and Mikey heard it as fine -- the ear wins there.
 
 **Why there is something to find.** The per-profile `level` trims in
 `characters.js` run from 0.62 to 1.05, about 4.6 dB. That is the spread
