@@ -388,6 +388,44 @@ at the end. `--note <seconds>` changes how long each note is held (1.6 by
 default); a sustained voice and a plucked one compare differently at the
 length a melody note actually is.
 
+### The balance lock
+
+```sh
+node tools/stats.mjs --check                   # against test/stats-baseline.json
+node tools/stats.mjs --write-baseline          # rewrite it, deliberately
+```
+
+The generation half, in `stats.mjs`. The current balance is a decision --
+ambient, meandering loops alongside tuneful ones, not every loop a
+triumphant melody, the choir about one in thirty -- and it has to survive
+new profiles and voices. The lock records the melodic character of a
+corpus: the share of loops with a melody; the melody's span, notes per bar,
+duration, velocity and odd-step share; velocity across a phrase; the
+interval profile; motif survival, audible included; the deliberate choir
+rate; and keys against melody, both the register guarantee (no loop outside
+a choir with the two layers under five semitones apart) and the share of
+loops whose pools drew one voice by accident.
+
+`--check` redraws the corpus the baseline recorded (its `--n` and
+`--seed`, not the command line's), prints every figure as baseline, now,
+difference and tolerance, and exits 1 if any is outside its tolerance.
+Profile, metre and voice shares are printed beside them and never fail it,
+because new profiles move those on purpose.
+
+Tolerances are sampling noise, not taste: three times each figure's
+seed-to-seed standard deviation, the spread of the difference between two
+corpora of the same size, measured over twenty further corpora. That is the
+noise a generator change meets when it draws one more random number and
+re-rolls every loop without changing what loops are like. Such a change
+passes about nineteen times in twenty; a real one -- melodies 5% softer, a
+choir at 5% -- does not. Five corpora, the first attempt, underestimated
+the spread and failed nineteen re-rolls in twenty.
+
+A miss is not a verdict. Either the change is wrong, or the balance has
+moved on purpose -- in which case `--write-baseline` rewrites
+`test/stats-baseline.json`, and the pull request says so. The file is
+deterministic, so rewriting it on unchanged code changes nothing.
+
 ## Track length
 
 Off by default: a loop machine should loop until you say stop. Set it and a
