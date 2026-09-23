@@ -18,6 +18,16 @@ const LOOKAHEAD_HIDDEN = 3.0;
 const TICK_VISIBLE = 50;
 const TICK_HIDDEN = 250;
 
+// A chord's level, spread across its voicing so a five-note chord is not
+// five times louder than a single note: this, over the root of the note
+// count. Pads take the same figure. They reach pad(), which divides by the
+// root itself, and for as long as only voice() got the 0.8 every pad chord
+// sat 1.9 dB above the same chord on any other voice -- moogpad, the
+// identical sound through voice(), measured exactly that much quieter.
+// Applied here and not inside pad(), because voice() also reaches pad()
+// for single notes, already spread.
+const CHORD_SPREAD = 0.8;
+
 export class Engine {
   constructor(ctx, synth) {
     this.ctx = ctx;
@@ -309,11 +319,9 @@ export class Engine {
       for (const e of p.tracks.chords) {
         if (e.step !== s || !e.vel) continue;
         if (e.voice === 'pad') {
-          this.synth.pad(e.notes, t, e.dur * sd, e.vel);
+          this.synth.pad(e.notes, t, e.dur * sd, e.vel * CHORD_SPREAD);
         } else {
-          // Spread the level across the voicing so a five-note chord is
-          // not five times louder than a single note.
-          const spread = 0.8 / Math.sqrt(e.notes.length);
+          const spread = CHORD_SPREAD / Math.sqrt(e.notes.length);
           e.notes.forEach((n, i) => {
             // Spread the notes of a chord by a few milliseconds so it
             // sounds like fingers rather than a switch closing.
