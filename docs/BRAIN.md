@@ -267,15 +267,21 @@ per-layer cycles and silences them for the whole loop. Confirmed; the
 brain's broader count at seed 1 finds bass, chords or melody silent for
 the whole loop in 2.08% of loops (melody in 1%), texture separately in
 2.7%. One of the "drums too loud" complaints was a loop with no music
-under the drums at all. Fixed next, with codes allowed to change.
+under the drums at all. **Not a bug after all -- heard.** Mikey: loops with fewer layers are wanted
+variety. Six loops that lost a layer this way, heard: five "complete",
+task-glei included (drums over texture only). The one "missing" was
+noan-nou, which lost only its bass; va-gloung lost bass and melody and was
+complete, so one case is not a pattern. Left as it is. If more bass-less
+loops come up "missing", a narrow guard on the bass is the fix, not the
+brief that was dropped.
 
 Next, in order (agreed with Mikey, 2026-09-23). Step 1 (#24), the plain
 level bugs (#26), the balance lock (#30) and the punch figure (#31) are
 done.
 
-0. The whole-layer silence fix (generator, v36), re-baselining at n=10000.
-   Beside it, the drum listening knob as a draft preview, never merged
-   as a knob.
+0. The drum listening knob, a draft preview never merged as a knob.
+   Beside it, item 14a (generator, v36), which also re-baselines the
+   balance lock at n=10000.
 
 1. (done: lock and punch figure)
 2. Item 14a, the 6/8 accompaniment, A/B'd on existing codes.
