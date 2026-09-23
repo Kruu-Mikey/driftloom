@@ -15,11 +15,12 @@
 // rendering. The synth draws noise, jitter and drift from it, so without
 // that the same seed gave slightly different numbers on every run; with it,
 // same seed, same numbers, and the two renders of one loop that the chain
-// comparison needs differ by the chain and nothing else. "Same" to about a
-// ten-thousandth of a dB, not to the bit: Chromium does not fix the order it
+// comparison needs differ by the chain and nothing else. "Same" to within a
+// thousandth of a dB, not to the bit: Chromium does not fix the order it
 // adds a node's inputs in, and float addition is not associative, so where
-// several sources meet in one node the last few bits move between runs. A
-// printed digit can flip when a value sits exactly on a rounding boundary.
+// several sources meet in one node the last few bits move between runs.
+// Every figure printed in dB or LU comes out the same; the last digit of a
+// four-place linear peak can flip when it sits on a rounding boundary.
 //
 // Web Audio does not exist in Node, and a reimplementation of the graph
 // would measure the reimplementation. So the real `Synth` and the real
@@ -922,7 +923,10 @@ function report(rows, opts, chain) {
   out.push('    layer      loops    peak      rms   rms dBFS   vs melody     LUFS   vs melody');
   const melodyRms = mean(rows.filter((r) => r.layers.melody.rms > 1e-6).map((r) => r.layers.melody.rms));
   // Loudness while the layer plays: the gates leave out the bars it sits out.
-  const melodyLufs = mean(rows.filter((r) => r.layers.melody.rms > 1e-6).map((r) => r.layers.melody.lufs));
+  // A layer can sound and still sit under the -70 LUFS gate throughout --
+  // a thin wind -- so the mean is over the loops where it measured at all.
+  const gatedMean = (name) => mean(rows.map((r) => r.layers[name].lufs).filter(Number.isFinite));
+  const melodyLufs = gatedMean('melody');
   for (const name of LAYERS) {
     const sounding = rows.filter((r) => r.layers[name].rms > 1e-6);
     if (!sounding.length) {
@@ -932,7 +936,7 @@ function report(rows, opts, chain) {
     const peak = Math.max(...sounding.map((r) => r.layers[name].peak));
     const rms = mean(sounding.map((r) => r.layers[name].rms));
     const rel = name === 'melody' ? '' : `${fmtDb(dbfs(melodyRms) - dbfs(rms))} dB`;
-    const lufs = mean(sounding.map((r) => r.layers[name].lufs));
+    const lufs = gatedMean(name);
     const relLufs = name === 'melody' ? '' : `${fmtDb(melodyLufs - lufs)} LU`;
     out.push(`    ${LAYER_LABELS[name].padEnd(9)} ${String(sounding.length).padStart(5)}   ${peak.toFixed(4)}   ${rms.toFixed(4)}     ${fmtDb(dbfs(rms)).padStart(6)}   ${rel.padStart(9)}   ${fmtDb(lufs).padStart(6)}   ${relLufs.padStart(9)}`);
   }
@@ -998,6 +1002,28 @@ function reportLoudness(rows, opts, chain) {
   out.push('');
   out.push('    "LUFS less the trim" is what the loops would measure if every profile');
   out.push('    had the same level: the spread nobody set as a level decision.');
+  // Max minus min grows with the size of the corpus; this does not. Played
+  // back to back the catalogue is one programme, so its range is taken the
+  // way LRA takes one: 10th to 95th percentile of loop loudness.
+  const sorted = rows.map((r) => r.lufs).sort((a, b) => a - b);
+  const at = (p) => sorted[Math.round((sorted.length - 1) * p)];
+  out.push(`    catalogue range, 10th to 95th percentile of loop loudness, as LRA takes`);
+  out.push(`    its range: ${fmt(at(0.95) - at(0.1), 4, 1, false)} LU (${fmt(at(0.1), 5)} to ${fmt(at(0.95), 5)} LUFS; median ${fmt(at(0.5), 5)})`);
+
+  // By the profile that leads each loop's mix.
+  const profiles = {};
+  for (const r of rows) (profiles[r.profile] ||= []).push(r);
+  out.push('');
+  out.push('    by leading profile      loops     LUFS   trim dB   LUFS less trim   with drums');
+  for (const [name, rs] of Object.entries(profiles).sort((a, b) => mean(b[1].map((r) => r.lufs)) - mean(a[1].map((r) => r.lufs)))) {
+    const drums = rs.filter((r) => r.layers.drums.rms > 1e-6).length;
+    out.push(`      ${name.padEnd(20)} ${String(rs.length).padStart(5)}  ${fmt(mean(rs.map((r) => r.lufs)), 7)}  ${fmt(mean(rs.map((r) => dbfs(r.level))), 8)}  ${fmt(mean(rs.map((r) => r.lufs - dbfs(r.level))), 15)}  ${`${drums} of ${rs.length}`.padStart(11)}`);
+  }
+  const withDrums = rows.filter((r) => r.layers.drums.rms > 1e-6);
+  const without = rows.filter((r) => !(r.layers.drums.rms > 1e-6));
+  if (withDrums.length && without.length) {
+    out.push(`    loops with drums ${fmt(mean(withDrums.map((r) => r.lufs)), 5)} LUFS on average (${withDrums.length}), without ${fmt(mean(without.map((r) => r.lufs)), 5)} (${without.length})`);
+  }
 
   if (!chain) return out.join('\n');
   const loops = rows.filter((r) => r.bypass);
