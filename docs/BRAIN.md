@@ -93,6 +93,12 @@ These are stated decisions, not inferences.
   ear and fixed at the source, never by a limiter or compressor on the mix
   (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
+- **Old share codes, saved loops and albums may change or break** while the
+  app is in testing (2026-09-23). Compatibility is not a constraint on any
+  change. Keeping draws stable is still worth it where it costs nothing,
+  for one reason only: it lets the same album on production and on a
+  preview compare the same loop, so an A/B hears the change and nothing
+  else.
 - Voices he likes: struck and sung — kalimba, musicbox, marimba, hum, and
   vowel since #14 darkened it. Raw-sawtooth leads read as harsh (above).
 - Fine with retro, strange, and occasionally wrong if it opens things up.
@@ -118,9 +124,11 @@ These are stated decisions, not inferences.
   with *derived* values that draw no random numbers. That keeps generator
   stats byte-identical and share codes stable.
 - **Seed-derived decisions use a salted RNG** (`spec.seed ^ SALT`), as the
-  choir does, so every other loop renders exactly as before.
+  choir does, so every other loop renders exactly as before. Since
+  2026-09-23 this is for clean A/Bs, not for compatibility.
 - Any generator change that consumes random numbers re-renders every share
-  code in circulation. Export favourites first.
+  code in circulation. Accepted during testing; say so in the PR, because
+  an A/B album across it compares different loops.
 - Single-stage bisects mislead when stages interact (the chord-tone snap hid
   the octave fold). Test combinations.
 - One fixed curve applied everywhere becomes a mannerism (the old contour
@@ -238,16 +246,42 @@ the most widely heard change of the session.
 The brain did not independently re-measure #19 or #20; the #20 diff and the
 channel table were read and match the report.
 
-Next, in order (agreed with Mikey, 2026-09-23). Step 1 (#24) and the plain
-level bugs (#26) are done.
+**#30, the balance lock -- verified.** `stats.mjs --check` passes on main.
+The brief's tolerance rule (5 corpora, 3 sd) false-alarmed on 19 of 20
+pure re-rolls; the hands' correction (20 corpora, sd of the *difference*,
+i.e. sqrt 2 x one corpus's sd) brings that to 1 in 20, and is right. At
+n=2000 the choir rate must move about 2 points to trip it; the next
+generator PR re-baselines at n=10000 to halve that, since choir rarity is
+a stated decision.
 
-1. The balance lock and the punch figure -- both tools only, briefs written,
-   run side by side. The punch figure scores candidate loudness figures
-   against the 26 loops Mikey has rated.
+**#31, the punch figure -- verified.** The Album B separation figures
+recompute from the table (sample peak 0.90, gap -1.5). No figure splits
+flagged from fine in either album; only peak-based figures order the
+toask-ha / fui-theith pair as heard. The 26 soft ratings cannot pin a
+metric, so the drum level is now decided by ear: a hidden `?drums=` dB
+knob on a preview, the Coming-in album at three levels, blind.
+
+**Whole layers silenced -- a generator bug.** task-glei plays drums over a
+texture and nothing else: `genForm`'s placed rest wraps into short
+per-layer cycles and silences them for the whole loop. Confirmed; the
+brain's broader count at seed 1 finds bass, chords or melody silent for
+the whole loop in 2.08% of loops (melody in 1%), texture separately in
+2.7%. One of the "drums too loud" complaints was a loop with no music
+under the drums at all. Fixed next, with codes allowed to change.
+
+Next, in order (agreed with Mikey, 2026-09-23). Step 1 (#24), the plain
+level bugs (#26), the balance lock (#30) and the punch figure (#31) are
+done.
+
+0. The whole-layer silence fix (generator, v36), re-baselining at n=10000.
+   Beside it, the drum listening knob as a draft preview, never merged
+   as a knob.
+
+1. (done: lock and punch figure)
 2. Item 14a, the 6/8 accompaniment, A/B'd on existing codes.
 3. Item 14b, voices one PR each: fiddle, nylon with strumming, accordion,
    pan flute.
-4. The drum fix, sized from the punch figure (item 13). The chord
+4. The drum fix, at the level Mikey picks with the knob (item 13). The chord
    templebell trim can ride any sound-change PR that is not being A/B'd.
 5. Item 14c, `tide` first, then `cinder` and `wayfare`.
 6. Then the saw leads, the taste calls, the articulation items and albums

@@ -654,8 +654,8 @@ a weak eighth; and `pad` appears to keep its 16-step hold and ring a third
 of a bar into the next chord (to confirm). 55% of glade-led loops are in 12
 steps, so the profile nearest this music plays its tunes over the wrong
 metre most of the time. Fix: a 12-step pattern for every rhythm name, drawn
-by the same name, so every share code keeps its draws -- the choir's
-relabel-not-redraw trick. Existing 12-step loops will sound different,
+by the same name -- the choir's relabel-not-redraw trick. Codes may change
+now (testing phase), so this is a preference for a clean A/B, not a rule. Existing 12-step loops will sound different,
 which is the point, so it gets an A/B album. Check the bass for the same
 fault.
 
@@ -664,9 +664,9 @@ fault.
 strumming (down and up, 15-30 ms across the strings, downstroke accented --
 chords today spread 11 ms in one fixed order); accordion (two detuned
 reeds, bellows swell); pan flute (a flute variant with more breath and
-chiff). Steel pan optional. No existing profile's pools are edited: pools
-blend across a loop's mix, so adding a voice to glade would change every
-code with any glade in it.
+chiff). Steel pan optional. Existing pools may now take new voices --
+fiddle into glade, say -- since old codes are no longer protected; each
+such addition is Mikey's call and must pass the balance lock.
 
 **14c. After the drum fix (item 13): new profiles, one at a time, appended
 to the end of `PROFILE_IDS`.** First `tide`, the sailing waltz; then
@@ -684,11 +684,10 @@ the source. Each brings what glade lacks:
 - hand drums as a new kit beside tape, brush and machine, not a flag.
 
 Every new generator feature draws only when the loop's profile asks for
-it, from its own salted seed, so loops without it stay byte-identical.
-Known cost: an older cached app cannot open a code that uses a new
-profile.
+it, from its own salted seed, where that is free -- it keeps A/B albums
+honest. Old codes are not protected (testing phase).
 
-**Not taken from the suggestions:** Nintendo names; editing glade's pools;
+**Not taken from the suggestions:** Nintendo names;
 raising `MAX_BUDGET` (it is the low-end-phone guard, and #19 showed the fix
 is measuring costs); guessed costs; grace notes on the step grid (a step is
 about 150 ms at 100 bpm, a cut 30-60 ms, and one step early collides with
@@ -732,13 +731,17 @@ since it uses random seeds. For anything that touches generation, also run
 `node tools/stats.mjs` before and after and compare the two: the tests prove
 nothing is broken, the statistics say whether the change did what it claimed.
 
-1. **New voices go in new profiles, never into existing pools.** Voices are
-   drawn at render time from the blended pool, so one added entry shifts that
-   draw and every random decision after it, and every share code in
-   circulation renders as different music. `grove`, `hollow` and `shrine`
-   were all added this way.
+1. **A voice added to an existing pool re-renders every code that draws
+   from it.** Voices are drawn at render time from the blended pool, so one
+   added entry shifts that draw and every random decision after it.
+   While the app is in testing (Mikey, 2026-09-23) that is allowed: old
+   codes are not protected. It still has to pass the balance lock, and the
+   PR should say so, since an A/B album across it compares different
+   loops. `grove`, `hollow` and `shrine` were added as new profiles when
+   codes were still protected.
 2. **`PROFILE_IDS`, `SCALE_IDS` and `MOOD_IDS` in `share.js` are append-only.**
-   Reordering them silently rewrites codes already written down.
+   Reordering them silently rewrites codes already written down. Breaking
+   old codes is allowed during testing, but reordering gains nothing.
 3. **Generation is quantised to a 1/255 grid** (`q8` in `generator.js`) so
    share codes are lossless. Weights feed weighted random picks and a
    rounding difference of 0.004 selects a different scale.
