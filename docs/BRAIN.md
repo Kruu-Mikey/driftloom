@@ -191,6 +191,31 @@ drumless and drum loops, rated per track as the volume reach coming in
 (up / down / none). Keys for both albums are derivable: decode the album,
 measure each loop.
 
+**"Coming in", heard.** 14 tracks, 7 drumless and 7 with drums, rated as
+the reach for the volume relative to where Mikey set it on track 1 (a
+drumless loop at -25.5 LUFS). Three findings, in order of confidence:
+(1) **no reach up at all**, including a drumless loop 8 LU under the
+reference and 15 LU under the loudest -- the quiet end is fine and nothing
+should be lifted; (2) **every complaint was a drum loop** -- 3 down, 2 soft
+("wish it were a bit lower", "drums a bit loud") out of 7, against none of
+7 drumless, even a drumless loop 2.7 LU *over* the reference; (3) against
+the all-drums album (2 soft flags of 12) this says the complaint is drum
+loops relative to drumless ones, and that **drum loops read louder than
+integrated LUFS says** -- one at +0.6 LU over the reference drew a reach.
+Integrated loudness averages across the hits; the ear does not. Neither
+LUFS nor the drums-over-music gap separates the flagged drum loops cleanly
+at this sample size. Next measurement: a punch figure (max momentary /
+short-term loudness, peak against loudness) on the 26 rated loops, to find
+the number that matches the ear, then size a drum-level fix from it.
+One loop, task-glei (undertow), reported no bass, chords or melody level
+at all -- worth a look.
+
+**"Shrine bells", heard.** Melody bells all fine. Chord templebell (the
+only chord bell drawn) read buried on 1, a bit buried on 1, fine on 2 --
+still about 2.5 LU under the chord layer after #26. Candidate for the next
+synth brief: templebell as a chord voice up to the layer median, then
+re-listen.
+
 **#19, the melody starvation fix.** The ear-found bug was real: measured
 through the real Engine, 53.7% of melody notes refused on the glade loop at
 the 260 cap, and 28.6% of corpus loops losing more than 5% of their melody
