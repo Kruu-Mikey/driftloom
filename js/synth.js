@@ -101,6 +101,15 @@ const LATE_LAYER_RESERVE = MAX_BUDGET - SOFT_BUDGET;
 // any of those values, because 90 is the smaller term there.
 const RESERVE_SHARE = 0.42;
 
+// The struck bells, templebell and tubular, used to apply velocity twice:
+// once in the output envelope and again in every partial's gain (and the
+// bowl's strike), so their level went with velocity squared -- 11.7 LU
+// louder per doubling where everything else in their layers moves 6.
+// Velocity now lives in the envelope alone, and the partials and strike
+// are fixed at what they were at this velocity, so the top of the range
+// sounds as it did and only the bottom comes up.
+const BELL_PARTIAL_VEL = 0.8;
+
 // Tape saturation, not a maximizer.
 //
 // Dividing by tanh(drive) -- the obvious normalisation, since it maps x=1 to
@@ -726,7 +735,10 @@ export class Synth {
         o.start(time); o.stop(stop + 0.4);
       }
     } else if (voice === 'rhodesbass') {
-      this.fm(midi, time, dur, vel * 0.85, {
+      // TRIM above is this voice's measured level. A second 0.85 here
+      // trimmed it again, -3.4 dB together; it still sits under the other
+      // bass voices, as the only one here whose note decays.
+      this.fm(midi, time, dur, vel, {
         out, ratio: 1, index: 130, decay: 0.4, attack: 0.006, skipBudget: true,
       });
     } else if (voice === 'pluckbass') {
@@ -1461,7 +1473,7 @@ export class Synth {
             o.frequency.value = f * ratio;
             o.detune.value = cents + (Math.random() - 0.5) * 3;
             const pg = ctx.createGain();
-            pg.gain.setValueAtTime(vel * amp * 0.5, time);
+            pg.gain.setValueAtTime(BELL_PARTIAL_VEL * amp * 0.5, time);
             // Higher partials die first, as they do on real metal.
             pg.gain.exponentialRampToValueAtTime(0.0001, time + hold / (0.55 + ratio * 0.3));
             o.connect(pg).connect(g);
@@ -1475,7 +1487,7 @@ export class Synth {
         sf.frequency.value = f * 6;
         sf.Q.value = 1.2;
         const sg = ctx.createGain();
-        sg.gain.setValueAtTime(vel * 0.18, time);
+        sg.gain.setValueAtTime(BELL_PARTIAL_VEL * 0.18, time);
         sg.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
         strike.connect(sf).connect(sg).connect(g);
 
@@ -1505,7 +1517,7 @@ export class Synth {
           o.frequency.value = f * ratio;
           o.detune.value = (Math.random() - 0.5) * 6;
           const pg = ctx.createGain();
-          pg.gain.setValueAtTime(vel * amp * 0.62, time);
+          pg.gain.setValueAtTime(BELL_PARTIAL_VEL * amp * 0.62, time);
           pg.gain.exponentialRampToValueAtTime(0.0001, time + hold / (0.5 + ratio * 0.28));
           o.connect(pg).connect(g);
           o.start(time);
