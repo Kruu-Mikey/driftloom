@@ -17,12 +17,33 @@
 // Pass a different --seed for an independent corpus.
 
 import fs from 'node:fs';
+import path from 'node:path';
 import { newSpec, render, choirOf, STEPS_PER_BAR } from '../js/generator.js';
 import { Rng } from '../js/rng.js';
 import { SCALES } from '../js/theory.js';
 import { encodeSong } from '../js/share.js';
 
 // ------------------------------------------------------------ arguments
+
+const BASELINE_DEFAULT = 'test/stats-baseline.json';
+// How the tolerances are set. Sampling noise, not taste.
+//
+// The noise that matters is seed to seed: a generator change that draws one
+// more random number re-rolls every loop, so --check then compares two
+// independent corpora, and their difference has the root of two times the
+// spread of either. The tolerance is three times that, estimated from twenty
+// corpora the size of the locked one.
+//
+// Twenty and not five because five was measured and does not work. Its
+// standard deviations came out well short of the real ones -- the collision
+// share's at 0.0025 against a binomial 0.0067 -- and a lock built on them
+// failed 19 of 20 corpora that differed from the baseline by nothing but
+// the seed. A lock that cries wolf on every re-roll is one nobody reads.
+const TOLERANCE_SEEDS = 20;
+const TOLERANCE_SIGMA = 3;
+// Salts the stream the tolerance corpora are drawn from, so they never
+// include the baseline's own seed's corpus.
+const TOLERANCE_SALT = 0x10c4b1a5;
 
 const USAGE = `
 driftloom generation statistics
@@ -35,6 +56,8 @@ driftloom generation statistics
   --lift-high [value] lower bound of the high-lift bucket (default 0.78)
   --choir-quiz [file] print a listening test instead of the report
   --voice-codes <v>   print share codes whose melody draws voice <v>
+  --write-baseline [file]  write the balance lock      (default ${BASELINE_DEFAULT})
+  --check [file]      rerun the locked corpus against it; non-zero exit on a miss
   --help              this
 
   --choir-quiz prints twenty share codes in shuffled order, five of which
@@ -55,13 +78,30 @@ driftloom generation statistics
   hear: the three wind voices together are 12.4% of melody draws, so
   rolling the dice in the app until one turns up is a poor use of an
   evening. Give it a voice name and it prints codes to paste straight in.
+
+  --write-baseline and --check are the balance lock. The baseline records
+  the melodic character of a corpus -- how often a loop has a melody,
+  what the line does, how its motifs survive, how rare the choir is, how
+  often keys and melody collide -- with a tolerance on every figure taken
+  from sampling noise: ${TOLERANCE_SIGMA}x its seed-to-seed standard deviation, the
+  spread of the difference between two corpora of the same size, measured
+  over ${TOLERANCE_SEEDS} further corpora. --check redraws the recorded
+  corpus (its --n and --seed, not the command line's) and prints every
+  figure against the baseline, exiting 1 if any is outside its tolerance.
+  Profile, metre and voice shares are printed beside them but not locked,
+  because new profiles move those on purpose. A miss is a decision, not a
+  verdict: either the change is wrong, or the balance has moved on purpose
+  and the baseline is rewritten, which the pull request says out loud.
 `;
 
 const LIFT_LOW_DEFAULT = 0.6;
 const LIFT_HIGH_DEFAULT = 0.78;
 
 function parseArgs(argv) {
-  const opts = { n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null, voiceCodes: null };
+  const opts = {
+    n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null, voiceCodes: null,
+    writeBaseline: null, check: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -117,6 +157,12 @@ function parseArgs(argv) {
       case '--voice-codes':
         opts.voiceCodes = text(null);
         if (!opts.voiceCodes) fail('--voice-codes needs a voice name');
+        break;
+      case '--write-baseline':
+        opts.writeBaseline = text(BASELINE_DEFAULT);
+        break;
+      case '--check':
+        opts.check = text(BASELINE_DEFAULT);
         break;
       case '--help': case '-h':
         console.log(USAGE);
@@ -555,6 +601,220 @@ function report(columns, opts) {
   return out.join('\n');
 }
 
+// ------------------------------------------------------- the balance lock
+
+// Mikey's standing decision is that the current balance is right and has to
+// survive new content: meandering, ambient loops alongside tuneful ones, not
+// every loop a triumphant melody, the choir about one in thirty. New
+// profiles and voices will move the profile, metre and voice shares on
+// purpose, so those are reported and not locked. What is locked is melodic
+// character -- the rows of the report that describe what a melody does,
+// whichever profile or voice it came from.
+//
+// Each figure is read off `summarise`, the same numbers the report prints,
+// so the lock cannot drift from what a person reading the report sees.
+const LOCKED = [
+  ['melody', 'melodyShare', 'share of loops with a melody', (s) => (s.loops ? s.sung / s.loops : NaN)],
+  ['melody figures', 'span', 'mean melodic span', (s) => s.span],
+  ['melody figures', 'perBar', 'mean notes per bar', (s) => s.perBar],
+  ['melody figures', 'dur', 'mean note duration', (s) => s.dur],
+  ['melody figures', 'vel', 'mean velocity', (s) => s.vel],
+  ['melody figures', 'oddFraction', 'notes on odd steps', (s) => s.oddFraction],
+  ['velocity across a phrase', 'edgeVel', 'phrase edges', (s) => s.edgeVel],
+  ['velocity across a phrase', 'midVel', 'mid phrase', (s) => s.midVel],
+  ['velocity across a phrase', 'edgeOverMid', 'edges above middle', (s) => s.edgeOverMid],
+  ['velocity across a phrase', 'phraseRange', 'within-phrase range', (s) => s.phraseRange],
+  ['melodic intervals', 'repeatShare', 'repeats (0)', (s) => s.repeatShare],
+  ['melodic intervals', 'stepShare', 'steps (1-2)', (s) => s.stepShare],
+  ['melodic intervals', 'midShare', 'mid (3-4)', (s) => s.midShare],
+  ['melodic intervals', 'leapShare', 'leaps (5+)', (s) => s.leapShare],
+  ['melodic intervals', 'stepOrRepeat', 'steps + repeats', (s) => s.stepOrRepeat],
+  ['motif survival', 'rhythmRepeat', 'bars sharing the rhythm', (s) => s.rhythmRepeat],
+  ['motif survival', 'contourRepeat', 'bars sharing the contour', (s) => s.contourRepeat],
+  ['motif survival', 'figureRepeat', 'bars quoting the figure', (s) => s.figureRepeat],
+  ['motif survival', 'audibleRepeat', 'bars quoting it audibly', (s) => s.audibleRepeat],
+  ['choir', 'choirRate', 'deliberate choir rate', (s) => s.choirRate],
+  // Two readings of "keys against melody collide". The register one is
+  // item 4's guarantee: outside a choir, the keys and the tune are kept
+  // apart. The voice one is the pools drawing the same voice by accident,
+  // which item 12 stopped acting on; it is locked so that a change to what
+  // collides is noticed, and it is the figure most likely to move when a
+  // new profile puts one voice in both pools -- which would be a reason to
+  // rewrite the baseline, not a bug.
+  ['keys against melody', 'tooClose', 'not a choir, under 5', (s) => s.tooClose],
+  ['keys against melody', 'collisionRate', 'incidental collisions, share', (s) => (s.loops ? s.collisionLoops / s.loops : NaN)],
+].map(([group, key, label, get]) => ({ group, key, label, get }));
+
+// Reported beside the lock, never failed on.
+const REPORTED = [
+  ['dominant profile', (s) => s.profiles, 'loops'],
+  ['steps per bar', (s) => s.spb, 'loops'],
+  ['melody voice', (s) => s.voices, 'sung'],
+];
+
+// Six places is well inside every tolerance, and keeps a rewritten baseline
+// readable in a diff. Not-a-number (no choir loops at all, say) is null.
+const keep = (v, places = 6) => (Number.isFinite(v) ? +v.toFixed(places) : null);
+
+function lockedFigures(records) {
+  const s = summarise(records);
+  const out = {};
+  for (const f of LOCKED) out[f.key] = f.get(s);
+  return { figures: out, summary: s };
+}
+
+function shares(counts) {
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const out = {};
+  for (const key of [...counts.keys()].sort((a, b) => String(a).localeCompare(String(b)))) {
+    out[key] = total ? keep(counts.get(key) / total, 4) : null;
+  }
+  return out;
+}
+
+function writeBaseline(opts) {
+  const { figures, summary } = lockedFigures(collect(opts));
+
+  // Tolerance corpora: the same size, drawn from their own salted stream.
+  const stream = new Rng(((opts.seed ^ TOLERANCE_SALT) >>> 0) || 1);
+  const seeds = [];
+  while (seeds.length < TOLERANCE_SEEDS) {
+    const s = stream.seed32();
+    if (s !== opts.seed && !seeds.includes(s)) seeds.push(s);
+  }
+  const samples = seeds.map((seed) => lockedFigures(collect({ n: opts.n, seed })).figures);
+
+  const locked = {};
+  for (const f of LOCKED) {
+    const xs = samples.map((x) => x[f.key]).filter(Number.isFinite);
+    const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const sd = xs.length > 1 ? Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1)) : NaN;
+    const seedToSeed = Math.SQRT2 * sd;
+    locked[f.key] = {
+      group: f.group,
+      label: f.label,
+      value: keep(figures[f.key]),
+      sd: keep(sd),
+      seedToSeed: keep(seedToSeed),
+      tolerance: keep(TOLERANCE_SIGMA * seedToSeed),
+      samples: xs.map((x) => keep(x)),
+    };
+  }
+  const reported = {};
+  for (const [title, pick] of REPORTED) reported[title] = shares(pick(summary));
+
+  const baseline = {
+    about: 'The balance lock. Written by `node tools/stats.mjs --write-baseline`, '
+      + 'checked by `node tools/stats.mjs --check`. Rewriting it is a deliberate act '
+      + 'that the pull request says out loud.',
+    n: opts.n,
+    seed: opts.seed,
+    tolerance: {
+      rule: `${TOLERANCE_SIGMA} x the seed-to-seed sd: root 2 x the sample sd of each figure across ${TOLERANCE_SEEDS} further corpora of n loops`,
+      sigma: TOLERANCE_SIGMA,
+      seeds,
+    },
+    locked,
+    reported,
+  };
+  fs.mkdirSync(path.dirname(opts.writeBaseline), { recursive: true });
+  fs.writeFileSync(opts.writeBaseline, `${JSON.stringify(baseline, null, 2)}\n`);
+
+  const out = [''];
+  out.push(`driftloom balance lock written to ${opts.writeBaseline}`);
+  out.push(`  ${opts.n} loops from corpus seed ${opts.seed}; tolerance ${TOLERANCE_SIGMA} x the seed-to-seed sd,`);
+  out.push(`  measured over ${TOLERANCE_SEEDS} further corpora of ${opts.n}`);
+  out.push('');
+  out.push(checkLine('figure', ['baseline', 'corpus sd', 'seed-to-seed', 'tolerance']));
+  out.push(checkRule(4));
+  let group = null;
+  for (const f of LOCKED) {
+    if (f.group !== group) { group = f.group; out.push(checkLine(group, [])); }
+    const b = locked[f.key];
+    out.push(checkLine(f.label, [fig(b.value), fig(b.sd), fig(b.seedToSeed), fig(b.tolerance)], 4));
+  }
+  out.push('');
+  return out.join('\n');
+}
+
+const checkRule = (columns) => `  ${'-'.repeat(LABEL_WIDTH - 2 + 12 * columns)}`;
+
+function checkLine(label, cells, indent = 2) {
+  return ((' '.repeat(indent) + label).padEnd(LABEL_WIDTH) + cells.map((c) => String(c).padStart(12)).join('')).trimEnd();
+}
+
+const fig = (v) => (v == null || !Number.isFinite(v) ? '-' : Math.abs(v) >= 10 ? v.toFixed(2) : v.toFixed(4));
+const signed = (v) => (v == null || !Number.isFinite(v) ? '-' : `${v >= 0 ? '+' : ''}${Math.abs(v) >= 10 ? v.toFixed(2) : v.toFixed(4)}`);
+
+function check(opts) {
+  let baseline;
+  try {
+    baseline = JSON.parse(fs.readFileSync(opts.check, 'utf8'));
+  } catch (err) {
+    console.error(`stats: cannot read the baseline ${opts.check} -- ${err.message}`);
+    process.exit(2);
+  }
+  const { figures, summary } = lockedFigures(collect({ n: baseline.n, seed: baseline.seed }));
+
+  const out = [''];
+  out.push('driftloom balance lock');
+  out.push(`  ${baseline.n} loops from corpus seed ${baseline.seed}, against ${opts.check}`);
+  out.push(`  tolerance: ${baseline.tolerance.rule}`);
+  out.push('');
+  out.push(checkLine('figure', ['baseline', 'now', 'difference', 'tolerance', '']));
+  out.push(checkRule(5));
+
+  const misses = [];
+  let group = null;
+  for (const f of LOCKED) {
+    if (f.group !== group) { group = f.group; out.push(checkLine(group, [])); }
+    const b = baseline.locked[f.key];
+    // Rounded as the baseline was, so unchanged code differs by exactly 0.
+    const now = keep(figures[f.key]);
+    if (!b) {
+      misses.push(`${f.label}: not in the baseline`);
+      out.push(checkLine(f.label, ['-', fig(now), '-', '-', 'NEW'], 4));
+      continue;
+    }
+    const bothMissing = b.value == null && now == null;
+    const diff = now != null && b.value != null ? now - b.value : NaN;
+    const ok = bothMissing || (Number.isFinite(diff) && Math.abs(diff) <= b.tolerance);
+    if (!ok) misses.push(`${f.label}: ${fig(b.value)} -> ${fig(now)}, ${signed(diff)} against +/-${fig(b.tolerance)}`);
+    out.push(checkLine(f.label, [fig(b.value), fig(now), signed(diff), fig(b.tolerance), ok ? 'ok' : 'MISS'], 4));
+  }
+  for (const key of Object.keys(baseline.locked)) {
+    if (!LOCKED.some((f) => f.key === key)) misses.push(`${baseline.locked[key].label}: in the baseline, no longer measured`);
+  }
+
+  out.push('');
+  out.push('  not locked -- new profiles move these on purpose');
+  for (const [title, pick] of REPORTED) {
+    const was = baseline.reported[title] || {};
+    const now = shares(pick(summary));
+    const keys = [...new Set([...Object.keys(was), ...Object.keys(now)])]
+      .sort((a, b) => (now[b] ?? was[b] ?? 0) - (now[a] ?? was[a] ?? 0) || a.localeCompare(b));
+    out.push(checkLine(title, []));
+    for (const key of keys) {
+      const a = was[key] ?? 0;
+      const c = now[key] ?? 0;
+      out.push(checkLine(key, [pct(a, 1), pct(c, 1), `${c - a >= 0 ? '+' : ''}${((c - a) * 100).toFixed(1)}%`], 4));
+    }
+  }
+
+  out.push('');
+  if (misses.length) {
+    out.push(`  ${misses.length} locked figure${misses.length === 1 ? '' : 's'} outside tolerance:`);
+    for (const m of misses) out.push(`    ${m}`);
+    out.push('');
+    out.push('  Either the change is wrong, or the balance has moved on purpose. If it');
+    out.push('  has, rewrite the baseline with --write-baseline and say so in the PR.');
+  } else {
+    out.push(`  all ${LOCKED.length} locked figures within tolerance`);
+  }
+  out.push('');
+  return { text: out.join('\n'), ok: misses.length === 0 };
+}
+
 // ------------------------------------------------------------- the quiz
 
 // Item 12's acceptance line is "a listener who did not know the feature
@@ -687,6 +947,17 @@ if (opts.quiz) {
 if (opts.voiceCodes) {
   console.log(voiceCodes(opts));
   process.exit(0);
+}
+
+if (opts.writeBaseline) {
+  console.log(writeBaseline(opts));
+  process.exit(0);
+}
+
+if (opts.check) {
+  const { text, ok } = check(opts);
+  console.log(text);
+  process.exit(ok ? 0 : 1);
 }
 
 const records = collect(opts);
