@@ -238,30 +238,20 @@ the most widely heard change of the session.
 The brain did not independently re-measure #19 or #20; the #20 diff and the
 channel table were read and match the report.
 
-Next, in order (agreed with Mikey, 2026-09-22). The catalogue-wide albums
-13b/13c/13d wait for the new content, since they measure a shape that is
-about to change. The yardstick does not wait: new instruments authored
-against mis-gained neighbours bake the error in, and the work grows with
-every voice added.
+Next, in order (agreed with Mikey, 2026-09-23). Step 1 (#24) and the plain
+level bugs (#26) are done.
 
-1. ~~Tooling~~ -- done, #24.
-2. Fix at the source, in two halves. The plain bugs (templebell/tubular
-   velocity squared, pad skipping the 0.8, rhodesbass trimmed twice) go in
-   one synth-only brief with an A/B album. The taste calls (ocarina and
-   flute, hum's resonance, formant jackpots in vowel/choir/hum, swell and
-   wind) go to Mikey's ears first. Plain bugs done (#26). Drums: see
-   above -- the question is now the drum/drumless jump, album out.
-3. The balance lock (`stats.mjs --check` against a committed baseline).
-4. New instruments and profiles -- each arriving with its measured cost
-   weight and level, per contribution rule 5.
-5. The harsh sawtooth leads (saw, then moog and analoglead; stab lightly or
-   not at all), then the articulation items: item 9 v3, item 3 if Mikey
-   reframes it.
-6. Albums 13b, 13c and 13d on the finished catalogue.
-
-Album 13a, the keys after #20, is the exception and can run any time: ten
-minutes of Mikey's ears on a change that has already shipped, and every new
-chord voice would otherwise be authored against a reference nobody checked.
+1. The balance lock and the punch figure -- both tools only, briefs written,
+   run side by side. The punch figure scores candidate loudness figures
+   against the 26 loops Mikey has rated.
+2. Item 14a, the 6/8 accompaniment, A/B'd on existing codes.
+3. Item 14b, voices one PR each: fiddle, nylon with strumming, accordion,
+   pan flute.
+4. The drum fix, sized from the punch figure (item 13). The chord
+   templebell trim can ride any sound-change PR that is not being A/B'd.
+5. Item 14c, `tide` first, then `cinder` and `wayfare`.
+6. Then the saw leads, the taste calls, the articulation items and albums
+   13b-13d on the finished catalogue.
 
 Also open: `tools/listen.mjs`; the residual lite starvation (shorter tails,
 a change to the sound); roadmap item 5, blocked on a phone that isn't

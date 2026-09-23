@@ -639,6 +639,66 @@ what moves, and the phrase-level dynamics are not to be touched by anything
 done here. Item 11's warning stands too: a change that passes the first half
 by collapsing the spread toward 4 dB has failed the item.
 
+## 14. Folk sounds: the 6/8 fix, new voices, new profiles — **L, in steps**
+
+The island and sea music of Wind Waker and Spirit Tracks: Celtic-folk
+melody, waltz and jig metres, fiddle, whistle, accordion, guitar, hand
+drums, drones. Mikey brought a set of DeepSeek suggestions to the brain;
+the diagnosis (instruments, metre, ornament) stood, much of the code did
+not. Decided 2026-09-23, in this order.
+
+**14a. The 6/8 accompaniment.** In 12-step bars the chords borrow the 4/4
+patterns in `CHORD_RHYTHMS`, filtered to `step < 12`. So `offbeat` hits step
+6, the downbeat of the second dotted beat; `twoAndFour` becomes one hit on
+a weak eighth; and `pad` appears to keep its 16-step hold and ring a third
+of a bar into the next chord (to confirm). 55% of glade-led loops are in 12
+steps, so the profile nearest this music plays its tunes over the wrong
+metre most of the time. Fix: a 12-step pattern for every rhythm name, drawn
+by the same name, so every share code keeps its draws -- the choir's
+relabel-not-redraw trick. Existing 12-step loops will sound different,
+which is the point, so it gets an A/B album. Check the bass for the same
+fault.
+
+**14b. Voices, one PR each, measured per contribution rule 5.** fiddle
+(slow bow attack, bow noise, vibrato that arrives late); nylon, with
+strumming (down and up, 15-30 ms across the strings, downstroke accented --
+chords today spread 11 ms in one fixed order); accordion (two detuned
+reeds, bellows swell); pan flute (a flute variant with more breath and
+chiff). Steel pan optional. No existing profile's pools are edited: pools
+blend across a loop's mix, so adding a voice to glade would change every
+code with any glade in it.
+
+**14c. After the drum fix (item 13): new profiles, one at a time, appended
+to the end of `PROFILE_IDS`.** First `tide`, the sailing waltz; then
+`cinder`, the fiery 6/8; then `wayfare`, the rolling train. Names are
+placeholders until Mikey picks, in the house style: about the sound, not
+the source. Each brings what glade lacks:
+
+- its own progression pool -- the I-bVII shuttle, i-bVII-bVI-bVII,
+  IV-I endings -- where today every profile draws the same twelve;
+- a drone bass style: an open fifth held under changing chords;
+- ornaments -- cuts and turns at sub-step timing, 30-60 ms, played by the
+  engine, with the generator only marking which notes get one;
+- harmony in thirds or sixths on held notes only;
+- a waves texture (slow filtered-noise swells);
+- hand drums as a new kit beside tape, brush and machine, not a flag.
+
+Every new generator feature draws only when the loop's profile asks for
+it, from its own salted seed, so loops without it stay byte-identical.
+Known cost: an older cached app cannot open a code that uses a new
+profile.
+
+**Not taken from the suggestions:** Nintendo names; editing glade's pools;
+raising `MAX_BUDGET` (it is the low-end-phone guard, and #19 showed the fix
+is measuring costs); guessed costs; grace notes on the step grid (a step is
+about 150 ms at 100 bpm, a cut 30-60 ms, and one step early collides with
+the note before); a harmony line copying every melody note (it doubles the
+melody's cost, which is #19's starvation); new jig and waltz cells
+(`cross12`, `six8` and `hemiola12` already are them).
+
+**Done when** each step has been A/B'd by ear and the balance lock passes,
+or its baseline has moved with Mikey's say-so.
+
 ---
 
 ## Decided against
