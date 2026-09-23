@@ -6,7 +6,21 @@
 // generation half. It renders loops offline and reports what actually came
 // out of the bus: peak, RMS, full-scale sample count, and the dry level of
 // each layer so the balance between them can be measured rather than read
-// off the gain table and hoped for.
+// off the gain table and hoped for. Beside those, K-weighted loudness
+// (ITU-R BS.1770) and loudness range per loop, and what the master chain's
+// compressor and ceiling are doing to each one -- roadmap item 13's
+// yardstick, because raw RMS over-counts bass and the ear does not.
+//
+// Every render seeds Math.random from the loop (or the note) it is
+// rendering. The synth draws noise, jitter and drift from it, so without
+// that the same seed gave slightly different numbers on every run; with it,
+// same seed, same numbers, and the two renders of one loop that the chain
+// comparison needs differ by the chain and nothing else. "Same" to within a
+// thousandth of a dB, not to the bit: Chromium does not fix the order it
+// adds a node's inputs in, and float addition is not associative, so where
+// several sources meet in one node the last few bits move between runs.
+// Every figure printed in dB or LU comes out the same; the last digit of a
+// four-place linear peak can flip when it sits on a rounding boundary.
 //
 // Web Audio does not exist in Node, and a reimplementation of the graph
 // would measure the reimplementation. So the real `Synth` and the real
@@ -27,6 +41,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { CHARACTERS } from '../js/characters.js';
+import { newSpec, render } from '../js/generator.js';
+import { Rng } from '../js/rng.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -48,9 +65,23 @@ driftloom offline audio measurement
   --quality <q>     'full' or 'lite'                   (default full)
   --port <n>        port for the local file server     (default 8731)
   --chrome <path>   an explicit Chromium executable
-  --voice <names>   per-voice tone probe instead of the corpus report
+  --jobs <count>    renders in flight at once             (default 4)
+  --no-chain        skip the second, chain-bypassed render of each loop
+  --json <file>     also write every figure, per loop or per note, as JSON
+  --voice <names>   per-voice probe instead of the corpus report; 'all'
+                    probes every voice characters.js draws, by layer
+  --note <seconds>  how long each probed note is held       (default 1.6)
   --refusals [code] count voice-budget refusals per layer
+  --selftest        check the loudness meter against reference signals
   --help            this
+
+  The corpus report adds K-weighted loudness to peak and RMS: integrated
+  loudness (LUFS) and loudness range (LRA) per loop, per ITU-R BS.1770 and
+  EBU Tech 3342, with the bus measured as one channel at weight 1.0 because
+  it is mono. Crest is sample peak minus integrated loudness. Each loop is
+  rendered a second time with the master compressor and ceiling routed
+  around -- in this harness only -- and the difference is what the chain
+  does to that loop. Same --seed, same numbers, whatever --jobs is.
 
   --refusals reports what the voice budget turned away, layer by layer,
   through the real Engine and Synth. Given a share code it reports that
@@ -66,6 +97,12 @@ driftloom offline audio measurement
   comparison between voices, not an absolute: what makes it useful is
   putting a voice next to one nobody complains about.
 
+  It also reports each voice's K-weighted loudness, note by note at
+  velocities 0.4 and 0.8, in every layer characters.js draws it for and
+  through that layer's own path in the engine. Every figure is in LU
+  against kalimba as a melody at the same velocity. With 'all', each voice
+  is also set against the rest of its layer and the outliers are listed.
+
   Needs Playwright and Chromium, which are a dependency of this tool and
   not of the app:  npm install -g playwright && npx playwright install chromium
 `;
@@ -79,7 +116,10 @@ function fail(message) {
 }
 
 function parseArgs(argv) {
-  const opts = { n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null, voices: null, refusals: null };
+  const opts = {
+    n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
+    jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
     let inline = null;
@@ -107,6 +147,11 @@ function parseArgs(argv) {
       case '--quality': opts.quality = value() === 'lite' ? 'lite' : 'full'; break;
       case '--port': opts.port = Math.round(number()); break;
       case '--chrome': opts.chrome = value(); break;
+      case '--jobs': opts.jobs = Math.max(1, Math.round(number())); break;
+      case '--no-chain': opts.chain = false; break;
+      case '--json': opts.json = value(); break;
+      case '--selftest': opts.selftest = true; break;
+      case '--note': opts.note = Math.max(0.05, number()); break;
       case '--voice':
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
         if (!opts.voices.length) fail('--voice needs at least one voice name');
@@ -126,6 +171,163 @@ function parseArgs(argv) {
   return opts;
 }
 
+// ------------------------------------------------------------- loudness
+//
+// ITU-R BS.1770-4 integrated loudness, and EBU Tech 3342 loudness range.
+// Written as plain functions so the same source runs here, for --selftest,
+// and inside the pages below, where the audio is: they are pasted into the
+// page with toString() and must not reach for anything outside themselves.
+
+// K-weighting: a high-frequency shelf, then the RLB highpass. The standard
+// publishes coefficients for 48k only; these are its analogue prototypes
+// through the bilinear transform, which reproduce the published 48k figures
+// and hold at 44.1k, the rate everything here renders at by default.
+function kWeighting(rate) {
+  let K = Math.tan(Math.PI * 1681.974450955533 / rate);
+  let Q = 0.7071752369554196;
+  const Vh = Math.pow(10, 3.999843853973347 / 20);
+  const Vb = Math.pow(Vh, 0.4996667741545416);
+  let a0 = 1 + K / Q + K * K;
+  const shelf = {
+    b: [(Vh + Vb * K / Q + K * K) / a0, 2 * (K * K - Vh) / a0, (Vh - Vb * K / Q + K * K) / a0],
+    a: [2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0],
+  };
+  K = Math.tan(Math.PI * 38.13547087602444 / rate);
+  Q = 0.5003270373238773;
+  a0 = 1 + K / Q + K * K;
+  const highpass = { b: [1, -2, 1], a: [2 * (K * K - 1) / a0, (1 - K / Q + K * K) / a0] };
+  return [shelf, highpass];
+}
+
+// One channel at weight 1.0: the bus is mono. Returns integrated loudness
+// in LUFS (-Infinity for silence) and loudness range in LU.
+//
+// Both are built from K-weighted energy summed in 100ms hops, since every
+// block either standard asks for is a whole number of them: 400ms blocks
+// stepping 100ms (75% overlap) for integrated loudness, 3s short-term
+// blocks at the same 10Hz for the range.
+function loudnessOf(data, rate) {
+  const [s, h] = kWeighting(rate);
+  const hop = Math.round(rate / 10);
+  const hops = Math.floor(data.length / hop);
+  const energy = new Float64Array(hops);
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0, z1 = 0, z2 = 0;
+  for (let j = 0; j < hops; j++) {
+    let sum = 0;
+    for (let i = j * hop, end = i + hop; i < end; i++) {
+      const x = data[i];
+      const y = s.b[0] * x + s.b[1] * x1 + s.b[2] * x2 - s.a[0] * y1 - s.a[1] * y2;
+      const z = y - 2 * y1 + y2 - h.a[0] * z1 - h.a[1] * z2;
+      x2 = x1; x1 = x;
+      y2 = y1; y1 = y;
+      z2 = z1; z1 = z;
+      sum += z * z;
+    }
+    energy[j] = sum;
+  }
+  const blocks = (len) => {
+    const out = [];
+    for (let j = len - 1; j < hops; j++) {
+      let sum = 0;
+      for (let k = j - len + 1; k <= j; k++) sum += energy[k];
+      out.push(sum / (len * hop));
+    }
+    return out;
+  };
+  const lufs = (z) => -0.691 + 10 * Math.log10(z);
+  const meanOf = (zs) => zs.reduce((a, b) => a + b, 0) / zs.length;
+  // Absolute gate at -70 LUFS, then a relative one below the mean of what
+  // survived it: -10 LU for integrated loudness, -20 LU for the range.
+  const gated = (zs, relative) => {
+    const loud = zs.filter((z) => lufs(z) > -70);
+    if (!loud.length) return [];
+    const gate = lufs(meanOf(loud)) + relative;
+    return loud.filter((z) => lufs(z) > gate);
+  };
+  const momentary = gated(blocks(4), -10);
+  const integrated = momentary.length ? lufs(meanOf(momentary)) : -Infinity;
+  const shortTerm = gated(blocks(30), -20).map(lufs).sort((a, b) => a - b);
+  const at = (p) => shortTerm[Math.round((shortTerm.length - 1) * p)];
+  const lra = shortTerm.length ? at(0.95) - at(0.1) : 0;
+  return { integrated, lra };
+}
+
+// Reference signals with known answers. A 997Hz sine at full scale in one
+// channel is -3.01 LUFS by definition; the gating cases are 13 dB quieter
+// tone either side of a louder one, which the relative gate must drop, and
+// silence after tone, which the absolute gate must (ungated it would read
+// -30.8); the range cases are EBU Tech 3342's first four, whose answers are
+// differences and so do not care that this meter has one channel where
+// theirs has two. The gating cases get 0.1: the few blocks straddling an
+// edge are partly tone and pass the gates, as the standard has them do.
+function selftest() {
+  const tone = (rate, parts) => {
+    const n = parts.reduce((a, [, sec]) => a + Math.round(sec * rate), 0);
+    const d = new Float32Array(n);
+    let i = 0;
+    for (const [db, sec] of parts) {
+      const amp = Math.pow(10, db / 20);
+      for (const end = i + Math.round(sec * rate); i < end; i++) d[i] = amp * Math.sin(2 * Math.PI * 997 * i / rate);
+    }
+    return d;
+  };
+  const cases = [
+    ['full-scale 997Hz sine, 48k', () => loudnessOf(tone(48000, [[0, 10]]), 48000).integrated, -3.01, 0.05],
+    ['full-scale 997Hz sine, 44.1k', () => loudnessOf(tone(44100, [[0, 10]]), 44100).integrated, -3.01, 0.05],
+    ['-20 dB sine, 44.1k', () => loudnessOf(tone(44100, [[-20, 10]]), 44100).integrated, -23.01, 0.05],
+    ['relative gate: -33/-20/-33 dB, 10/60/10s', () => loudnessOf(tone(44100, [[-33, 10], [-20, 60], [-33, 10]]), 44100).integrated, -23.01, 0.1],
+    ['absolute gate: -20 dB then silence', () => loudnessOf(tone(44100, [[-20, 10], [-200, 50]]), 44100).integrated, -23.01, 0.1],
+    ['Tech 3342 #1: -20 then -30 dB, 20s each', () => loudnessOf(tone(44100, [[-20, 20], [-30, 20]]), 44100).lra, 10, 1],
+    ['Tech 3342 #2: -20 then -15 dB', () => loudnessOf(tone(44100, [[-20, 20], [-15, 20]]), 44100).lra, 5, 1],
+    ['Tech 3342 #3: -40 then -20 dB', () => loudnessOf(tone(44100, [[-40, 20], [-20, 20]]), 44100).lra, 20, 1],
+    ['Tech 3342 #4: -50/-35/-20/-35/-50 dB', () => loudnessOf(tone(44100, [[-50, 20], [-35, 20], [-20, 20], [-35, 20], [-50, 20]]), 44100).lra, 15, 1],
+  ];
+  const [shelf, hp] = kWeighting(48000);
+  const published = [1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585, -1.99004745483398, 0.99007225036621];
+  const ours = [...shelf.b, ...shelf.a, ...hp.a];
+  const coeffErr = Math.max(...ours.map((c, i) => Math.abs(c - published[i])));
+  const out = [''];
+  out.push('driftloom loudness meter self-test');
+  let failed = 0;
+  const line = (label, got, want, tol, unit) => {
+    const ok = Math.abs(got - want) <= tol;
+    if (!ok) failed++;
+    out.push(`  ${ok ? 'pass' : 'FAIL'}  ${label.padEnd(44)} ${got.toFixed(3).padStart(8)} ${unit}  (want ${want} +/- ${tol})`);
+  };
+  line('K-weighting against the published 48k filter', coeffErr, 0, 1e-8, '  ');
+  for (const [label, fn, want, tol] of cases) line(label, fn(), want, tol, label.startsWith('Tech') ? 'LU' : 'LUFS');
+  out.push('');
+  out.push(failed ? `  ${failed} failed` : '  all passed');
+  out.push('');
+  return { text: out.join('\n'), failed };
+}
+
+// Pasted into every page: the meter, and a seeded Math.random.
+//
+// FNV-1a over a string, so a note's seed comes from what it is -- voice,
+// layer, pitch, velocity, repeat -- and not from where it falls in the run.
+// Probing kalimba alone or beside forty other voices gives kalimba the same
+// numbers either way.
+const PAGE_HELPERS = `
+${kWeighting.toString()}
+${loudnessOf.toString()}
+function seedFor(key) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+// Renders run in parallel, but a graph is built synchronously between
+// seeding and startRendering(), which is the only time the synth draws, so
+// nothing from one render can land in another's stream.
+async function inParallel(tasks, width) {
+  const results = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => { while (next < tasks.length) { const i = next++; results[i] = await tasks[i](); } };
+  await Promise.all(Array.from({ length: Math.max(1, width) }, worker));
+  return results;
+}
+`;
+
 // -------------------------------------------------------------- the page
 //
 // Everything below runs in the browser, where Web Audio exists. The seven
@@ -142,28 +344,45 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>measure</title>
 <script type="module">
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { newSpec } from '/js/generator.js';
-import { Rng } from '/js/rng.js';
+import { newSpec, characterOf } from '/js/generator.js';
+import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ${JSON.stringify(LAYERS)};
+${PAGE_HELPERS}
 
-window.measure = async (opts) => {
-  const master = new Rng(opts.seed || 1);
-  const out = [];
-  for (let i = 0; i < opts.n; i++) {
-    const seed = master.seed32();
-    const spec = newSpec(seed);
-    // Render whole passes of whatever this loop is, so a slow twenty-four
-    // bar piece is measured as a piece and not as its first few seconds.
-    // Clamped at both ends so one very slow loop cannot dominate the run.
-    const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
-    const seconds = Math.min(70, Math.max(opts.passes * loopDur, 20));
+const scan = (d) => {
+  let peak = 0, sumSq = 0, full = 0;
+  for (let s = 0; s < d.length; s++) {
+    const a = d[s] < 0 ? -d[s] : d[s];
+    if (a > peak) peak = a;
+    if (a >= 0.999) full++;
+    sumSq += d[s] * d[s];
+  }
+  return { peak, rms: Math.sqrt(sumSq / d.length), full };
+};
 
-    const ctx = new OfflineAudioContext(2 + LAYERS.length, Math.ceil(seconds * opts.rate), opts.rate);
-    const synth = new Synth(ctx, opts.quality);
-    const engine = new Engine(ctx, synth);
+// One loop, one way. 'real' is the shipped chain with a tap on every layer;
+// 'bypass' routes around the bus compressor and the ceiling, here and
+// nowhere else, and keeps everything in front of them -- saturator, tone,
+// highpass, the profile's level trim. Both draw the same random stream, so
+// what differs between them is the chain.
+function renderLoop(spec, seconds, opts, bypass) {
+  Math.random = mulberry32(spec.seed >>> 0 || 1);
+  const channels = bypass ? 1 : 2 + LAYERS.length;
+  const ctx = new OfflineAudioContext(channels, Math.ceil(seconds * opts.rate), opts.rate);
+  const synth = new Synth(ctx, opts.quality);
+  const engine = new Engine(ctx, synth);
+  // The engine's clock is never started here, but it has already opened a
+  // Worker; a corpus would otherwise leave one behind per render.
+  if (engine.clock.worker) engine.clock.worker.terminate();
 
-    const merger = ctx.createChannelMerger(2 + LAYERS.length);
+  if (bypass) {
+    synth.hp.disconnect();
+    synth.hp.connect(synth.master);
+    synth.kill.disconnect();
+    synth.kill.connect(ctx.destination);
+  } else {
+    const merger = ctx.createChannelMerger(channels);
     merger.connect(ctx.destination);
     const splitter = ctx.createChannelSplitter(2);
     synth.ceiling.disconnect();
@@ -171,47 +390,114 @@ window.measure = async (opts) => {
     splitter.connect(merger, 0, 0);
     splitter.connect(merger, 1, 1);
     LAYERS.forEach((name, n) => synth.channels[name].gain.connect(merger, 0, n + 2));
+  }
 
-    engine.load(spec);
-    engine.playing = true;
-    engine.nextStepTime = 0.05;
-    let guard = 0;
-    while (engine.nextStepTime < seconds && guard++ < 200000) {
-      engine._scheduleStep(engine.step, engine.nextStepTime);
-      engine._advance();
+  engine.load(spec);
+  engine.playing = true;
+  engine.nextStepTime = 0.05;
+  let guard = 0;
+  while (engine.nextStepTime < seconds && guard++ < 200000) {
+    engine._scheduleStep(engine.step, engine.nextStepTime);
+    engine._advance();
+  }
+  return ctx.startRendering();
+}
+
+// What the compressor and the ceiling do to a signal far below either
+// threshold. Web Audio's compressor applies an automatic makeup gain, so a
+// quiet loop is lifted by the chain rather than left alone; this is that
+// lift, measured on the synth's own settings, so that what a loop loses to
+// gain reduction can be told apart from what everything gains.
+async function chainMakeup(opts) {
+  const gainOf = async (which) => {
+    const ctx = new OfflineAudioContext(1, opts.rate * 2, opts.rate);
+    const synth = new Synth(ctx, opts.quality);
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 997;
+    const g = ctx.createGain();
+    g.gain.value = 0.01;
+    osc.connect(g);
+    osc.start(0);
+    let node = g;
+    for (const name of which) {
+      const c = ctx.createDynamicsCompressor();
+      for (const k of ['threshold', 'knee', 'ratio', 'attack', 'release']) c[k].value = synth[name][k].value;
+      node.connect(c);
+      node = c;
     }
-    const buf = await ctx.startRendering();
+    node.connect(ctx.destination);
+    const d = (await ctx.startRendering()).getChannelData(0).subarray(opts.rate);
+    return 20 * Math.log10(scan(d).rms / (0.01 / Math.SQRT2));
+  };
+  const probe = new Synth(new OfflineAudioContext(1, 128, opts.rate), opts.quality);
+  const settings = {};
+  for (const name of ['comp', 'ceiling']) {
+    settings[name] = { threshold: probe[name].threshold.value, ratio: probe[name].ratio.value, knee: probe[name].knee.value };
+  }
+  return {
+    makeup: { comp: await gainOf(['comp']), ceiling: await gainOf(['ceiling']), both: await gainOf(['comp', 'ceiling']) },
+    settings,
+  };
+}
 
-    const scan = (ch) => {
-      const d = buf.getChannelData(ch);
-      let peak = 0, sumSq = 0, full = 0;
-      for (let s = 0; s < d.length; s++) {
-        const a = d[s] < 0 ? -d[s] : d[s];
-        if (a > peak) peak = a;
-        if (a >= 0.999) full++;
-        sumSq += d[s] * d[s];
-      }
-      return { peak, rms: Math.sqrt(sumSq / d.length), full };
-    };
+window.measure = async (opts) => {
+  const master = new Rng(opts.seed || 1);
+  const specs = [];
+  for (let i = 0; i < opts.n; i++) specs.push(newSpec(master.seed32()));
 
-    const left = scan(0);
-    const right = scan(1);
+  const tasks = specs.map((spec) => async () => {
+    // Render whole passes of whatever this loop is, so a slow twenty-four
+    // bar piece is measured as a piece and not as its first few seconds.
+    // Clamped at both ends so one very slow loop cannot dominate the run.
+    const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
+    const seconds = Math.min(70, Math.max(opts.passes * loopDur, 20));
+    const pending = opts.chain ? renderLoop(spec, seconds, opts, true) : null;
+    const buf = await renderLoop(spec, seconds, opts, false);
+
+    const left = scan(buf.getChannelData(0));
+    const right = scan(buf.getChannelData(1));
     const layers = {};
-    LAYERS.forEach((name, n) => { layers[name] = scan(n + 2); });
+    LAYERS.forEach((name, n) => {
+      const d = buf.getChannelData(n + 2);
+      layers[name] = { ...scan(d), lufs: loudnessOf(d, opts.rate).integrated };
+    });
+    // The meter reads channel 0 alone because the bus is mono; this is the
+    // check that it still is.
+    let stereo = 0;
+    const l = buf.getChannelData(0), r = buf.getChannelData(1);
+    for (let s = 0; s < l.length; s++) stereo = Math.max(stereo, Math.abs(l[s] - r[s]));
+    const loud = loudnessOf(l, opts.rate);
 
-    out.push({
-      seed,
+    let bypass = null;
+    if (pending) {
+      const d = (await pending).getChannelData(0);
+      const b = scan(d);
+      const bl = loudnessOf(d, opts.rate);
+      bypass = { peak: b.peak, rms: b.rms, lufs: bl.integrated, lra: bl.lra };
+    }
+
+    const character = characterOf(spec);
+    return {
+      seed: spec.seed,
       name: spec.name,
+      profile: Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '?',
+      level: character.level ?? 1,
       bpm: spec.bpm,
       seconds: +seconds.toFixed(1),
       passes: +(seconds / loopDur).toFixed(1),
       peak: Math.max(left.peak, right.peak),
       rms: (left.rms + right.rms) / 2,
       full: left.full + right.full,
+      lufs: loud.integrated,
+      lra: loud.lra,
+      stereo,
       layers,
-    });
-  }
-  return out;
+      bypass,
+    };
+  });
+  // Each loop keeps two renders in flight, so half as many loops at once.
+  const rows = await inParallel(tasks, Math.ceil(opts.jobs / (opts.chain ? 2 : 1)));
+  return { rows, chain: opts.chain ? await chainMakeup(opts) : null };
 };
 </script>`;
 
@@ -236,8 +522,31 @@ window.measure = async (opts) => {
 // be one sample of that.
 const PROBE_LOW = 55;    // G3, the bottom of the melody window
 const PROBE_HIGH = 79;   // G5, two octaves up
+
+// Loudness is asked of every layer, and each is probed across the two
+// octaves it actually plays in. Measured over a 3000-loop corpus, 5th to
+// 95th percentile: melody 56-71, chords 43-65, bass 28-39 (genBass folds
+// every note into 28-52), textures 67-89.
+const PROBE_WINDOWS = {
+  melody: [PROBE_LOW, PROBE_HIGH],
+  chords: [43, 67],   // G2-G4
+  bass: [28, 52],     // E1-E3
+  texture: [67, 91],  // G4-G6
+};
+const PROBE_VELOCITIES = [0.4, 0.8];
+const PROBE_REFERENCE = { layer: 'melody', voice: 'kalimba' };
+// How far from the rest of its layer a voice has to sit to be listed, and
+// how far its own velocity response has to differ from the layer's.
+const FAMILY_LIMIT = 3;
+const VELOCITY_LIMIT = 1.5;
+// Loops drawn to find what velocity each voice is actually given.
+const SURVEY_LOOPS = 2000;
+
 const PROBE_PAGE = `
+import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
+import { mulberry32 } from '/js/rng.js';
+${PAGE_HELPERS}
 
 // Radix-2 FFT, in place.
 function fft(re, im) {
@@ -277,64 +586,131 @@ function aWeight(f) {
   return (num / den) * Math.pow(10, 2.0 / 20);
 }
 
-window.probeVoice = async (o) => {
+// A-weighted energy in 2-5kHz and in total, for one rendered note.
+//
+// Summed periodograms across the whole note, so the figure is over the
+// energy that actually leaves the voice -- attack included, which is where
+// a struck voice does its brightest work.
+function presenceOf(d, rate) {
   const N = 4096;
-  const out = {};
-  // Precompute the weight per bin: it depends only on the transform size.
-  for (const name of o.voices) {
-    const notes = [];
-    for (let midi = o.low; midi <= o.high; midi++) {
-      let share = 0;
-      let band = 0;
-      let total = 0;
-      for (let rep = 0; rep < o.reps; rep++) {
-        const seconds = o.dur + 2.2;
-        const ctx = new OfflineAudioContext(1, Math.ceil(seconds * o.rate), o.rate);
-        const synth = new Synth(ctx, 'full');
-        // The budget is a runtime guard and would only refuse notes here.
-        synth._budget = () => true;
-        // Dry, straight out. The reverb return is shared between layers and
-        // would put one voice's tail inside another voice's reading.
-        const vowels = ['a', 'e', 'o', 'u'];
-        synth.voice(name, midi, 0.05, o.dur, 0.8, ctx.destination,
-          { vowel: vowels[(midi - o.low) % 4] });
-        const buf = await ctx.startRendering();
-        const d = buf.getChannelData(0);
-
-        // Summed periodograms across the whole note, so the figure is over
-        // the energy that actually leaves the voice -- attack included,
-        // which is where a struck voice does its brightest work.
-        const re = new Float64Array(N);
-        const im = new Float64Array(N);
-        const power = new Float64Array(N / 2);
-        const hop = N / 2;
-        for (let start = 0; start + N <= d.length; start += hop) {
-          for (let i = 0; i < N; i++) {
-            re[i] = d[start + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
-            im[i] = 0;
-          }
-          fft(re, im);
-          for (let i = 0; i < N / 2; i++) power[i] += re[i] * re[i] + im[i] * im[i];
-        }
-        const df = o.rate / N;
-        let b = 0;
-        let t = 0;
-        for (let i = 1; i < N / 2; i++) {
-          const f = i * df;
-          if (f > 20000) break;
-          const w = aWeight(f);
-          const p = power[i] * w * w;
-          t += p;
-          if (f >= 2000 && f <= 5000) b += p;
-        }
-        band += b;
-        total += t;
-      }
-      notes.push({ midi, share: total > 0 ? band / total : 0 });
+  const re = new Float64Array(N);
+  const im = new Float64Array(N);
+  const power = new Float64Array(N / 2);
+  const hop = N / 2;
+  for (let start = 0; start + N <= d.length; start += hop) {
+    for (let i = 0; i < N; i++) {
+      re[i] = d[start + i] * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / N));
+      im[i] = 0;
     }
-    out[name] = notes;
+    fft(re, im);
+    for (let i = 0; i < N / 2; i++) power[i] += re[i] * re[i] + im[i] * im[i];
   }
-  return out;
+  const df = rate / N;
+  let band = 0;
+  let total = 0;
+  for (let i = 1; i < N / 2; i++) {
+    const f = i * df;
+    if (f > 20000) break;
+    const w = aWeight(f);
+    const p = power[i] * w * w;
+    total += p;
+    if (f >= 2000 && f <= 5000) band += p;
+  }
+  return { band, total };
+}
+
+const VOWELS = ['a', 'e', 'o', 'u'];
+const STEP = 0.1; // seconds a step, at the 150bpm the one-note pattern runs at
+
+// One note, played the way the engine plays that layer.
+//
+// Not by calling the voice directly: a chord reaches a voice through the
+// engine, which sends a pad to pad() and everything else to voice() at a
+// spread of 0.8 over the root of the note count, so the same voice is not
+// the same level as a chord and as a tune. So the engine's own
+// _scheduleStep is handed a one-event pattern for the layer. It is used
+// without its constructor, which would open a clock Worker a note.
+//
+// Dry: the layer's channel goes straight to the output at unity, so the
+// channel table, the reverb and echo sends, the bus and the master chain
+// are all out of it. The reverb return is shared between layers and would
+// put one voice's tail inside another voice's reading.
+function renderNote(job, midi, vel, rep, o) {
+  Math.random = mulberry32(seedFor([job.layer, job.voice, midi, vel.toFixed(2), rep].join('|')));
+  const ctx = new OfflineAudioContext(1, Math.ceil((o.dur + 2.2) * o.rate), o.rate);
+  const synth = new Synth(ctx, 'full');
+  // The budget is a runtime guard and would only refuse notes here.
+  synth._budget = () => true;
+  const channel = synth.channels[job.layer].gain;
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(ctx.destination);
+
+  const tracks = { drums: [], bass: [], chords: [], melody: [], texture: [] };
+  const dur = o.dur / STEP;
+  const vowel = VOWELS[(midi - job.low) % 4];
+  if (job.layer === 'melody') tracks.melody.push({ step: 0, dur, midi, vel, voice: job.voice, vowel });
+  if (job.layer === 'chords') tracks.chords.push({ step: 0, dur, notes: [midi], vel, voice: job.voice, vowel });
+  if (job.layer === 'bass') tracks.bass.push({ step: 0, dur, midi, vel, glide: false, voice: job.voice });
+  // Drops and wind take no pitch; a note handed to them is ignored.
+  if (job.layer === 'texture') tracks.texture.push({ step: 0, dur, notes: [midi], vel, kind: job.voice });
+  const engine = Object.create(Engine.prototype);
+  Object.assign(engine, {
+    ctx, synth,
+    spec: { bpm: 60 / STEP / 4, swing: 0, mutes: {} },
+    live: { tracks, totalSteps: 1, stepsPerBar: 16 },
+    absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
+  });
+  engine._scheduleStep(0, 0.05);
+  return ctx.startRendering();
+}
+
+window.probeVoice = async (o) => {
+  const tasks = [];
+  for (const job of o.jobs) {
+    for (const vel of o.velocities) {
+      for (let midi = job.low; midi <= job.high; midi++) {
+        for (let rep = 0; rep < o.reps; rep++) {
+          tasks.push(async () => {
+            const d = (await renderNote(job, midi, vel, rep, o)).getChannelData(0);
+            return {
+              lufs: loudnessOf(d, o.rate).integrated,
+              presence: job.tone && vel === o.toneVelocity ? presenceOf(d, o.rate) : null,
+            };
+          });
+        }
+      }
+    }
+  }
+  const results = await inParallel(tasks, o.width);
+
+  // Repeats are averaged as energy, then read back as loudness.
+  let i = 0;
+  const out = [];
+  for (const job of o.jobs) {
+    const row = { layer: job.layer, voice: job.voice, low: job.low, high: job.high, drawn: job.drawn, notes: {}, tone: null };
+    for (const vel of o.velocities) {
+      const notes = [];
+      const tone = [];
+      for (let midi = job.low; midi <= job.high; midi++) {
+        let energy = 0, band = 0, total = 0;
+        for (let rep = 0; rep < o.reps; rep++) {
+          const r = results[i++];
+          energy += Number.isFinite(r.lufs) ? Math.pow(10, r.lufs / 10) : 0;
+          if (r.presence) { band += r.presence.band; total += r.presence.total; }
+        }
+        notes.push({ midi, lufs: energy > 0 ? 10 * Math.log10(energy / o.reps) : -Infinity });
+        tone.push({ midi, share: total > 0 ? band / total : 0 });
+      }
+      row.notes[vel] = notes;
+      if (job.tone && vel === o.toneVelocity) row.tone = tone;
+    }
+    out.push(row);
+  }
+  const probe = new Synth(new OfflineAudioContext(1, 128, o.rate), 'full');
+  const gains = {};
+  for (const [name, c] of Object.entries(probe.channels)) gains[name] = c.base.gain;
+  return { rows: out, gains };
 };
 `;
 
@@ -356,7 +732,7 @@ import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
 import { newSpec } from '/js/generator.js';
 import { decodeSong } from '/js/share.js';
-import { Rng } from '/js/rng.js';
+import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 
@@ -364,6 +740,8 @@ const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 async function runOne(spec, quality, rate) {
   const spb = spec.stepsPerBar || 16;
   const seconds = Math.min(60, spec.bars * spb * (60 / spec.bpm / 4) + 3);
+  // Drum jitter moves when a note is released, and so what is refused.
+  Math.random = mulberry32(spec.seed >>> 0 || 1);
   const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
   const synth = new Synth(ctx, quality);
   const engine = new Engine(ctx, synth);
@@ -511,7 +889,7 @@ const median = (a) => {
   return s[Math.floor(s.length / 2)];
 };
 
-function report(rows, opts) {
+function report(rows, opts, chain) {
   const out = [];
   out.push('');
   out.push('driftloom offline audio measurement');
@@ -542,8 +920,13 @@ function report(rows, opts) {
   // count is printed beside it.
   out.push('');
   out.push('  per-layer dry level, tapped at the channel gain before the bus');
-  out.push('    layer      loops    peak      rms   rms dBFS   vs melody');
+  out.push('    layer      loops    peak      rms   rms dBFS   vs melody     LUFS   vs melody');
   const melodyRms = mean(rows.filter((r) => r.layers.melody.rms > 1e-6).map((r) => r.layers.melody.rms));
+  // Loudness while the layer plays: the gates leave out the bars it sits out.
+  // A layer can sound and still sit under the -70 LUFS gate throughout --
+  // a thin wind -- so the mean is over the loops where it measured at all.
+  const gatedMean = (name) => mean(rows.map((r) => r.layers[name].lufs).filter(Number.isFinite));
+  const melodyLufs = gatedMean('melody');
   for (const name of LAYERS) {
     const sounding = rows.filter((r) => r.layers[name].rms > 1e-6);
     if (!sounding.length) {
@@ -553,45 +936,347 @@ function report(rows, opts) {
     const peak = Math.max(...sounding.map((r) => r.layers[name].peak));
     const rms = mean(sounding.map((r) => r.layers[name].rms));
     const rel = name === 'melody' ? '' : `${fmtDb(dbfs(melodyRms) - dbfs(rms))} dB`;
-    out.push(`    ${LAYER_LABELS[name].padEnd(9)} ${String(sounding.length).padStart(5)}   ${peak.toFixed(4)}   ${rms.toFixed(4)}     ${fmtDb(dbfs(rms)).padStart(6)}   ${rel.padStart(9)}`);
+    const lufs = gatedMean(name);
+    const relLufs = name === 'melody' ? '' : `${fmtDb(melodyLufs - lufs)} LU`;
+    out.push(`    ${LAYER_LABELS[name].padEnd(9)} ${String(sounding.length).padStart(5)}   ${peak.toFixed(4)}   ${rms.toFixed(4)}     ${fmtDb(dbfs(rms)).padStart(6)}   ${rel.padStart(9)}   ${fmtDb(lufs).padStart(6)}   ${relLufs.padStart(9)}`);
   }
   out.push('');
   out.push('    "vs melody" is how far the melody sits above that layer. Positive');
   out.push('    means the melody is louder. Dry only: the reverb and echo returns');
   out.push('    are shared and cannot be attributed back to the layer that sent them.');
+  out.push('    LUFS is K-weighted and gated, so it is the layer\'s loudness while it');
+  out.push('    plays, and it does not over-count the kick and the bass as RMS does.');
+  out.push('');
+  out.push(reportLoudness(rows, opts, chain));
+  return out.join('\n');
+}
+
+const fmt = (v, width, digits = 1, sign = true) => {
+  if (v == null || Number.isNaN(v)) return '-'.padStart(width);
+  if (!Number.isFinite(v)) return (v > 0 ? 'inf' : '-inf').padStart(width);
+  return `${sign && v >= 0 ? '+' : ''}${v.toFixed(digits)}`.padStart(width);
+};
+// The middle value, or the mean of the two middle values.
+const middle = (a) => {
+  if (!a.length) return NaN;
+  const s = a.slice().sort((x, y) => x - y);
+  const h = Math.floor(s.length / 2);
+  return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+};
+const spreadOf = (xs) => Math.max(...xs) - Math.min(...xs);
+
+// Loudness, per loop and across the corpus, and what the master chain does.
+function reportLoudness(rows, opts, chain) {
+  const out = [];
+  const crest = (peak, lufs) => dbfs(peak) - lufs;
+  out.push('  loudness, K-weighted (ITU-R BS.1770; the bus is mono, so one channel at 1.0)');
+  out.push('    loudest first. trim is the profile level characters.js authored for the');
+  out.push('    loop; crest is sample peak minus integrated loudness; LRA from 3s blocks.');
+  out.push('');
+  out.push('    loop             profile      trim   peak dB   rms dB     LUFS    LRA   crest');
+  out.push(`    ${'-'.repeat(78)}`);
+  const byLoudness = rows.slice().sort((a, b) => b.lufs - a.lufs);
+  for (const r of byLoudness) {
+    out.push(`    ${r.name.padEnd(16)} ${r.profile.padEnd(10)} ${fmt(dbfs(r.level), 6)}  ${fmt(dbfs(r.peak), 8)} ${fmt(dbfs(r.rms), 8)} ${fmt(r.lufs, 8)} ${fmt(r.lra, 6, 1, false)} ${fmt(crest(r.peak, r.lufs), 7, 1, false)}`);
+  }
+  const stereo = Math.max(...rows.map((r) => r.stereo));
+  if (stereo > 1e-6) {
+    out.push('');
+    out.push(`    WARNING: left and right differ by up to ${stereo.toExponential(2)}. The meter reads the`);
+    out.push('    left channel alone because the bus has been mono; it no longer is.');
+  }
+
+  const line = (label, xs, unit, sign = true) => {
+    out.push(`    ${label.padEnd(24)} ${fmt(mean(xs), 7, 1, sign)}  ${fmt(Math.min(...xs), 7, 1, sign)}  ${fmt(Math.max(...xs), 7, 1, sign)}  ${fmt(spreadOf(xs), 7, 1, false)} ${unit}`);
+  };
+  out.push('');
+  out.push(`  across the corpus, ${rows.length} loops (means are of the per-loop figures)`);
+  out.push('                                mean      min      max    spread');
+  line('loudness, LUFS', rows.map((r) => r.lufs), 'LU');
+  line('rms, dBFS', rows.map((r) => dbfs(r.rms)), 'dB');
+  line('peak, dBFS', rows.map((r) => dbfs(r.peak)), 'dB');
+  line('loudness range, LU', rows.map((r) => r.lra), 'LU', false);
+  line('crest, dB', rows.map((r) => crest(r.peak, r.lufs)), 'dB', false);
+  line('authored trim, dB', rows.map((r) => dbfs(r.level)), 'dB');
+  line('LUFS less the trim', rows.map((r) => r.lufs - dbfs(r.level)), 'LU');
+  out.push('');
+  out.push('    "LUFS less the trim" is what the loops would measure if every profile');
+  out.push('    had the same level: the spread nobody set as a level decision.');
+  // Max minus min grows with the size of the corpus; this does not. Played
+  // back to back the catalogue is one programme, so its range is taken the
+  // way LRA takes one: 10th to 95th percentile of loop loudness.
+  const sorted = rows.map((r) => r.lufs).sort((a, b) => a - b);
+  const at = (p) => sorted[Math.round((sorted.length - 1) * p)];
+  out.push(`    catalogue range, 10th to 95th percentile of loop loudness, as LRA takes`);
+  out.push(`    its range: ${fmt(at(0.95) - at(0.1), 4, 1, false)} LU (${fmt(at(0.1), 5)} to ${fmt(at(0.95), 5)} LUFS; median ${fmt(at(0.5), 5)})`);
+
+  // By the profile that leads each loop's mix.
+  const profiles = {};
+  for (const r of rows) (profiles[r.profile] ||= []).push(r);
+  out.push('');
+  out.push('    by leading profile      loops     LUFS   trim dB   LUFS less trim   with drums');
+  for (const [name, rs] of Object.entries(profiles).sort((a, b) => mean(b[1].map((r) => r.lufs)) - mean(a[1].map((r) => r.lufs)))) {
+    const drums = rs.filter((r) => r.layers.drums.rms > 1e-6).length;
+    out.push(`      ${name.padEnd(20)} ${String(rs.length).padStart(5)}  ${fmt(mean(rs.map((r) => r.lufs)), 7)}  ${fmt(mean(rs.map((r) => dbfs(r.level))), 8)}  ${fmt(mean(rs.map((r) => r.lufs - dbfs(r.level))), 15)}  ${`${drums} of ${rs.length}`.padStart(11)}`);
+  }
+  const withDrums = rows.filter((r) => r.layers.drums.rms > 1e-6);
+  const without = rows.filter((r) => !(r.layers.drums.rms > 1e-6));
+  if (withDrums.length && without.length) {
+    out.push(`    loops with drums ${fmt(mean(withDrums.map((r) => r.lufs)), 5)} LUFS on average (${withDrums.length}), without ${fmt(mean(without.map((r) => r.lufs)), 5)} (${without.length})`);
+  }
+
+  if (!chain) return out.join('\n');
+  const loops = rows.filter((r) => r.bypass);
+  const makeup = chain.makeup.both;
+  const delta = (r) => r.lufs - r.bypass.lufs;
+  const reduction = (r) => makeup - delta(r);
+  const crestChange = (r) => crest(r.peak, r.lufs) - crest(r.bypass.peak, r.bypass.lufs);
+  const c = chain.settings;
+  out.push('');
+  out.push(`  the master chain: bus compressor (${c.comp.threshold} dBFS, ${c.comp.ratio}:1, ${c.comp.knee} dB knee) and ceiling`);
+  out.push(`  (${c.ceiling.threshold} dBFS, ${c.ceiling.ratio}:1), against the same loop rendered with both routed around`);
+  out.push('  -- in this harness only; the shipped chain is untouched');
+  out.push('');
+  out.push(`    makeup gain              ${fmt(makeup, 5)} dB on anything below threshold (compressor ${fmt(chain.makeup.comp, 4)},`);
+  out.push(`                             ceiling ${fmt(chain.makeup.ceiling, 4)}). Web Audio's compressor applies it automatically,`);
+  out.push('                             so the chain lifts every loop before it squeezes any.');
+  out.push('    gain reduction is that lift minus what a loop actually gained: how much');
+  out.push('    the chain took back from it. Crest change is with the chain minus without.');
+  out.push('');
+  out.push('    loop               no chain: peak dB    LUFS   crest    with: dLUFS      GR  dcrest');
+  out.push(`    ${'-'.repeat(82)}`);
+  const byInput = loops.slice().sort((a, b) => b.bypass.lufs - a.bypass.lufs);
+  for (const r of byInput) {
+    out.push(`    ${r.name.padEnd(16)} ${' '.repeat(12)}${fmt(dbfs(r.bypass.peak), 7)} ${fmt(r.bypass.lufs, 7)} ${fmt(crest(r.bypass.peak, r.bypass.lufs), 7, 1, false)}   ${' '.repeat(5)}${fmt(delta(r), 7)} ${fmt(reduction(r), 7, 1, false)} ${fmt(crestChange(r), 7)}`);
+  }
+  out.push('');
+  out.push('                                mean      min      max    spread');
+  line('loudness, chain on-off', loops.map(delta), 'LU');
+  line('gain reduction, dB', loops.map(reduction), 'dB', false);
+  line('crest change, dB', loops.map(crestChange), 'dB');
+  line('LUFS, no chain', loops.map((r) => r.bypass.lufs), 'LU');
+  line('LRA, no chain', loops.map((r) => r.bypass.lra), 'LU', false);
+  out.push('');
+  // Quarters by how loud the loop is before the chain sees it.
+  const q = Math.max(1, Math.floor(byInput.length / 4));
+  const top = byInput.slice(0, q);
+  const bottom = byInput.slice(-q);
+  out.push(`    by loudness before the chain, loudest ${q} against quietest ${q}:`);
+  out.push(`      gain reduction       ${fmt(mean(top.map(reduction)), 5, 1, false)} dB against ${fmt(mean(bottom.map(reduction)), 5, 1, false)} dB`);
+  out.push(`      crest change         ${fmt(mean(top.map(crestChange)), 5)} dB against ${fmt(mean(bottom.map(crestChange)), 5)} dB`);
+  out.push(`      LRA change           ${fmt(mean(top.map((r) => r.lra - r.bypass.lra)), 5)} LU against ${fmt(mean(bottom.map((r) => r.lra - r.bypass.lra)), 5)} LU`);
+  out.push(`    the chain moves the corpus LUFS spread from ${fmt(spreadOf(loops.map((r) => r.bypass.lufs)), 4, 1, false)} LU to ${fmt(spreadOf(loops.map((r) => r.lufs)), 4, 1, false)} LU`);
   out.push('');
   return out.join('\n');
 }
 
-function reportVoices(data, opts) {
+// Which layers each voice is drawn for, read from the pools in
+// characters.js. Textures are named there by what the generator draws, and
+// genTexture writes two of those as a differently named event kind -- bells
+// as 'bell', drops as 'drop' -- which is the name the synth plays.
+const LAYER_POOLS = { melody: 'melodyVoices', chords: 'chordVoices', bass: 'bassVoices', texture: 'textures' };
+const TEXTURE_KIND = { bells: 'bell', drops: 'drop' };
+
+function drawnLayers() {
+  const layers = {};
+  for (const layer of Object.keys(LAYER_POOLS)) layers[layer] = [];
+  for (const c of Object.values(CHARACTERS)) {
+    for (const [layer, pool] of Object.entries(LAYER_POOLS)) {
+      for (const [name] of c[pool] || []) {
+        const voice = layer === 'texture' ? TEXTURE_KIND[name] || name : name;
+        if (voice !== 'none' && !layers[layer].includes(voice)) layers[layer].push(voice);
+      }
+    }
+  }
+  return layers;
+}
+
+// The velocity each voice is actually handed in each layer, over a corpus
+// drawn from --seed: context for the tables, since a voice that measures
+// loud at 0.8 and is only ever drawn at 0.2 is not the problem it looks.
+// A chord's figure is its velocity over the root of its note count -- the
+// one-note chord that puts the same level on each note, which is what the
+// probe plays -- so an arpeggio's single notes count at full weight.
+function surveyVelocities(seed) {
+  const master = new Rng(seed);
+  const seen = {};
+  const add = (layer, voice, vel) => { (seen[`${layer}|${voice}`] ||= []).push(vel); };
+  for (let i = 0; i < SURVEY_LOOPS; i++) {
+    const tracks = render(newSpec(master.seed32())).tracks;
+    for (const e of tracks.melody) if (e.vel) add('melody', e.voice, e.vel);
+    for (const e of tracks.chords) if (e.vel) add('chords', e.voice, e.vel / Math.sqrt(e.notes.length));
+    for (const e of tracks.bass) if (e.vel) add('bass', e.voice, e.vel);
+    for (const e of tracks.texture) if (e.vel) add('texture', e.kind, e.vel);
+  }
+  const out = {};
+  for (const [key, vels] of Object.entries(seen)) out[key] = middle(vels);
+  return out;
+}
+
+// What to render: every voice named (or all of them) in every layer it is
+// drawn for, with kalimba as a melody always in, since everything is read
+// against it. A voice no profile draws is probed as a melody, as before.
+function probeJobs(names, layers) {
+  const all = names.length === 1 && names[0] === 'all';
+  const jobs = [];
+  const add = (layer, voice, tone) => {
+    if (jobs.some((j) => j.layer === layer && j.voice === voice)) return;
+    const [low, high] = PROBE_WINDOWS[layer];
+    jobs.push({ layer, voice, low, high, tone, drawn: layers[layer].includes(voice) });
+  };
+  if (all) {
+    for (const [layer, voices] of Object.entries(layers)) {
+      for (const voice of voices) add(layer, voice, layer === 'melody');
+    }
+  } else {
+    for (const voice of names) {
+      const home = Object.keys(layers).filter((l) => layers[l].includes(voice));
+      if (!home.length) home.push('melody');
+      home.forEach((layer, i) => add(layer, voice, i === 0));
+    }
+  }
+  add(PROBE_REFERENCE.layer, PROBE_REFERENCE.voice, false);
+  return { jobs, all };
+}
+
+const noteName = (midi) => `${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][midi % 12]}${Math.floor(midi / 12) - 1}`;
+
+function reportVoices(data, opts, context) {
+  const { all, survey } = context;
   const out = [''];
-  out.push('driftloom per-voice tone probe');
-  out.push(`  A-weighted share of energy in 2-5kHz, ${PROBE_LOW}-${PROBE_HIGH} MIDI (two octaves),`);
-  out.push(`  ${opts.reps} render(s) a note at ${(opts.rate / 1000).toFixed(1)}k, dry, straight off the voice`);
-  out.push('');
-  out.push('  voice        mean     min     max   spread      sd');
-  out.push(`  ${'-'.repeat(52)}`);
-  for (const [name, notes] of Object.entries(data)) {
-    const xs = notes.map((r) => r.share);
-    const m = mean(xs);
-    const lo = Math.min(...xs);
-    const hi = Math.max(...xs);
-    const sd = Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
+  const toned = data.rows.filter((r) => r.tone);
+  if (toned.length) {
+    const label = (r) => (r.layer === 'melody' ? r.voice : `${r.voice} (${r.layer})`);
+    out.push('driftloom per-voice tone probe');
+    out.push(`  A-weighted share of energy in 2-5kHz across two octaves (melody ${PROBE_LOW}-${PROBE_HIGH} MIDI),`);
+    out.push(`  velocity 0.8, ${opts.reps} render(s) a note at ${(opts.rate / 1000).toFixed(1)}k, dry, straight off the voice`);
+    out.push('');
+    out.push('  voice                mean     min     max   spread      sd');
+    out.push(`  ${'-'.repeat(60)}`);
     const pc = (v) => `${(100 * v).toFixed(1)}%`;
-    out.push(`  ${name.padEnd(10)} ${pc(m).padStart(6)}  ${pc(lo).padStart(6)}  ${pc(hi).padStart(6)}  ${pc(hi - lo).padStart(7)}  ${pc(sd).padStart(6)}`);
+    for (const r of toned) {
+      const xs = r.tone.map((t) => t.share);
+      const m = mean(xs);
+      const sd = Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
+      out.push(`  ${label(r).padEnd(18)} ${pc(m).padStart(6)}  ${pc(Math.min(...xs)).padStart(6)}  ${pc(Math.max(...xs)).padStart(6)}  ${pc(spreadOf(xs)).padStart(7)}  ${pc(sd).padStart(6)}`);
+    }
+    out.push('');
+    // Per note only while it still fits across a screen.
+    if (toned.length <= 8 && toned.every((r) => r.low === toned[0].low)) {
+      out.push('  per note');
+      out.push(`    midi  ${toned.map((r) => r.voice.padStart(11)).join('')}`);
+      for (let i = 0; i < toned[0].tone.length; i++) {
+        out.push(`    ${String(toned[0].tone[i].midi).padStart(4)}  ${toned.map((r) => pc(r.tone[i].share).padStart(11)).join('')}`);
+      }
+      out.push('');
+    }
+    out.push('    A "spread" is max minus min across the two octaves: a voice whose');
+    out.push('    harshness depends on which note it is playing is harder to mix than');
+    out.push('    one that is evenly bright, because no single fix covers it.');
+    out.push('');
   }
-  out.push('');
-  out.push('  per note');
-  const names = Object.keys(data);
-  out.push(`    midi  ${names.map((n) => n.padStart(9)).join('')}`);
-  for (let i = 0; i < data[names[0]].length; i++) {
-    const row = names.map((n) => `${(100 * data[n][i].share).toFixed(1)}%`.padStart(9)).join('');
-    out.push(`    ${String(data[names[0]][i].midi).padStart(4)}  ${row}`);
+
+  // Loudness. Every level is read against kalimba as a melody at the same
+  // velocity: a voice Mikey likes and has never complained about, so the
+  // target is something he likes rather than a number anyone picked.
+  const V = PROBE_VELOCITIES;
+  const summary = (row, vel) => {
+    const notes = row.notes[vel].filter((n) => Number.isFinite(n.lufs));
+    const xs = notes.map((n) => n.lufs);
+    return { mean: mean(xs), min: Math.min(...xs), max: Math.max(...xs), silent: row.notes[vel].length - notes.length };
+  };
+  const ref = data.rows.find((r) => r.layer === PROBE_REFERENCE.layer && r.voice === PROBE_REFERENCE.voice);
+  const refLevel = {};
+  for (const vel of V) refLevel[vel] = summary(ref, vel).mean;
+
+  out.push('driftloom per-voice loudness');
+  out.push(`  K-weighted (ITU-R BS.1770), integrated over each note, ${opts.dur}s notes, ${opts.reps} render(s) a note at ${(opts.rate / 1000).toFixed(1)}k.`);
+  out.push('  Each note goes through the engine\'s own path for its layer, and the layer\'s channel goes');
+  out.push('  straight out at unity: no channel gain, sends, bus or master chain. A chord is a one-note');
+  out.push('  chord event: a pad through pad(), anything else through voice() at the engine\'s 0.8 spread.');
+  out.push(`  Every level is in LU against ${PROBE_REFERENCE.voice} as a ${PROBE_REFERENCE.layer} at the same velocity, across its two octaves:`);
+  out.push(`  ${PROBE_REFERENCE.voice} is ${V.map((v) => `${refLevel[v].toFixed(1)} LUFS at ${v}`).join(' and ')}.`);
+
+  const flagged = [];
+  const disagree = [];
+  for (const layer of Object.keys(PROBE_WINDOWS)) {
+    const rows = data.rows.filter((r) => r.layer === layer);
+    if (!rows.length) continue;
+    const stats = rows.map((row) => {
+      const s = {};
+      for (const vel of V) s[vel] = summary(row, vel);
+      return { row, s, slope: s[V[1]].mean - s[V[0]].mean };
+    });
+    const layerMid = {};
+    for (const vel of V) layerMid[vel] = middle(stats.map((x) => x.s[vel].mean));
+    const slopeMid = middle(stats.map((x) => x.slope));
+    for (const x of stats) {
+      x.dev = {};
+      for (const vel of V) x.dev[vel] = x.s[vel].mean - layerMid[vel];
+      const past = V.map((vel) => Math.abs(x.dev[vel]) > FAMILY_LIMIT);
+      x.loud = past.some(Boolean) ? (x.dev[V[1]] + x.dev[V[0]] > 0 ? 'loud' : 'quiet') : '';
+      x.split = Math.abs(x.slope - slopeMid) >= VELOCITY_LIMIT || past[0] !== past[1];
+      if (all && x.loud) flagged.push({ layer, x });
+      if (all && x.split) disagree.push({ layer, x, slopeMid });
+    }
+    stats.sort((a, b) => b.s[V[1]].mean - a.s[V[1]].mean);
+
+    const [low, high] = PROBE_WINDOWS[layer];
+    out.push('');
+    out.push(`  ${layer}: ${rows.length} voice${rows.length === 1 ? '' : 's'}, MIDI ${low}-${high} (${noteName(low)}-${noteName(high)}); channel gain ${data.gains[layer]} (${fmt(dbfs(data.gains[layer] / data.gains.melody), 4)} dB against melody) comes after this`);
+    const cols = `  mean    min    max  sprd${all ? '  layer' : ''}`;
+    const head = `    voice       ${V.map(() => cols).join('  ')}  0.8-0.4  drawn${all ? '  flags' : ''}`;
+    // Each velocity's label centred over its own block of columns.
+    let over = '';
+    V.forEach((v, i) => {
+      const label = `velocity ${v}`;
+      const at = 16 + i * (cols.length + 2) + Math.floor((cols.length - label.length) / 2);
+      over = over.padEnd(at) + label;
+    });
+    out.push(over);
+    out.push(head);
+    out.push(`    ${'-'.repeat(head.length - 4)}`);
+    const cells = (x, vel) => {
+      const s = x.s[vel];
+      const r = refLevel[vel];
+      return `${fmt(s.mean - r, 6)} ${fmt(s.min - r, 6)} ${fmt(s.max - r, 6)} ${fmt(s.max - s.min, 5, 1, false)}${all ? ` ${fmt(x.dev[vel], 6)}` : ''}`;
+    };
+    for (const x of stats) {
+      const drawn = survey[`${layer}|${x.row.voice}`];
+      const flags = [x.loud, x.split ? 'vel' : ''].filter(Boolean).join(' ');
+      const name = `${x.row.voice}${x.row.drawn ? '' : '*'}`;
+      out.push(`    ${name.padEnd(12)}${V.map((v) => cells(x, v)).join('  ')}  ${fmt(x.slope, 7)}  ${drawn == null ? '    -' : drawn.toFixed(2).padStart(5)}${all ? `  ${flags}` : ''}`);
+    }
+    if (all) {
+      out.push(`    ${'layer median'.padEnd(12)}${V.map((v) => `${fmt(layerMid[v] - refLevel[v], 6)}${' '.repeat(26)}`).join('  ')}${fmt(slopeMid, 7)}`);
+    }
   }
+
   out.push('');
-  out.push('    A "spread" is max minus min across the two octaves: a voice whose');
-  out.push('    harshness depends on which note it is playing is harder to mix than');
-  out.push('    one that is evenly bright, because no single fix covers it.');
+  out.push('    mean, min and max are across the two octaves, in LU against the reference; sprd is');
+  out.push('    max minus min. 0.8-0.4 is how much louder the voice gets from velocity 0.4 to 0.8 --');
+  out.push('    6.0 LU for a voice whose level is simply proportional to velocity; more when velocity');
+  out.push('    also brightens it, as an FM index scaled by velocity does. drawn is the median velocity');
+  out.push(`    the generator gives that voice in that layer over ${SURVEY_LOOPS} loops from --seed ${opts.seed}`);
+  out.push('    (a chord\'s over the root of its note count, which is the one-note chord this plays).');
+  if (data.rows.some((r) => !r.drawn)) out.push('    * no profile draws this voice here; probed as a melody, the old default.');
+  if (all) {
+    out.push(`    layer is the voice against the median of its layer at that velocity. Flagged: 'loud' or`);
+    out.push(`    'quiet' past ${FAMILY_LIMIT} LU from it; 'vel' where the two velocities disagree -- its 0.8-0.4 is`);
+    out.push(`    ${VELOCITY_LIMIT} LU or more off the layer's, or it is past ${FAMILY_LIMIT} LU at one velocity only.`);
+    out.push('');
+    out.push(`  more than ${FAMILY_LIMIT} LU from its layer, at either velocity`);
+    if (!flagged.length) out.push('    none');
+    for (const { layer, x } of flagged) {
+      out.push(`    ${layer.padEnd(8)} ${x.row.voice.padEnd(12)} ${V.map((v) => `${fmt(x.dev[v], 6)} at ${v}`).join('   ')}`);
+    }
+    out.push('');
+    out.push('  where the two velocities disagree');
+    if (!disagree.length) out.push('    none');
+    for (const { layer, x, slopeMid } of disagree) {
+      out.push(`    ${layer.padEnd(8)} ${x.row.voice.padEnd(12)} 0.8-0.4 ${fmt(x.slope, 5)} against the layer's ${fmt(slopeMid, 5)}   ${V.map((v) => `${fmt(x.dev[v], 6)} at ${v}`).join('   ')}`);
+    }
+  }
   out.push('');
   return out.join('\n');
 }
@@ -600,6 +1285,20 @@ function reportVoices(data, opts) {
 
 const opts = parseArgs(process.argv.slice(2));
 opts.reps = 3;
+opts.dur = opts.note;
+
+if (opts.selftest) {
+  const { text, failed } = selftest();
+  console.log(text);
+  process.exit(failed ? 1 : 0);
+}
+
+function writeJson(data) {
+  if (!opts.json) return;
+  // JSON has no infinity; a silent note or loop is written as null.
+  fs.writeFileSync(opts.json, `${JSON.stringify(data, (k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v), 1)}\n`);
+  console.error(`measure: wrote ${opts.json}`);
+}
 
 function loadPlaywright() {
   const require = createRequire(import.meta.url);
@@ -712,20 +1411,23 @@ if (counting) {
 }
 
 if (probing) {
+  const { jobs, all } = probeJobs(opts.voices, drawnLayers());
+  const survey = surveyVelocities(opts.seed);
   const data = await page.evaluate((o) => window.probeVoice(o), {
-    voices: opts.voices, low: PROBE_LOW, high: PROBE_HIGH,
-    rate: opts.rate, reps: opts.reps, dur: 1.6,
+    jobs, velocities: PROBE_VELOCITIES, toneVelocity: 0.8,
+    rate: opts.rate, reps: opts.reps, dur: opts.dur, width: opts.jobs,
   });
   await browser.close();
   server.close();
   if (pageErrors.length) {
     console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
   }
-  console.log(reportVoices(data, opts));
+  writeJson({ reference: PROBE_REFERENCE, velocities: PROBE_VELOCITIES, dur: opts.dur, reps: opts.reps, rate: opts.rate, survey, ...data });
+  console.log(reportVoices(data, opts, { all, survey }));
   process.exit(0);
 }
 
-const rows = await page.evaluate((o) => window.measure(o), opts);
+const { rows, chain } = await page.evaluate((o) => window.measure(o), opts);
 await browser.close();
 server.close();
 
@@ -733,4 +1435,5 @@ if (pageErrors.length) {
   console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
 }
 
-console.log(report(rows, opts));
+writeJson({ seed: opts.seed, n: opts.n, rate: opts.rate, quality: opts.quality, chain, rows });
+console.log(report(rows, opts, chain));
