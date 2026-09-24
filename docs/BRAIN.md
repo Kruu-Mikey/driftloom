@@ -93,6 +93,19 @@ These are stated decisions, not inferences.
   ear and fixed at the source, never by a limiter or compressor on the mix
   (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
+- **How we work now (2026-09-24): the middle path.** Mikey's ears were
+  becoming the bottleneck. Blind A/Bs only for changes that alter sounds he
+  already likes; new sounds get one short album rated keep / tune / drop.
+  Loudness, CPU cost and balance are checked by the tools, not by ear.
+  Design and listening overlap with the building. Voices go in pairs
+  (fiddle + accordion, then nylon + pan flute); `tide` in two PRs
+  (harmony: progressions, drone, waltz reading; then ornaments, waves,
+  hand drums, the profile); `cinder` and `wayfare` one each.
+- **`tide` defaults** (Mikey unsure, brain's call, the album decides):
+  leads weighted fiddle, then whistle, with ocarina and accordion for
+  colour; the feel varies loop to loop, gentle loops slower and waltzing,
+  lively ones faster and jigging, so metre and tempo are drawn together;
+  the drone in about a third of loops.
 - **Merging before an A/B is fine** (2026-09-24). Production is seen by
   testers only and a merge can be reverted, so sound-change PRs may merge
   whenever Mikey likes; the A/B runs on the two commit previews either way.
