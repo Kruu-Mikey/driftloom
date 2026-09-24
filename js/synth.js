@@ -916,7 +916,11 @@ export class Synth {
       lp.Q.value = 6;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
-      g.gain.exponentialRampToValueAtTime(vel * 0.28, time + 0.01);
+      // Was 0.28: 5.9 LU over the melody layer's median at 0.4s notes, near
+      // the app's median melody note (measure.mjs --voice all --note 0.4).
+      // Every loop flagged on every pass of #42's listening test led with
+      // this or the square below, so both sit at the median now. Level only.
+      g.gain.exponentialRampToValueAtTime(vel * 0.142, time + 0.01);
       g.gain.setTargetAtTime(0.0001, time + dur * 0.6, 0.15);
       o.connect(lp).connect(g).connect(out);
       o.start(time);
@@ -939,7 +943,9 @@ export class Synth {
       lp.frequency.value = 2600;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
-      g.gain.exponentialRampToValueAtTime(vel * 0.16, time + 0.008);
+      // Was 0.16: 4.6 LU over the melody layer's median at 0.4s notes.
+      // Trimmed to it with the saw above; the timbre is untouched.
+      g.gain.exponentialRampToValueAtTime(vel * 0.095, time + 0.008);
       g.gain.setTargetAtTime(0.0001, time + dur * 0.55, 0.12);
       o.connect(lp).connect(g).connect(out);
       o.start(time);
