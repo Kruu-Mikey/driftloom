@@ -292,7 +292,15 @@ lateBloom, breathe and the half-bar change, and narrowly on twoAndFour
 ("leaned same"). The rule in Mikey's ears: chords move on the dotted
 beats (0 and 6) and hold; figures between the beats are welcome; an entry
 on the weak eighth tied over the second beat is not. Follow-up: keep
-offbeat, stutter and pad; restore the old hits for the rest. The hands found, and left, the
+offbeat, stutter and pad; restore the old hits for the rest.
+
+**#38, v37 -- verified.** Rendered 4000 loops against v35 and v36: the only
+12-step chord hits differing from v35 are the 165 offbeat and stutter
+loops kept from v36; every other layer of every 12-step loop matches v36;
+16- and 20-step loops differ from v36 only in the bass of 47 loops (the
+dub fix). Tests and `--check` pass, baseline unmoved. Next: the 6/8
+drums, walking bass and swells, one PR, A/B'd blind against v37's commit
+preview (f0e6ef84). The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
