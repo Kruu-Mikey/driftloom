@@ -620,6 +620,15 @@ const DUB = {
   '6/8': [[0, 4], [8, 2], [10, 2]],
 };
 
+// The walk's notes, [step, length] from the slot's start: one per beat in
+// 4/4. 6/8 walked four dotted eighths, [0,3,6,9], which reads the bar as
+// 2/4; it now walks the jig's lilt, a crotchet and a quaver to each dotted
+// beat. Four notes either way, so the walk draws what it always drew.
+const WALK = {
+  '4/4': [[0, 3], [4, 3], [8, 3], [12, 3]],
+  '6/8': [[0, 4], [4, 2], [6, 4], [10, 2]],
+};
+
 function genBass(spec, harmony) {
   const r = new Rng(spec.layerSeeds.bass);
   const c = characterOf(spec);
@@ -678,11 +687,11 @@ function genBass(spec, harmony) {
         if (fits(pickup)) place(slot.startStep + pickup, pickupLen, base + interval, 0.4);
       }
     } else if (style === 'walk') {
-      const steps = (spb === 12 ? [0, 3, 6, 9] : [0, 4, 8, 12]).filter((s) => s < len);
-      steps.forEach((s, i) => {
+      const steps = (WALK[metre] || WALK['4/4']).filter(([s]) => s < len);
+      steps.forEach(([s, dur], i) => {
         const deg = slot.degree + (i === 0 ? 0 : r.pick([0, 1, -1, 2, 4]));
         const midi = scalePitch(spec.root, scale, deg, -2);
-        place(slot.startStep + s, 3, midi, i === 0 ? 0.68 : 0.42 + r.f() * 0.15);
+        place(slot.startStep + s, dur, midi, i === 0 ? 0.68 : 0.42 + r.f() * 0.15);
       });
     } else {
       // sparse: one long tone, sometimes nothing at all
@@ -1236,6 +1245,9 @@ function genDrums(spec) {
   const r = new Rng(spec.layerSeeds.drums);
   const c = characterOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const metre = metreOf(spec);
+  // Steps to a beat: a crotchet in 4/4 and 5/4, a dotted crotchet in 6/8.
+  const beat = metre === '6/8' ? 6 : 4;
   const total = spec.bars * spb;
   const events = [];
   if (!forced(spec, 'drums') && !r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
@@ -1280,23 +1292,35 @@ function genDrums(spec) {
       events.push({
         step: b + s,
         inst: open ? 'ohat' : 'hat',
-        vel: (s % 4 === 0 ? 0.5 : 0.3) + r.f() * 0.2,
+        vel: (s % beat === 0 ? 0.5 : 0.3) + r.f() * 0.2,
       });
     }
+    // The shaker takes the offbeat: the "and" of each beat in 4/4. In 6/8
+    // the offbeat is the two eighths after each dotted beat, the jig's
+    // "pah-pah", so it shakes them in pairs, a beat at a time. It shook
+    // 2, 6 and 10 before, and 6 is the second beat. The loop still makes
+    // those three draws a bar; in 6/8 the third decides nothing.
     if (useShaker) {
-      for (let s = 2; s < spb; s += 4) {
-        if (r.chance(0.6)) events.push({ step: b + s, inst: 'shaker', vel: 0.18 + r.f() * 0.15 });
+      const pairs = metre === '6/8' ? [[2, 4], [8, 10], []] : null;
+      for (let s = 2, i = 0; s < spb; s += 4, i++) {
+        if (!r.chance(0.6)) continue;
+        const vel = 0.18 + r.f() * 0.15;
+        for (const at of pairs ? pairs[i] : [s]) events.push({ step: b + at, inst: 'shaker', vel });
       }
     }
     // Stutter rolls: a hit subdivided into a burst of rapidly quietening
     // repeats. This is the gesture that makes chopped breaks read as
     // chopped rather than merely fast.
+    //
+    // A roll fills one beat. In 6/8 that is a dotted beat, six steps, and
+    // the roll starts on one of the two, so it runs into the next beat
+    // rather than across it. Same draw for where, mapped to a beat.
     if (c.rolls && r.chance(c.rolls)) {
-      const from = r.int(0, spb - 4);
+      const from = metre === '6/8' ? r.int(0, 1) * beat : r.int(0, spb - 4);
       const count = r.pick([3, 4, 6, 8]);
       const inst = r.pick(['snare', 'rim', 'hat', 'kick']);
       for (let k = 0; k < count; k++) {
-        const step = b + from + Math.floor((k * 4) / count);
+        const step = b + from + Math.floor((k * beat) / count);
         if (step >= b + spb) break;
         events.push({
           step,
@@ -1324,6 +1348,7 @@ function genDrums(spec) {
 function genTexture(spec, harmony) {
   const r = new Rng(spec.layerSeeds.texture);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const metre = metreOf(spec);
   const total = spec.bars * spb;
   const mood = feelForLayer(spec, 'texture').lift;
   // No birdsong. Wherever this gets played there are already real birds, and
@@ -1336,11 +1361,15 @@ function genTexture(spec, harmony) {
   if (kind === 'none') return { events, kind };
 
   if (kind === 'swell') {
+    // One swell every two bars, lasting those two bars. 32 steps is two
+    // bars of 4/4; in 6/8 it was two and two-thirds, so each swell ran
+    // into the next. 5/4 keeps 32 until it gets its own pass.
+    const swellLen = metre === '6/8' ? 2 * spb : 32;
     for (let bar = 0; bar < spec.bars; bar += 2) {
       const slot = slotAt(harmony.slots, bar * spb, harmony.cycleSteps);
       events.push({
         step: bar * spb,
-        dur: 32,
+        dur: swellLen,
         notes: slot.notes.slice(0, 2).map((n) => n + 12),
         vel: 0.16 + r.f() * 0.1,
         kind: 'swell',
@@ -1701,11 +1730,17 @@ export function genGaps(spec) {
   if (!r.chance(0.18 + (c.airy ?? 0.2) * 0.5)) return [];
   const count = r.weighted([[1, 4], [2, 3], [3, 1.5]]);
   const gaps = [];
+  // In 6/8 a beat is a dotted crotchet, half the bar, not a quarter of it:
+  // counting quarters started gaps on 3 and 9, between the beats. A 6/8 gap
+  // is a beat, or one time in five the whole bar, as in 4/4, and starts on
+  // a beat. Same draws, mapped to the dotted beats.
+  const six8 = metreOf(spec) === '6/8';
+  const beat = six8 ? spb / 2 : spb / 4;
   for (let i = 0; i < count; i++) {
-    // A quarter, a half or a whole bar, landing on a beat.
-    const len = r.pick([spb / 4, spb / 4, spb / 2, spb / 2, spb]);
-    const beats = Math.max(1, Math.floor(total / (spb / 4)));
-    const start = r.int(1, beats - 1) * (spb / 4);
+    // In 4/4, a quarter, a half or a whole bar, landing on a beat.
+    const len = r.pick(six8 ? [beat, beat, beat, beat, spb] : [spb / 4, spb / 4, spb / 2, spb / 2, spb]);
+    const beats = Math.max(1, Math.floor(total / beat));
+    const start = r.int(1, beats - 1) * beat;
     if (start + len > total) continue;
     gaps.push({ start: Math.round(start), len: Math.round(len) });
   }
