@@ -1008,6 +1008,12 @@ export class Synth {
       case 'flute': {
         const breathy = name === 'flute';
         if (!this._budget(time, soft, VOICE_COST[name])) return;
+        // Both were 0.3, which put the ocarina 8.6 LU and the flute 6.9 LU over
+        // the melody layer's median at 0.4s notes (measure.mjs --voice all
+        // --note 0.4). Trimmed to the median, as the pluck and saw were. Tone
+        // and breath scale together, so the level moves and the mix inside
+        // the voice does not.
+        const level = breathy ? 0.1357 : 0.1115;
         const o = ctx.createOscillator();
         o.type = breathy ? 'triangle' : 'sine';
         // The vibrato below rides on detune, so the frequency param is free
@@ -1021,7 +1027,7 @@ export class Synth {
         vib.connect(vibAmt).connect(o.detune);
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(vel * 0.3, time + 0.05);
+        g.gain.linearRampToValueAtTime(vel * level, time + 0.05);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
         o.connect(g).connect(dest);
         // The shared noise buffer is two seconds long; a held note can be
@@ -1038,7 +1044,7 @@ export class Synth {
         bp.Q.value = 1.2;
         const ag = ctx.createGain();
         ag.gain.setValueAtTime(0.0001, time);
-        ag.gain.linearRampToValueAtTime(vel * (breathy ? 0.1 : 0.045), time + 0.06);
+        ag.gain.linearRampToValueAtTime(vel * level * (breathy ? 1 / 3 : 0.15), time + 0.06);
         ag.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
         air.connect(bp).connect(ag).connect(dest);
         o.start(time); vib.start(time);
@@ -1190,7 +1196,9 @@ export class Synth {
         lp.frequency.exponentialRampToValueAtTime(Math.max(300, f * 2.4), time + Math.max(0.2, dur * 0.7));
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.exponentialRampToValueAtTime(vel * 0.16, time + 0.03);
+        // Was 0.16: 3.6 LU over the melody layer's median at 0.4s notes.
+        // Trimmed to it; the timbre is untouched.
+        g.gain.exponentialRampToValueAtTime(vel * 0.1057, time + 0.03);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.18);
         for (const cents of [-7, 6]) {
           const o = ctx.createOscillator();
@@ -1681,7 +1689,9 @@ export class Synth {
         lp.frequency.exponentialRampToValueAtTime(Math.max(220, f * 1.6), time + Math.max(0.12, dur * 0.8));
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.exponentialRampToValueAtTime(vel * (whistle ? 0.22 : 0.2), time + 0.014);
+        // Were 0.22 and 0.2: the whistle 5.9 LU and the moog 5.4 LU over the
+        // melody layer's median at 0.4s notes. Trimmed to it; timbre untouched.
+        g.gain.exponentialRampToValueAtTime(vel * (whistle ? 0.1121 : 0.1069), time + 0.014);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.75, 0.1);
         o.connect(lp).connect(g).connect(dest);
         o.start(time); vib.start(time);
