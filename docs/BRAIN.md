@@ -321,8 +321,14 @@ restore the walk, swells, rolls and gaps; keep the hat accents and the
 shaker pairs (a tie, kept because they match the offbeat chords, which
 won 2 of 2 in #34 -- Mikey may veto).
 
-**The drum knob never happened** -- no PR, no branch. Brief re-issued
-2026-09-24; the drum level fix still waits on it. The hands found, and left, the
+**The drum knob, #42 (draft, never to merge) -- verified.** `?drums=<dB>`
+scales the drums channel's post-fader gain, so its reverb and echo sends
+move with it; clamped -8..+2; shown in Diagnostics; build stamp
+v38-knob; commit preview 59fb09f4. Listening: the Coming-in album at
+three levels (0, -2, -4 dB) as links A/B/C, rated as before (reach up /
+down / none, plus "thin" if the drums feel too weak). The level-to-link
+mapping stays out of this file until heard; the URLs themselves show the
+number, so blindness is best-effort. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
