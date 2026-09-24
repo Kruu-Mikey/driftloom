@@ -358,7 +358,15 @@ as heard) merged without an A/B, as agreed.
 pass; the generator is untouched. Blind A/B out on Coming-in between the
 commit previews 7ea31427 (v39, from the Workers check run -- #46 had no
 bot comment) and c4a8015f (v40), rated as the reach for the volume per
-track; which is X stays out of this file until heard. The hands found, and left, the
+track. X = v39, Y = v40. **Heard:** Mikey guessed Y was the new one (so not
+blind) and reached for the volume on none of its 14 tracks, against 5
+down-reaches on the same album at the same drum level in the knob test.
+The loudness complaint behind item 13 was the pluck and saw leads. Still
+measured loud and not yet trimmed (#24, 1.6 s notes, over the melody
+median): ocarina +6.8, flute +5.1, moog +3.9, whistle +3.4, analoglead
++2.5, all larger at 0.4 s. Flute drew a reach in 2 of 3 knob passes.
+Next after the fiddle pair: trim these the same way, with an A/B,
+since ocarina and whistle are sounds Mikey likes. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
