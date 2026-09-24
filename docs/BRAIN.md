@@ -326,9 +326,19 @@ scales the drums channel's post-fader gain, so its reverb and echo sends
 move with it; clamped -8..+2; shown in Diagnostics; build stamp
 v38-knob; commit preview 59fb09f4. Listening: the Coming-in album at
 three levels (0, -2, -4 dB) as links A/B/C, rated as before (reach up /
-down / none, plus "thin" if the drums feel too weak). The level-to-link
-mapping stays out of this file until heard; the URLs themselves show the
-number, so blindness is best-effort. The hands found, and left, the
+down / none, plus "thin" if the drums feel too weak). A = -2, B = -4,
+C = 0. **Heard -- the drum level is not the cause.** Down-reaches: 0 dB 5,
+-2 dB 7, -4 dB 8 plus an "up" on the quietest loop. The same four drum
+loops drew a reach at every level. The drumless loops were identical audio
+on all three links yet drew 1, 2 and 4 reaches, which is the test-retest
+noise; the level differences sit inside it. What the five loops flagged on
+every pass share is the **melody voice: pluck in four (nong-lu is
+drumless) and saw in one**; no loop never flagged plays either. #24's probe
+agrees (pluck +3.3, saw +4.4 LU over the melody median at 1.6 s notes,
+more at short ones). Pluck and saw live in dust and shatter, the
+drum-heaviest profiles -- which is why "drum loops" read loud. Drums stay
+at 0 dB; #42 closes unmerged. Next: trim pluck and saw at the source to
+the melody median at 0.4 s notes, level only, then A/B on Coming-in. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
