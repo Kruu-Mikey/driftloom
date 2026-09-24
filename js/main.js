@@ -8,11 +8,20 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v38';
+const BUILD = 'v38-knob';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
 let swState = 'unsupported';
+
+// Listening knob, never merged: ?drums=<dB> moves the drums channel by that
+// many dB, -8 to +2, so a level can be picked by ear on a commit preview.
+// Read once here; nothing in the UI, nothing saved.
+const DRUMS_ASKED = new URLSearchParams(location.search).get('drums');
+const DRUMS_DB = (() => {
+  const db = Number(DRUMS_ASKED);
+  return DRUMS_ASKED === null || !Number.isFinite(db) ? 0 : Math.max(-8, Math.min(2, db));
+})();
 // Curated stops rather than a linear range: 0 to 9999 on a slider gives you
 // no useful control at the short end, and short lengths are what anyone
 // actually sets. The top end still reaches well past a day on a two-bar loop.
@@ -67,6 +76,7 @@ function buildAudio() {
   if (state.media) state.media.dispose();
   if (state.synth) state.synth.dispose();
   state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full');
+  state.synth.trimChannel('drums', DRUMS_DB);
   // Route the mix through a media element so the phone gives us lock-screen
   // controls and stops treating us as an idle tab.
   state.media = new MediaBridge(state.ctx);
@@ -693,6 +703,9 @@ function wire() {
     const lines = [];
     const push = (o) => { for (const [k, v] of Object.entries(o)) lines.push(`${k}: ${v}`); };
     lines.push(`build: ${BUILD}`);
+    const drumsGain = state.synth ? state.synth.channels.drums.base.gain.toFixed(3) : 'not built yet';
+    lines.push(`drums knob: ${DRUMS_DB >= 0 ? '+' : ''}${DRUMS_DB} dB`
+      + ` (asked ${DRUMS_ASKED === null ? 'nothing' : `"${DRUMS_ASKED}"`}; drums gain ${drumsGain})`);
     lines.push(`ua: ${navigator.userAgent}`);
     lines.push(`standalone: ${window.matchMedia('(display-mode: standalone)').matches}`);
     // Registration failures are swallowed so they cannot break the app, which

@@ -445,6 +445,15 @@ export class Synth {
     this.echo.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
   }
 
+  // Listening knob, never merged: move one channel's level by `db`. The
+  // base is what setMute restores, so it moves with it.
+  trimChannel(layer, db) {
+    const ch = this.channels[layer];
+    if (!ch || !db) return;
+    ch.base = { ...ch.base, gain: ch.base.gain * Math.pow(10, db / 20) };
+    ch.gain.gain.value = ch.base.gain;
+  }
+
   setMute(layer, muted) {
     const ch = this.channels[layer];
     if (!ch) return;
