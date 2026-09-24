@@ -621,12 +621,12 @@ const DUB = {
 };
 
 // The walk's notes, [step, length] from the slot's start: one per beat in
-// 4/4. 6/8 walked four dotted eighths, [0,3,6,9], which reads the bar as
-// 2/4; it now walks the jig's lilt, a crotchet and a quaver to each dotted
-// beat. Four notes either way, so the walk draws what it always drew.
+// 4/4. In twelve steps it walks four dotted eighths, 2/4 against the 6/8.
+// The jig's lilt, [0,4,6,10], was tried in v38 and the cross-rhythm won
+// the blind A/B: only the chords want to be strictly 6/8.
 const WALK = {
   '4/4': [[0, 3], [4, 3], [8, 3], [12, 3]],
-  '6/8': [[0, 4], [4, 2], [6, 4], [10, 2]],
+  '6/8': [[0, 3], [3, 3], [6, 3], [9, 3]],
 };
 
 function genBass(spec, harmony) {
@@ -1312,15 +1312,14 @@ function genDrums(spec) {
     // repeats. This is the gesture that makes chopped breaks read as
     // chopped rather than merely fast.
     //
-    // A roll fills one beat. In 6/8 that is a dotted beat, six steps, and
-    // the roll starts on one of the two, so it runs into the next beat
-    // rather than across it. Same draw for where, mapped to a beat.
+    // A roll spans four steps and starts anywhere, in every metre. Filling
+    // a dotted beat in 6/8 was tried in v38 and lost the blind A/B to this.
     if (c.rolls && r.chance(c.rolls)) {
-      const from = metre === '6/8' ? r.int(0, 1) * beat : r.int(0, spb - 4);
+      const from = r.int(0, spb - 4);
       const count = r.pick([3, 4, 6, 8]);
       const inst = r.pick(['snare', 'rim', 'hat', 'kick']);
       for (let k = 0; k < count; k++) {
-        const step = b + from + Math.floor((k * beat) / count);
+        const step = b + from + Math.floor((k * 4) / count);
         if (step >= b + spb) break;
         events.push({
           step,
@@ -1348,7 +1347,6 @@ function genDrums(spec) {
 function genTexture(spec, harmony) {
   const r = new Rng(spec.layerSeeds.texture);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
-  const metre = metreOf(spec);
   const total = spec.bars * spb;
   const mood = feelForLayer(spec, 'texture').lift;
   // No birdsong. Wherever this gets played there are already real birds, and
@@ -1361,15 +1359,11 @@ function genTexture(spec, harmony) {
   if (kind === 'none') return { events, kind };
 
   if (kind === 'swell') {
-    // One swell every two bars, lasting those two bars. 32 steps is two
-    // bars of 4/4; in 6/8 it was two and two-thirds, so each swell ran
-    // into the next. 5/4 keeps 32 until it gets its own pass.
-    const swellLen = metre === '6/8' ? 2 * spb : 32;
     for (let bar = 0; bar < spec.bars; bar += 2) {
       const slot = slotAt(harmony.slots, bar * spb, harmony.cycleSteps);
       events.push({
         step: bar * spb,
-        dur: swellLen,
+        dur: 32,
         notes: slot.notes.slice(0, 2).map((n) => n + 12),
         vel: 0.16 + r.f() * 0.1,
         kind: 'swell',
@@ -1730,17 +1724,11 @@ export function genGaps(spec) {
   if (!r.chance(0.18 + (c.airy ?? 0.2) * 0.5)) return [];
   const count = r.weighted([[1, 4], [2, 3], [3, 1.5]]);
   const gaps = [];
-  // In 6/8 a beat is a dotted crotchet, half the bar, not a quarter of it:
-  // counting quarters started gaps on 3 and 9, between the beats. A 6/8 gap
-  // is a beat, or one time in five the whole bar, as in 4/4, and starts on
-  // a beat. Same draws, mapped to the dotted beats.
-  const six8 = metreOf(spec) === '6/8';
-  const beat = six8 ? spb / 2 : spb / 4;
   for (let i = 0; i < count; i++) {
-    // In 4/4, a quarter, a half or a whole bar, landing on a beat.
-    const len = r.pick(six8 ? [beat, beat, beat, beat, spb] : [spb / 4, spb / 4, spb / 2, spb / 2, spb]);
-    const beats = Math.max(1, Math.floor(total / beat));
-    const start = r.int(1, beats - 1) * beat;
+    // A quarter, a half or a whole bar, landing on a beat.
+    const len = r.pick([spb / 4, spb / 4, spb / 2, spb / 2, spb]);
+    const beats = Math.max(1, Math.floor(total / (spb / 4)));
+    const start = r.int(1, beats - 1) * (spb / 4);
     if (start + len > total) continue;
     gaps.push({ start: Math.round(start), len: Math.round(len) });
   }
