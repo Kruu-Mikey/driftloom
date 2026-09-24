@@ -350,8 +350,15 @@ drumless) and saw in one**; no loop never flagged plays either. #24's probe
 agrees (pluck +3.3, saw +4.4 LU over the melody median at 1.6 s notes,
 more at short ones). Pluck and saw live in dust and shatter, the
 drum-heaviest profiles -- which is why "drum loops" read loud. Drums stay
-at 0 dB; #42 closes unmerged. Next: trim pluck and saw at the source to
-the melody median at 0.4 s notes, level only, then A/B on Coming-in. The hands found, and left, the
+at 0 dB; #42 closes unmerged. v39 (#46, the 6/8 rhythm section restored
+as heard) merged without an A/B, as agreed.
+
+**#48, v40 -- verified.** The diff is the two gain constants only (saw
+0.28 -> 0.142, -5.9 dB; pluck 0.16 -> 0.095, -4.5 dB); tests and `--check`
+pass; the generator is untouched. Blind A/B out on Coming-in between the
+commit previews 7ea31427 (v39, from the Workers check run -- #46 had no
+bot comment) and c4a8015f (v40), rated as the reach for the volume per
+track; which is X stays out of this file until heard. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
