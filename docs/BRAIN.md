@@ -378,7 +378,23 @@ Costs measured (fiddle 24, accordion 23). Open concern: on lite, one
 fiddle-over-pad loop (koun-nuing) now loses 38% of its melody; a cheaper
 lite fiddle without the rosin noise is the likely fix, later. Album
 "Fiddle and accordion" (6 tracks: 3 fiddle leads, 1 accordion lead, 2
-accordion chords) out for keep / tune / drop, not blind. The hands found, and left, the
+accordion chords) out for keep / tune / drop, not blind. The failed
+deploy was Cloudflare's: a retry passed on the same commit; #51 merged
+and the live site now serves v41.
+
+**#53, v42, the other five leads -- verified.** The diff is the five gain
+constants; ocarina and flute scale tone and breath together, so their
+breath ratios (0.15, 1/3) hold. Trims at 0.4 s: ocarina -8.6, flute -6.9,
+whistle -5.9, moog -5.4, analoglead -3.6 dB. Watch-point from the hands:
+the catalogue range widens 6.4 -> 6.9 LU and drumless loops get 0.8 LU
+quieter, so the quiet end needs an ear. Blind A/B "Softer winds" (8
+tracks: 2 ocarina, 2 whistle, flute, moog, analoglead, and a kalimba
+control) between the commit previews f1d4bdd0 (v42) and efb9a0c5 (v41);
+which is X stays out of this file until heard.
+
+**Next build: `tide`, part 1** -- the profile itself with existing voices,
+folk progressions, the drone, and a 3/4 reading of 12 steps, tempo and
+metre drawn together. Brief written 2026-09-24. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
