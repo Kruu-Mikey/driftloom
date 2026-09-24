@@ -366,7 +366,19 @@ measured loud and not yet trimmed (#24, 1.6 s notes, over the melody
 median): ocarina +6.8, flute +5.1, moog +3.9, whistle +3.4, analoglead
 +2.5, all larger at 0.4 s. Flute drew a reach in 2 of 3 knob passes.
 Next after the fiddle pair: trim these the same way, with an A/B,
-since ocarina and whistle are sounds Mikey likes. The hands found, and left, the
+since ocarina and whistle are sounds Mikey likes.
+
+**#51, v41, fiddle and accordion -- checked locally.** The code parses, the
+tests pass, `--check` passes on the re-baselined file, and glade's pools
+change only by the three added entries. Its Cloudflare deploy failed with
+no log four minutes in, while main deployed fine 20 minutes earlier:
+infrastructure, most likely. Since merging is fine, the plan is to merge
+and listen on the live site; if main's deploy also fails, it is real.
+Costs measured (fiddle 24, accordion 23). Open concern: on lite, one
+fiddle-over-pad loop (koun-nuing) now loses 38% of its melody; a cheaper
+lite fiddle without the rosin noise is the likely fix, later. Album
+"Fiddle and accordion" (6 tracks: 3 fiddle leads, 1 accordion lead, 2
+accordion chords) out for keep / tune / drop, not blind. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
