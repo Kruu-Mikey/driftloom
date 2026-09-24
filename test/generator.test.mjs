@@ -105,6 +105,34 @@ check('drift never edits the pattern it was given', (() => {
 })());
 
 // ---------------------------------------------------------------------
+console.log('\nTide');
+
+// Tempo and metre are drawn together, so a twelve-step tide loop at waltz
+// tempo is a waltz, and one at jig tempo is a jig.
+const tides = [];
+for (let i = 0; tides.length < 400 && i < 20000; i++) {
+  const spec = newSpec(randomSeed());
+  const lead = Object.entries(spec.mix).sort((x, y) => y[1] - x[1])[0][0];
+  if (lead === 'tide') tides.push({ spec, p: render(spec) });
+}
+check('tide loops keep tempo and metre together', tides.length === 400 && tides.every(({ spec }) => (spec.stepsPerBar === 16
+  ? spec.bpm >= 112 && spec.bpm <= 136
+  : (spec.bpm >= 84 && spec.bpm <= 104) || (spec.bpm >= 112 && spec.bpm <= 140))));
+const waltzes = tides.filter(({ spec }) => spec.stepsPerBar === 12 && spec.bpm <= 104);
+check('a tide waltz leaves the downbeat to the bass', waltzes.length > 50 && waltzes.every(({ p }) => p.harmony.events
+  .filter((e) => e.notes.length > 1)
+  .every((e) => [4, 6, 8, 10].includes(e.step % 12))), `${waltzes.length} waltzes`);
+const drones = tides.filter(({ p }) => p.meta.bassStyle === 'drone');
+// The form may still silence the bass for a section; what it silences is
+// the drone, held from every downbeat through its bar.
+check('a drone is struck on every downbeat and held through the bar', drones.length > 60 && drones.every(({ spec, p }) => {
+  const spb = spec.stepsPerBar;
+  const bass = p.tracks.bass;
+  return bass.every((e) => e.step % spb === 0 && e.dur === spb - 1)
+    && new Set(bass.map((e) => e.step)).size === spec.bars;
+}), `${drones.length} drones`);
+
+// ---------------------------------------------------------------------
 console.log('\nNames');
 
 const names = new Set();

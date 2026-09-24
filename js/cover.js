@@ -55,6 +55,7 @@ const STYLE_BIAS = {
   grove: ['cells', 'strata'],
   hollow: ['clouds', 'flow'],
   shrine: ['rings', 'water'],
+  tide: ['waves', 'water'],
 };
 
 // Compositions. This is the part that was missing: where the picture *is*,
