@@ -93,6 +93,9 @@ These are stated decisions, not inferences.
   ear and fixed at the source, never by a limiter or compressor on the mix
   (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
+- **The north star for tone (2026-09-25): pleasant.** Things should sound
+  pleasant generally: nothing that would bother people in a coffee shop.
+  Harsh, buzzy or toy-like timbres fail this whatever their level.
 - **How we work now (2026-09-24): the middle path.** Mikey's ears were
   becoming the bottleneck. Blind A/Bs only for changes that alter sounds he
   already likes; new sounds get one short album rated keep / tune / drop.
@@ -390,7 +393,12 @@ the catalogue range widens 6.4 -> 6.9 LU and drumless loops get 0.8 LU
 quieter, so the quiet end needs an ear. Blind A/B "Softer winds" (8
 tracks: 2 ocarina, 2 whistle, flute, moog, analoglead, and a kalimba
 control) between the commit previews f1d4bdd0 (v42) and efb9a0c5 (v41);
-which is X stays out of this file until heard.
+X = v42. **Heard:** the kalimba control "same"
+(a good sign); the trimmed version preferred on flute, moog, analoglead
+and a drumless ocarina; "same" on both whistles; the old, louder version
+preferred only on the ocarina *over drums*. Kept v42. Watch-point:
+ocarina took the biggest trim (-8.6 dB); if it comes up buried under
+drums again, ease it back 2-3 dB.
 
 **"Fiddle and accordion", heard: tune, both.** The fiddle is harsh,
 robotic, grating; the accordion rough; together "a toy fiddle and
