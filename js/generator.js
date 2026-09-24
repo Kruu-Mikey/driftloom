@@ -403,12 +403,6 @@ function metreOf(spec) {
 // Each entry is a bar's worth of hits: [startStep, durationInSteps]. One
 // table per metre, and a name means the same thing in every table; only the
 // steps move. A metre without a table of its own borrows 4/4's, cut to fit.
-//
-// 6/8 used to be that borrowing too, the 4/4 bar cut off at step 12. That
-// put the offbeat's middle hit on the second beat, the least offbeat place
-// in the bar; left the backbeat as one hit on a weak eighth; made breathe
-// hold the whole bar, so it was a second pad; and let the pad and the late
-// bloom ring four steps into the next bar.
 const CHORD_RHYTHMS = {
   // Beats at 0, 4, 8 and 12.
   '4/4': {
@@ -421,23 +415,33 @@ const CHORD_RHYTHMS = {
     stutter: [[0, 2], [3, 2], [8, 3]],
   },
   // Two dotted beats at 0 and 6, each three eighths: 0, 2, 4 and 6, 8, 10.
-  // Jigs and shanties, not 4/4 stretched to fit.
+  //
+  // Settled by ear, in a blind A/B against the 4/4 table cut off at step
+  // 12, which is what 6/8 played before v36. Chords move on the two dotted
+  // beats and hold, and figures between the beats are welcome; an entry on
+  // the weak eighth tied over the second beat, or a chord cut short, is
+  // not. So offbeat and stutter are 6/8's own, and the rest play what the
+  // cut 4/4 table played, stopped at the bar line where it rang past it.
   '6/8': {
-    // Holds the bar, and only the bar.
+    // Holds the bar, and only the bar: 4/4's hold rang four steps into the
+    // next one.
     pad: [[0, 12]],
-    // Lets go for the last eighth, so the next chord comes out of a breath.
-    breathe: [[0, 10]],
-    // 6/8 has one backbeat, the second dotted beat, and the stab lands there.
-    twoAndFour: [[6, 3]],
-    // A crotchet, then the first beat's last eighth tied over the second.
-    pushed: [[0, 4], [4, 8]],
+    // Holds the bar as well. Letting go for the last eighth was heard as a
+    // chord cut short.
+    breathe: [[0, 12]],
+    // One stab on the first beat's last eighth. A stab on the second beat
+    // was the narrowest verdict in the A/B, and lost.
+    twoAndFour: [[4, 3]],
+    // Struck on both beats. Anticipating the second on the eighth before it
+    // was heard as a weak-eighth entry tied over the beat.
+    pushed: [[0, 6], [6, 4]],
     // The two eighths after each beat: the jig's "pah-pah" under the kick's
     // "oom".
     offbeat: [[2, 2], [4, 2], [8, 2], [10, 2]],
-    // Comes in on that same tied eighth and holds to the bar line.
-    lateBloom: [[4, 8]],
-    // The same catch at the top, a dotted eighth apart, landing on the
-    // second beat instead of 4/4's third.
+    // Comes in on the second beat and holds to the bar line, not past it.
+    lateBloom: [[6, 6]],
+    // The same catch at the top as 4/4's, a dotted eighth apart, landing on
+    // the second beat.
     stutter: [[0, 2], [3, 2], [6, 3]],
   },
 };
@@ -538,20 +542,11 @@ function genHarmony(spec) {
 
     // Hit positions are written relative to the chord's own slot, so a
     // half-bar change gets its own attack instead of borrowing the bar's.
-    //
-    // In 4/4 half a bar is two beats, and the second strike is on the
-    // second. In 6/8 it is a single dotted beat with no second beat to
-    // strike, so the second strike is that beat's last eighth: the
-    // crotchet-quaver lilt, with the first strike letting go for it.
-    let hits;
-    if (chordsPerBar === 2) {
-      const once = r.chance(0.5);
-      hits = metre === '6/8'
-        ? (once ? [[0, slotLen]] : [[0, 4], [4, 2]])
-        : [[0, slotLen], [4, slotLen - 4]].slice(0, once ? 1 : 2);
-    } else {
-      hits = (CHORD_RHYTHMS[metre] || CHORD_RHYTHMS['4/4'])[rhythmName].filter(([st]) => st < spb);
-    }
+    // The first strike rings through the second in every metre; in 6/8,
+    // letting it go for the second was heard as a chord cut short.
+    const hits = chordsPerBar === 2
+      ? [[0, slotLen], [4, slotLen - 4]].slice(0, r.chance(0.5) ? 1 : 2)
+      : (CHORD_RHYTHMS[metre] || CHORD_RHYTHMS['4/4'])[rhythmName].filter(([st]) => st < spb);
 
     for (const [hitStep, dur] of hits) {
       const step = startStep + hitStep;
@@ -668,10 +663,11 @@ function genBass(spec, harmony) {
       }
     } else if (style === 'dub') {
       const [[, held], [answer, answerLen], [pickup, pickupLen]] = DUB[metre] || DUB['4/4'];
-      // 6/8's half-bar slot is one dotted beat, with no room after it for
-      // the answer or the pickup. They are drawn all the same, so the stream
-      // does not move, and simply not placed. 4/4 is left as it was.
-      const fits = (at) => metre !== '6/8' || at < len;
+      // A half-bar slot has no room after the root for the answer or the
+      // pickup. Placed anyway, they sounded under the next chord on this
+      // chord's root. They are drawn all the same, so the stream does not
+      // move, and simply not placed.
+      const fits = (at) => at < len;
       place(slot.startStep, held, base, 0.72);
       if (r.chance(0.7)) {
         const glide = r.chance(0.4);

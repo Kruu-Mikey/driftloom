@@ -171,8 +171,11 @@ Notes worth knowing if you go digging:
   name -- pad, breathe, backbeat, pushed, offbeat, late bloom, stutter --
   and each metre has its own table, so in 6/8 the offbeat is the jig's
   "pah-pah" on the eighths between the two dotted beats rather than 4/4's
-  pattern cut off at step 12. Tables are keyed by metre, not step count,
-  because a waltz will read the same twelve steps as 3/4.
+  pattern cut off at step 12. The rest of the 6/8 table was settled by ear:
+  chords move on the two dotted beats and hold, figures between the beats
+  are welcome, and a weak-eighth entry tied over the second beat or a chord
+  cut short is not. Tables are keyed by metre, not step count, because a
+  waltz will read the same twelve steps as 3/4.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like
