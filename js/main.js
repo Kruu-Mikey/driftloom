@@ -8,7 +8,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v36';
+const BUILD = 'v37';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
