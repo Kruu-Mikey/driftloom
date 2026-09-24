@@ -280,8 +280,18 @@ level bugs (#26), the balance lock (#30) and the punch figure (#31) are
 done.
 
 0. The drum listening knob, a draft preview never merged as a knob.
-   Beside it, item 14a (generator, v36), which also re-baselines the
-   balance lock at n=10000.
+
+**#34, item 14a, v36 -- verified.** Rendering 4000 loops on the old and new
+generator: every 16- and 20-step loop identical, 1102 of 1108 12-step loops
+changed. Tests pass, `--check` passes against the new n=10000 baseline.
+A/B album "Six eight" (8 twelve-step loops, one per chord pattern, mostly
+glade) sent blind as X = v35 commit preview (58c203b4), Y = v36 commit
+preview (dc190634); the key is X = v35. The hands found, and left, the
+other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
+on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
+the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
+bug (1.6% of loops), 5/4 on the 4/4 chord table, and arpeggios running
+past the bar. A 6/8 follow-up brief waits for the A/B verdict.
 
 1. (done: lock and punch figure)
 2. Item 14a, the 6/8 accompaniment, A/B'd on existing codes.
