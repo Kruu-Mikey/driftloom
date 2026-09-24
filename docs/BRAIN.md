@@ -298,9 +298,18 @@ offbeat, stutter and pad; restore the old hits for the rest.
 12-step chord hits differing from v35 are the 165 offbeat and stutter
 loops kept from v36; every other layer of every 12-step loop matches v36;
 16- and 20-step loops differ from v36 only in the bass of 47 loops (the
-dub fix). Tests and `--check` pass, baseline unmoved. Next: the 6/8
-drums, walking bass and swells, one PR, A/B'd blind against v37's commit
-preview (f0e6ef84). The hands found, and left, the
+dub fix). Tests and `--check` pass, baseline unmoved.
+
+**#40, v38 -- verified, merged before its A/B.** 4000 loops against v37:
+every 16- and 20-step loop identical; in 12-step loops the base kicks and
+snares are unchanged (the moved kick hits are all roll hits, now one beat
+long). Tests and `--check` pass on the re-baselined file. The A/B went
+out afterwards as "Six eight, part two" (8 twelve-step loops, one per
+changed part), blind between the commit previews 53614cef (v38) and
+f0e6ef84 (v37); which is X stays out of this file until heard.
+
+**The drum knob never happened** -- no PR, no branch. Brief re-issued
+2026-09-24; the drum level fix still waits on it. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
