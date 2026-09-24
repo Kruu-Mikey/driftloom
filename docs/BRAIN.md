@@ -392,6 +392,20 @@ tracks: 2 ocarina, 2 whistle, flute, moog, analoglead, and a kalimba
 control) between the commit previews f1d4bdd0 (v42) and efb9a0c5 (v41);
 which is X stays out of this file until heard.
 
+**"Fiddle and accordion", heard: tune, both.** The fiddle is harsh,
+robotic, grating; the accordion rough; together "a toy fiddle and
+accordion played badly by a child". The brief's own design choices are
+the likely cause: a raw sawtooth source with a per-note filter sweep (the
+family the lead audition already called harsh), attacks sized for long
+notes (80-120 ms bow, 150 ms bellows) on melody notes whose median is
+0.35 s, a perfectly regular vibrato, two raw saws beating 12 cents apart,
+and rosin noise. Take two rebuilds the timbre: a softer shaped source
+with fixed body resonances, attacks that scale with note length,
+slurred legato, a drifting vibrato, closer reeds, little or no bow noise
+(which also cheapens the lite fiddle). Yardstick: the tone probe's
+2-5 kHz share must land among voices Mikey likes (ocarina, flute, harp,
+kalimba), not the harsh leads. Same album afterwards.
+
 **Next build: `tide`, part 1** -- the profile itself with existing voices,
 folk progressions, the drone, and a 3/4 reading of 12 steps, tempo and
 metre drawn together. Brief written 2026-09-24. The hands found, and left, the
