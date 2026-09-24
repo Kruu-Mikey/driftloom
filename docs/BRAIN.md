@@ -93,6 +93,9 @@ These are stated decisions, not inferences.
   ear and fixed at the source, never by a limiter or compressor on the mix
   (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
+- **Merging before an A/B is fine** (2026-09-24). Production is seen by
+  testers only and a merge can be reverted, so sound-change PRs may merge
+  whenever Mikey likes; the A/B runs on the two commit previews either way.
 - **Old share codes, saved loops and albums may change or break** while the
   app is in testing (2026-09-23). Compatibility is not a constraint on any
   change. Keeping draws stable is still worth it where it costs nothing,
@@ -306,7 +309,17 @@ snares are unchanged (the moved kick hits are all roll hits, now one beat
 long). Tests and `--check` pass on the re-baselined file. The A/B went
 out afterwards as "Six eight, part two" (8 twelve-step loops, one per
 changed part), blind between the commit previews 53614cef (v38) and
-f0e6ef84 (v37); which is X stays out of this file until heard.
+f0e6ef84 (v37), X = v38. **Heard:** the old version won on the swells,
+a walking bass, the rolls and the gaps; a second walk was "same"; the
+new hi-hat accents won; the shaker split one each (bloom old, shatter
+new). Tracks were picked by the part that changed most, but a loop can
+carry several changes, so each verdict is on a bundle. The lesson, and
+it refines the #34 rule: the chords wanted to sit in 6/8 because they
+were plainly off, but in the rhythm section the old cross-rhythm reading
+of 12 steps -- 3/4 and 2/4 against the 6/8 -- is liked. Follow-up v39:
+restore the walk, swells, rolls and gaps; keep the hat accents and the
+shaker pairs (a tie, kept because they match the offbeat chords, which
+won 2 of 2 in #34 -- Mikey may veto).
 
 **The drum knob never happened** -- no PR, no branch. Brief re-issued
 2026-09-24; the drum level fix still waits on it. The hands found, and left, the
