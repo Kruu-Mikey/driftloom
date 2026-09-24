@@ -56,8 +56,9 @@ export const CHARACTERS = {
     ],
     drums: 0.72,
     hatDensity: [0.1, 0.5],
-    chordVoices: [['harp', 4], ['keys', 2], ['pad', 2]],
-    melodyVoices: [['ocarina', 4], ['flute', 2.5], ['harp', 2], ['musicbox', 1]],
+    // Fiddle and accordion are item 14b's folk voices, pair one.
+    chordVoices: [['harp', 4], ['keys', 2], ['pad', 2], ['accordion', 1.5]],
+    melodyVoices: [['ocarina', 4], ['flute', 2.5], ['harp', 2], ['musicbox', 1], ['fiddle', 3], ['accordion', 1]],
     bassStyles: [['held', 3], ['pulse', 2], ['walk', 2], ['sparse', 1]],
     bassVoices: [['pluckbass', 3], ['round', 3], ['sub', 1.5], ['fifths', 1]],
     textures: [['bells', 3], ['chime', 2.5], ['swell', 2], ['drops', 1], ['wind', 0.4], ['none', 1.5]],
