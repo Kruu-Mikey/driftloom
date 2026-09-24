@@ -285,8 +285,9 @@ done.
 generator: every 16- and 20-step loop identical, 1102 of 1108 12-step loops
 changed. Tests pass, `--check` passes against the new n=10000 baseline.
 A/B album "Six eight" (8 twelve-step loops, one per chord pattern, mostly
-glade) sent blind as X = v35 commit preview (58c203b4), Y = v36 commit
-preview (dc190634); the key is X = v35. The hands found, and left, the
+glade) sent blind as two commit previews, 58c203b4 (v35) and dc190634 (v36),
+labelled X and Y; which is which stays out of this file until Mikey has
+answered. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
