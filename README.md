@@ -167,6 +167,12 @@ Notes worth knowing if you go digging:
   likely follows the loop's energy and lift, so a joyful loop gets a
   bouncier figure and a reflective one gets long notes. Pitch is a random
   walk laid over whatever the cell decided.
+- **The chords keep time in their own metre.** A chord rhythm is drawn by
+  name -- pad, breathe, backbeat, pushed, offbeat, late bloom, stutter --
+  and each metre has its own table, so in 6/8 the offbeat is the jig's
+  "pah-pah" on the eighths between the two dotted beats rather than 4/4's
+  pattern cut off at step 12. Tables are keyed by metre, not step count,
+  because a waltz will read the same twelve steps as 3/4.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like

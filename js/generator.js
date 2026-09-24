@@ -391,15 +391,55 @@ const SHAPES_PENT = [
   [0, 2, 3, 1],
 ];
 
+// How a bar is counted. The step count alone cannot say: twelve steps are
+// 6/8 today, and a waltz will want to read the same twelve as 3/4 (item
+// 14c). That reading gets its own name and its own tables; it does not
+// reinterpret the 6/8 ones.
+function metreOf(spec) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  return spb === 12 ? '6/8' : spb === 20 ? '5/4' : '4/4';
+}
+
+// Each entry is a bar's worth of hits: [startStep, durationInSteps]. One
+// table per metre, and a name means the same thing in every table; only the
+// steps move. A metre without a table of its own borrows 4/4's, cut to fit.
+//
+// 6/8 used to be that borrowing too, the 4/4 bar cut off at step 12. That
+// put the offbeat's middle hit on the second beat, the least offbeat place
+// in the bar; left the backbeat as one hit on a weak eighth; made breathe
+// hold the whole bar, so it was a second pad; and let the pad and the late
+// bloom ring four steps into the next bar.
 const CHORD_RHYTHMS = {
-  // Each entry is a bar's worth of hits: [startStep, durationInSteps]
-  pad: [[0, 16]],
-  breathe: [[0, 12]],
-  twoAndFour: [[4, 3], [12, 3]],
-  pushed: [[0, 6], [6, 4], [12, 3]],
-  offbeat: [[2, 2], [6, 2], [10, 2], [14, 2]],
-  lateBloom: [[6, 10]],
-  stutter: [[0, 2], [3, 2], [8, 3]],
+  // Beats at 0, 4, 8 and 12.
+  '4/4': {
+    pad: [[0, 16]],
+    breathe: [[0, 12]],
+    twoAndFour: [[4, 3], [12, 3]],
+    pushed: [[0, 6], [6, 4], [12, 3]],
+    offbeat: [[2, 2], [6, 2], [10, 2], [14, 2]],
+    lateBloom: [[6, 10]],
+    stutter: [[0, 2], [3, 2], [8, 3]],
+  },
+  // Two dotted beats at 0 and 6, each three eighths: 0, 2, 4 and 6, 8, 10.
+  // Jigs and shanties, not 4/4 stretched to fit.
+  '6/8': {
+    // Holds the bar, and only the bar.
+    pad: [[0, 12]],
+    // Lets go for the last eighth, so the next chord comes out of a breath.
+    breathe: [[0, 10]],
+    // 6/8 has one backbeat, the second dotted beat, and the stab lands there.
+    twoAndFour: [[6, 3]],
+    // A crotchet, then the first beat's last eighth tied over the second.
+    pushed: [[0, 4], [4, 8]],
+    // The two eighths after each beat: the jig's "pah-pah" under the kick's
+    // "oom".
+    offbeat: [[2, 2], [4, 2], [8, 2], [10, 2]],
+    // Comes in on that same tied eighth and holds to the bar line.
+    lateBloom: [[4, 8]],
+    // The same catch at the top, a dotted eighth apart, landing on the
+    // second beat instead of 4/4's third.
+    stutter: [[0, 2], [3, 2], [6, 3]],
+  },
 };
 
 function genHarmony(spec) {
@@ -412,6 +452,7 @@ function genHarmony(spec) {
   // loops that are not choirs byte-identical.
   const choir = choirOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const metre = metreOf(spec);
   const scale = SCALES[spec.scale].steps;
   const pentatonic = scale.length <= 5;
   const shapePool = pentatonic ? SHAPES_PENT : SHAPES_7;
@@ -497,9 +538,20 @@ function genHarmony(spec) {
 
     // Hit positions are written relative to the chord's own slot, so a
     // half-bar change gets its own attack instead of borrowing the bar's.
-    const hits = chordsPerBar === 2
-      ? [[0, slotLen], [4, slotLen - 4]].slice(0, r.chance(0.5) ? 1 : 2)
-      : CHORD_RHYTHMS[rhythmName].filter(([st]) => st < spb);
+    //
+    // In 4/4 half a bar is two beats, and the second strike is on the
+    // second. In 6/8 it is a single dotted beat with no second beat to
+    // strike, so the second strike is that beat's last eighth: the
+    // crotchet-quaver lilt, with the first strike letting go for it.
+    let hits;
+    if (chordsPerBar === 2) {
+      const once = r.chance(0.5);
+      hits = metre === '6/8'
+        ? (once ? [[0, slotLen]] : [[0, 4], [4, 2]])
+        : [[0, slotLen], [4, slotLen - 4]].slice(0, once ? 1 : 2);
+    } else {
+      hits = (CHORD_RHYTHMS[metre] || CHORD_RHYTHMS['4/4'])[rhythmName].filter(([st]) => st < spb);
+    }
 
     for (const [hitStep, dur] of hits) {
       const step = startStep + hitStep;
@@ -562,10 +614,22 @@ function layerSpec(spec, layer) {
 
 // --------------------------------------------------------------- bass
 
+// Dub's three notes, [step, length] from the slot's start: the root, then
+// room for the drop (4/4's third beat, 6/8's second), an answer just after
+// it, and a pickup a third, fourth or fifth up into the next bar. 6/8 used
+// 4/4's steps, which held the answer over the bar line and put the pickup
+// at 14, past the end of a twelve-step bar, where it landed on the next
+// bar's second eighth, under the next chord.
+const DUB = {
+  '4/4': [[0, 6], [10, 4], [14, 2]],
+  '6/8': [[0, 4], [8, 2], [10, 2]],
+};
+
 function genBass(spec, harmony) {
   const r = new Rng(spec.layerSeeds.bass);
   const c = characterOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const metre = metreOf(spec);
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
   const style = forced(spec, 'bass')
@@ -603,9 +667,20 @@ function genBass(spec, harmony) {
           g > 0 && r.chance(glideChance));
       }
     } else if (style === 'dub') {
-      place(slot.startStep, 6, base, 0.72);
-      if (r.chance(0.7)) place(slot.startStep + 10, 4, base, 0.5, r.chance(0.4));
-      if (r.chance(0.35)) place(slot.startStep + 14, 2, base + r.pick([3, 5, 7]), 0.4);
+      const [[, held], [answer, answerLen], [pickup, pickupLen]] = DUB[metre] || DUB['4/4'];
+      // 6/8's half-bar slot is one dotted beat, with no room after it for
+      // the answer or the pickup. They are drawn all the same, so the stream
+      // does not move, and simply not placed. 4/4 is left as it was.
+      const fits = (at) => metre !== '6/8' || at < len;
+      place(slot.startStep, held, base, 0.72);
+      if (r.chance(0.7)) {
+        const glide = r.chance(0.4);
+        if (fits(answer)) place(slot.startStep + answer, answerLen, base, 0.5, glide);
+      }
+      if (r.chance(0.35)) {
+        const interval = r.pick([3, 5, 7]);
+        if (fits(pickup)) place(slot.startStep + pickup, pickupLen, base + interval, 0.4);
+      }
     } else if (style === 'walk') {
       const steps = (spb === 12 ? [0, 3, 6, 9] : [0, 4, 8, 12]).filter((s) => s < len);
       steps.forEach((s, i) => {
