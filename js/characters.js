@@ -454,7 +454,10 @@ export const CHARACTERS = {
   cinder: {
     label: 'Cinder',
     weight: 1.4,
-    level: 0.8,
+    // Measured, not guessed: at 0.8 the loops cinder leads came out 1.7 LU
+    // over the catalogue median (measure.mjs --profile cinder --n 60
+    // against --n 100); this is the level that puts their mean on it.
+    level: 0.63,
     bpm: [120, 150],
     stepsPerBar: [[12, 8], [16, 2]],
     gaits: [
@@ -468,6 +471,8 @@ export const CHARACTERS = {
       ['phrygianDominant', 3], ['harmonicMinor', 2.5], ['aeolian', 2], ['dorian', 1.5],
       ['phrygian', 1.5],
     ],
+    // 0.95 so that drums play in about nine loops in ten of those cinder
+    // leads: the rest of a blend pulls the figure down (89% measured).
     drums: 0.95,
     kits: [['hand', 4], ['tape', 1], ['brush', 1]],
     hatDensity: [0.3, 0.7],
