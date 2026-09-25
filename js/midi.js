@@ -43,6 +43,12 @@ const GM_DRUMS = {
   hat: 42,
   ohat: 46,
   shaker: 70,
+  // The hand kit, on the nearest pads General MIDI has: congas for the
+  // frame drum's low note and tap, the tambourine for the zils.
+  frame: 64,
+  tap: 62,
+  jingle: 54,
+  ojingle: 54,
 };
 
 function buildTrack(name, notes, channel, extraHeadEvents = []) {

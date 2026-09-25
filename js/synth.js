@@ -50,6 +50,19 @@ const VOICE_COST = {
   // passes: fiddle 7.9 and 8.3, accordion 8.7 and 9.1.
   fiddle: 8, accordion: 9,
   templebell: 12, tubular: 12,
+  // The hand kit, measured the way the folk voices were, but priced against
+  // the kit instruments they stand in for rather than through the tonal
+  // voices: by the same render timing a kick reads 7.5 units and a hat 4.6,
+  // so the drum rows above are on a scale of their own, and pricing these
+  // on the tonal one would make the same pattern six times dearer on a
+  // frame drum. Two passes, as ratios to what each replaces: frame 1.43
+  // and 1.39 of a kick, tap 1.21 and 1.19 of a snare, jingle 3.3 and 3.2
+  // of a hat, the long jingle 3.0 and 3.3 of an open hat. The zils are
+  // five partials where a hat is one noise burst.
+  frame: 1.4, tap: 1.8, jingle: 3.2, ojingle: 3.2,
+  // Waves, through the tonal voices like the other textures (wind's 12
+  // reads 18 by the same method): 15.9 and 14.3 for a 1 s event.
+  waves: 15,
 };
 const DEFAULT_COST = 12; // any voice not listed above
 
@@ -121,6 +134,18 @@ const SLUR_ATTACK = 0.012;
 // settled, and never twice the same: rate and depth are drawn per note and
 // drift across it, widening as it holds, as a player's does.
 const VIBRATO_MIN_DUR = 0.5;
+
+// The hand kit's levels, per instrument, against the one each replaces on
+// the same pattern; see "the hand kit" in `drum`.
+const HAND_LEVEL = { frame: 1.097, tap: 0.2918, jingle: 0.02227, ojingle: 0.04494 };
+// A tambourine's zils, in Hz: inharmonic, and all above the 2-5 kHz band.
+const JINGLE_PARTIALS = [5300, 6650, 7900, 9400, 11200];
+
+// Waves (tide's air): noise under two lowpass stages, so the sea is a
+// swell and never a hiss, rising to a crest and falling away. The cutoff
+// opens a little at the crest, as a breaking wave brightens.
+const WAVES_CUTOFF = 650;
+const WAVES_LEVEL = 0.67;
 
 // Slid attacks, for the wind voices. See `_slide`.
 //
@@ -797,6 +822,83 @@ export class Synth {
       osc.start(time);
       osc.stop(time + 0.09);
       this._release(time, 0.1, cost);
+      return;
+    }
+
+    // The hand kit (tide): a frame drum played with a tipper, and the zils
+    // of a tambourine. The generator writes these in place of the kit's
+    // kick, snare and hats; the pattern is the same one.
+    if (inst === 'frame' || inst === 'tap') {
+      // A skin, not a kick: a round low note that falls a little as it
+      // rings, a second membrane mode above it dying faster, and the soft
+      // slap of the tipper on the skin. The tap is the tipper's other end,
+      // higher and shorter, where the snare would be.
+      const low = inst === 'frame';
+      const level = v * HAND_LEVEL[inst];
+      const pitch = low ? 92 : 210;
+      const ring = low ? 0.32 : 0.12;
+      const skin = ctx.createOscillator();
+      skin.type = 'sine';
+      skin.frequency.setValueAtTime(pitch * 1.18, time);
+      skin.frequency.exponentialRampToValueAtTime(pitch, time + 0.05);
+      const sg = ctx.createGain();
+      sg.gain.setValueAtTime(0.0001, time);
+      sg.gain.exponentialRampToValueAtTime(level, time + 0.004);
+      sg.gain.exponentialRampToValueAtTime(0.0001, time + ring);
+      skin.connect(sg).connect(out);
+      const mode = ctx.createOscillator();
+      mode.type = 'sine';
+      mode.frequency.value = pitch * 1.59;
+      const mg = ctx.createGain();
+      mg.gain.setValueAtTime(0.0001, time);
+      mg.gain.exponentialRampToValueAtTime(level * 0.35, time + 0.003);
+      mg.gain.exponentialRampToValueAtTime(0.0001, time + ring * 0.45);
+      mode.connect(mg).connect(out);
+      const slap = this._noiseSource(time, 0.04);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = low ? 520 : 900;
+      bp.Q.value = 1.1;
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, time);
+      ng.gain.exponentialRampToValueAtTime(level * (low ? 0.3 : 0.45), time + 0.002);
+      ng.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
+      slap.connect(bp).connect(ng).connect(out);
+      skin.start(time); mode.start(time);
+      skin.stop(time + ring + 0.02); mode.stop(time + ring + 0.02);
+      this._release(time, ring, cost);
+      return;
+    }
+
+    if (inst === 'jingle' || inst === 'ojingle') {
+      // A tambourine's zils: a handful of inharmonic partials above 5 kHz,
+      // ringing briefly together, over a whisper of noise up there too, so
+      // the brightness sits above the band where a sound reads as harsh.
+      const long = inst === 'ojingle';
+      const ring = long ? 0.24 : 0.09;
+      const level = v * HAND_LEVEL[inst];
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.exponentialRampToValueAtTime(level, time + 0.002);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + ring);
+      g.connect(out);
+      for (const hz of JINGLE_PARTIALS) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        // Each zil a hair off from the last time it was struck.
+        o.frequency.value = hz * (0.99 + Math.random() * 0.02);
+        o.connect(g);
+        o.start(time);
+        o.stop(time + ring + 0.02);
+      }
+      const hiss = this._noiseSource(time, ring);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 7000;
+      const hg = ctx.createGain();
+      hg.gain.value = 0.6;
+      hiss.connect(hp).connect(hg).connect(g);
+      this._release(time, ring, cost);
       return;
     }
     this._release(time, 0.05, cost);
@@ -1927,6 +2029,30 @@ export class Synth {
       lfo.stop(time + dur + 1);
       src.stop(time + dur + 1);
       this._release(time, dur + 1);
+    } else if (kind === 'waves') {
+      if (!this._budget(time, soft, VOICE_COST.waves)) return;
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      src.playbackRate.value = 0.5 + Math.random() * 0.1;
+      src.start(time, Math.random() * 1.5);
+      const crest = time + dur * 0.4;
+      const filters = [0, 1].map(() => {
+        const lp = ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.Q.value = -3;
+        lp.frequency.setValueAtTime(WAVES_CUTOFF * 0.7, time);
+        lp.frequency.linearRampToValueAtTime(WAVES_CUTOFF, crest);
+        lp.frequency.linearRampToValueAtTime(WAVES_CUTOFF * 0.7, time + dur);
+        return lp;
+      });
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, time);
+      g.gain.linearRampToValueAtTime(vel * WAVES_LEVEL, crest);
+      g.gain.linearRampToValueAtTime(0.0001, time + dur);
+      src.connect(filters[0]).connect(filters[1]).connect(g).connect(out);
+      src.stop(time + dur + 0.1);
+      this._release(time, dur + 0.1, VOICE_COST.waves);
     }
   }
 }

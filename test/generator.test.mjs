@@ -152,6 +152,21 @@ check('a harmony line sits under some loops, never under every note', harmonised
   const sounding = p.tracks.melody.filter((e) => e.vel);
   return sounding.filter((e) => e.harm).length < sounding.length;
 }), `${harmonised.length} loops`);
+// The hand kit is the kit's pattern on a frame drum and a tambourine: no
+// kit instrument left in it, and no hand instrument anywhere else.
+const HAND_INSTS = new Set(['frame', 'tap', 'jingle', 'ojingle']);
+const handLoops = tides.filter(({ p }) => p.meta.kit === 'hand');
+check('the hand kit plays frame, tap, zils and shaker only', handLoops.length > 20 && handLoops.every(({ p }) => p.tracks.drums
+  .every((e) => HAND_INSTS.has(e.inst) || e.inst === 'shaker')), `${handLoops.length} hand-kit loops`);
+check('no other kit plays a hand instrument', tides.filter(({ p }) => p.meta.kit !== 'hand')
+  .every(({ p }) => p.tracks.drums.every((e) => !HAND_INSTS.has(e.inst))));
+// Waves: one slow swell after another, six to nine seconds each.
+const seas = tides.filter(({ p }) => p.meta.textureKind === 'waves');
+check('the sea swells in waves of six to nine seconds', seas.length > 20 && seas.every(({ spec, p }) => {
+  const sd = 60 / spec.bpm / 4;
+  return p.tracks.texture.length > 0 && p.tracks.texture.every((e) => e.kind === 'waves'
+    && (e.dur * sd >= 5.9 || e.dur === spec.stepsPerBar) && e.dur * sd <= 9.1);
+}), `${seas.length} loops`);
 check('the harmony is a third or a sixth below', heard.filter(({ e }) => e.harm).every(({ spec, e }) => {
   const h = harmonyOf(e, spec);
   if (h == null) return true;

@@ -418,7 +418,8 @@ export const CHARACTERS = {
       ['dorian', 3], ['mixolydian', 3], ['ionian', 2.5], ['aeolian', 2], ['majorPent', 1.5],
     ],
     drums: 0.6,
-    kits: [['brush', 3], ['tape', 2]],
+    // The hand kit: a frame drum and a tambourine playing the kit's part.
+    kits: [['brush', 3], ['tape', 2], ['hand', 2]],
     hatDensity: [0.1, 0.45],
     chordVoices: [['harp', 3], ['accordion', 2], ['keys', 1]],
     melodyVoices: [['fiddle', 4], ['whistle', 3], ['ocarina', 2], ['accordion', 1.5]],
@@ -431,7 +432,7 @@ export const CHARACTERS = {
     ornament: 0.25,
     harmonize: 0.4,
     bassVoices: [['round', 3], ['pluckbass', 3], ['fifths', 1.5]],
-    textures: [['bells', 2.5], ['chime', 2], ['swell', 2], ['none', 2]],
+    textures: [['bells', 2.5], ['chime', 2], ['swell', 2], ['waves', 2], ['none', 2]],
     restBar: 0.14,
     chordSize: [[3, 5], [4, 2]],
     // Scale degrees, as SHAPES_7 in the generator. Only for the seven-note
