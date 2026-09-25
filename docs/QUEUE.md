@@ -131,3 +131,9 @@ Mikey decides this line:
   (cuts and turns) on some of tide's beat notes; in some loops a second
   line in thirds or sixths under the held notes. Listen for graces that
   sound played rather than glitchy, and a harmony that stays underneath.
+- #63, tide part 2b (v46),
+  https://778e624e-driftloom.kruu-mikey-thaiculture.workers.dev: on about
+  a quarter of tide's drum loops a frame drum and tambourine play the kit's
+  part (round low skin, soft tipper taps, zils above the harsh band); and
+  waves as the air, slow swells of filtered sea. Listen for a hand kit that
+  sits where the kit did, and waves that stay a background.

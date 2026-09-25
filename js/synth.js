@@ -28,8 +28,14 @@ const VOICE_COST = {
   hat: 1, ohat: 1, shaker: 1, rim: 1, kick: 1, snare: 1.5, clap: 1.5,
   drop: 1.5, bell: 4, chime: 4, celeste: 4, musicbox: 4,
   sub: 8, round: 8, fifths: 8, pluckbass: 9, rhodesbass: 10, moogbass: 7,
-  stab: 4, sine: 4, pluck: 11, saw: 8,
-  rhodes: 15, moog: 18, whistle: 14, harp: 20,
+  stab: 4, sine: 4, pluck: 11,
+  // The softened leads, re-measured the way the folk voices were (1 s notes
+  // against an empty render, through the tonal voices above): saw 6.8 and
+  // 7.7, moog 12.9 and 13.6, analoglead 14.0 and 15.3. The analoglead used
+  // to bill the moog's 18; by the same method, before this change, the saw
+  // read 10.9, the moog 13.9 and the analoglead 17.0.
+  saw: 7, moog: 13, analoglead: 15,
+  rhodes: 15, whistle: 14, harp: 20,
   // keys is ONE two-operator FM note. piano below is two of them, and the
   // table used to price them the same, which cannot both be right. Measured
   // marginal render time puts keys at 2.1x a sine and 0.47x a piano -- the
@@ -147,6 +153,20 @@ const JINGLE_PARTIALS = [5300, 6650, 7900, 9400, 11200];
 const WAVES_CUTOFF = 650;
 const WAVES_LEVEL = 0.67;
 
+// The leads Mikey called harsh, sharp and gross in the blind lead
+// audition -- saw, moog and analoglead -- given what take two gave the
+// fiddle: a softer source than a raw sawtooth, and a fixed tone instead of
+// a bright per-note sweep. Slopes as in BOWED_SLOPE; cutoffs in Hz, not
+// multiples of the note, so a high note is not a brighter one. The moog
+// keeps a gentle movement, opening a little at the attack and settling.
+// Set by the tone probe, each at or under the flute's 2-5 kHz share.
+const LEAD_SLOPE = { saw: 1.5, moog: 1.8, analoglead: 1.7 };
+const LEAD_TONE = {
+  saw: { cutoff: 1400, q: 4 },
+  moog: { open: 1600, settle: 1100, q: 5 },
+  analoglead: { cutoff: 1600, q: 0 },
+};
+
 // Slid attacks, for the wind voices. See `_slide`.
 //
 // The rate is the one number here that is a judgement rather than a
@@ -241,6 +261,7 @@ export class Synth {
     this.glottal = this._makeGlottal();
     this.bowed = this._makeWave(BOWED_SLOPE);
     this.reed = this._makeWave(REED_SLOPE, REED_EVEN);
+    this.leads = Object.fromEntries(Object.entries(LEAD_SLOPE).map(([k, slope]) => [k, this._makeWave(slope)]));
     this._bodies = new Map();
     this._build();
   }
@@ -1142,20 +1163,24 @@ export class Synth {
       if (!this._budget(time, soft, VOICE_COST.saw)) return;
       const ctx = this.ctx;
       const o = ctx.createOscillator();
-      o.type = 'sawtooth';
+      o.setPeriodicWave(this.leads.saw);
       o.frequency.value = midiToFreq(midi);
+      // A soft source under a fixed lowpass with a little edge at the
+      // cutoff. Was a raw sawtooth under a resonant sweep from 3.2 kHz down
+      // to 700 Hz on every note: 10-13% of it in 2-5 kHz.
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(3200, time);
-      lp.frequency.exponentialRampToValueAtTime(700, time + dur);
-      lp.Q.value = 6;
+      lp.frequency.value = LEAD_TONE.saw.cutoff;
+      lp.Q.value = LEAD_TONE.saw.q;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
       // Was 0.28: 5.9 LU over the melody layer's median at 0.4s notes, near
       // the app's median melody note (measure.mjs --voice all --note 0.4).
       // Every loop flagged on every pass of #42's listening test led with
-      // this or the square below, so both sit at the median now. Level only.
-      g.gain.exponentialRampToValueAtTime(vel * 0.142, time + 0.01);
+      // this or the square below, so both sit at the median now. The soft
+      // source came out 2.6 LU over it again, and gave that back (0.142 ->
+      // 0.1055).
+      g.gain.exponentialRampToValueAtTime(vel * 0.1055, time + 0.01);
       g.gain.setTargetAtTime(0.0001, time + dur * 0.6, 0.15);
       o.connect(lp).connect(g).connect(out);
       o.start(time);
@@ -1391,23 +1416,25 @@ export class Synth {
       }
 
       case 'analoglead': {
-        // Two detuned saws through one resonant filter, no pad-scale energy
-        // building up: closer in weight to the moog lead than to analogpad.
-        if (!this._budget(time, soft, VOICE_COST.moog)) return;
+        // Two detuned oscillators through one filter, no pad-scale energy
+        // building up: a lead, not the analogpad.
+        if (!this._budget(time, soft, VOICE_COST.analoglead)) return;
+        // Two soft sources, detuned, under a fixed lowpass. Was two raw saws
+        // under a resonant sweep from eight times the note down.
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
-        lp.Q.value = 5;
-        lp.frequency.setValueAtTime(Math.min(5000, f * 8), time);
-        lp.frequency.exponentialRampToValueAtTime(Math.max(300, f * 2.4), time + Math.max(0.2, dur * 0.7));
+        lp.Q.value = LEAD_TONE.analoglead.q;
+        lp.frequency.value = LEAD_TONE.analoglead.cutoff;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
         // Was 0.16: 3.6 LU over the melody layer's median at 0.4s notes.
-        // Trimmed to it; the timbre is untouched.
-        g.gain.exponentialRampToValueAtTime(vel * 0.1057, time + 0.03);
+        // Trimmed to it, then the soft sources came out 1.8 LU over again
+        // and gave that back (0.1057 -> 0.0861).
+        g.gain.exponentialRampToValueAtTime(vel * 0.0861, time + 0.03);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.18);
         for (const cents of [-7, 6]) {
           const o = ctx.createOscillator();
-          o.type = 'sawtooth';
+          o.setPeriodicWave(this.leads.analoglead);
           o.frequency.value = f;
           o.detune.value = cents;
           o.connect(lp);
@@ -1415,7 +1442,7 @@ export class Synth {
           o.stop(time + dur + 0.8);
         }
         lp.connect(g).connect(dest);
-        this._release(time, dur + 0.8, VOICE_COST.moog);
+        this._release(time, dur + 0.8, VOICE_COST.analoglead);
         return;
       }
 
@@ -1864,7 +1891,8 @@ export class Synth {
         const whistle = name === 'whistle';
         if (!this._budget(time, soft, VOICE_COST[name])) return;
         const o = ctx.createOscillator();
-        o.type = whistle ? 'triangle' : 'sawtooth';
+        if (whistle) o.type = 'triangle';
+        else o.setPeriodicWave(this.leads.moog);
         // Only the whistle slides: the moog shares this case but is a lead
         // synth and not a wind instrument, and item 9 is about winds.
         //
@@ -1889,14 +1917,25 @@ export class Synth {
         vib.connect(vibAmt).connect(o.detune);
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
-        lp.Q.value = whistle ? 8 : 11;
-        lp.frequency.setValueAtTime(Math.min(9000, f * 7), time);
-        lp.frequency.exponentialRampToValueAtTime(Math.max(220, f * 1.6), time + Math.max(0.12, dur * 0.8));
+        if (whistle) {
+          lp.Q.value = 8;
+          lp.frequency.setValueAtTime(Math.min(9000, f * 7), time);
+          lp.frequency.exponentialRampToValueAtTime(Math.max(220, f * 1.6), time + Math.max(0.12, dur * 0.8));
+        } else {
+          // The moog's filter still moves, gently: open a little at the
+          // attack, settling. Was a sweep from seven times the note down to
+          // 1.6 times it through a resonance of 11 dB, a wah on every note.
+          lp.Q.value = LEAD_TONE.moog.q;
+          lp.frequency.setValueAtTime(LEAD_TONE.moog.open, time);
+          lp.frequency.exponentialRampToValueAtTime(LEAD_TONE.moog.settle, time + Math.max(0.12, dur * 0.8));
+        }
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
         // Were 0.22 and 0.2: the whistle 5.9 LU and the moog 5.4 LU over the
         // melody layer's median at 0.4s notes. Trimmed to it; timbre untouched.
-        g.gain.exponentialRampToValueAtTime(vel * (whistle ? 0.1121 : 0.1069), time + 0.014);
+        // The moog's soft source then came out 1.1 LU over, and gave that
+        // back (0.1069 -> 0.0947).
+        g.gain.exponentialRampToValueAtTime(vel * (whistle ? 0.1121 : 0.0947), time + 0.014);
         g.gain.setTargetAtTime(0.0001, time + dur * 0.75, 0.1);
         o.connect(lp).connect(g).connect(dest);
         o.start(time); vib.start(time);
