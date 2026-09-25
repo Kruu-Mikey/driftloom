@@ -8,6 +8,7 @@
 import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf } from '../js/generator.js';
 import { Rng, randomSeed, seedName } from '../js/rng.js';
 import { patternToMidi } from '../js/midi.js';
+import { SCALES } from '../js/theory.js';
 
 // Node ships a real Blob, but it only hands its bytes back asynchronously.
 // Override it so the export can be inspected byte for byte.
@@ -181,6 +182,61 @@ check('the harmony is a third or a sixth below', heard.filter(({ e }) => e.harm)
   const gap = e.midi - h;
   return e.harm === 'third' ? gap === 3 || gap === 4 : gap === 8 || gap === 9;
 }));
+
+// ---------------------------------------------------------------------
+console.log('\nCinder');
+
+const cinders = [];
+for (let i = 0; cinders.length < 300 && i < 20000; i++) {
+  const spec = newSpec(randomSeed());
+  const lead = Object.entries(spec.mix).sort((x, y) => y[1] - x[1])[0][0];
+  if (lead === 'cinder') cinders.push({ spec, p: render(spec) });
+}
+check('cinder loops run a fast 6/8, some 4/4', cinders.length === 300 && cinders.every(({ spec }) => (spec.stepsPerBar === 12
+  || spec.stepsPerBar === 16) && spec.bpm >= 120 && spec.bpm <= 150));
+const drummed = cinders.filter(({ p }) => p.tracks.drums.length).length;
+check('drums play in about nine cinder loops in ten', drummed > 300 * 0.8 && drummed < 300 * 0.97, `${drummed} of 300`);
+// The Andalusian cadence, in A: Am-G-F-E, the last chord major. In each
+// mode it is written for, every chord of it comes out a plain triad of the
+// quality the cadence wants, whatever the mode's own degrees would make.
+const pcOf = (n) => ((n % 12) + 12) % 12;
+// A blend can bring two-note chords, and stacked fourths that have no third
+// at all; what no chord may do is carry the wrong third.
+const third = (slot) => {
+  const pcs = new Set(slot.notes.map(pcOf));
+  const r = pcOf(slot.rootMidi);
+  const [minor, major] = [pcs.has(pcOf(r + 3)), pcs.has(pcOf(r + 4))];
+  return major && !minor ? 'M' : minor && !major ? 'm' : '-';
+};
+// A two-bar loop has room for the first two chords of it.
+const cadences = cinders.filter(({ p }) => p.harmony.slots.some((s) => s.steps));
+const whole = cadences.filter(({ p }) => p.harmony.slots.length >= 4);
+const spelt = whole.map(({ p }) => p.harmony.slots.slice(0, 4).map(third).join(''));
+check('the Andalusian cadence falls a tone, a tone, a semitone, to a major chord', whole.length > 30 && whole.every(({ p }) => {
+  const four = p.harmony.slots.slice(0, 4);
+  return four.slice(1).map((s, i) => pcOf(four[i].rootMidi - s.rootMidi)).join() === '2,2,1';
+}) && spelt.every((q) => /^[m-][M-][M-][M-]$/.test(q)) && spelt.filter((q) => q === 'mMMM').length > whole.length * 0.8,
+`${spelt.filter((q) => q === 'mMMM').length} of ${whole.length} loops spell every chord in full`);
+// Over a spelled chord the tune and the bass play in its scale: the G# over
+// the E major, never the mode's G against it.
+const slotOf = (p, step) => p.harmony.slots.filter((s) => s.startStep <= step % p.harmony.cycleSteps).pop();
+check('a line over a spelled chord never plays the tone the spelling replaced', cadences.every(({ spec, p }) => {
+  const mode = SCALES[spec.scale].steps;
+  return ['melody', 'bass'].every((layer) => p.tracks[layer].every((e) => {
+    const slot = slotOf(p, e.step);
+    if (!slot.steps) return true;
+    const pc = pcOf(e.midi - spec.root);
+    return e.steps === slot.steps && (slot.steps.includes(pc) || !mode.includes(pc));
+  }));
+}));
+check('graces and harmony over a spelled chord stay in its scale', cadences.every(({ spec, p }) => p.tracks.melody
+  .filter((e) => e.steps)
+  .every((e) => {
+    const marked = { ...e, orn: 'turn', harm: 'third' };
+    const h = harmonyOf(marked, spec);
+    return [...gracesOf(marked, spec), ...(h == null ? [] : [h])].every((n) => e.steps.includes(pcOf(n - spec.root)));
+  })));
+check('no profile but cinder spells a chord', tides.every(({ p }) => p.harmony.slots.every((s) => !s.steps)));
 
 // ---------------------------------------------------------------------
 console.log('\nNames');
