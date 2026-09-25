@@ -156,3 +156,10 @@ Mikey decides this line:
   major E) with the tune taking G# over that E. Listen for the fall landing
   bright rather than clashing, and whether the b9 (F) the E chord sometimes
   takes should go.
+- #67, wayfare, the rolling train (v50),
+  https://6d5ae00b-driftloom.kruu-mikey-thaiculture.workers.dev: a new
+  profile for travelling -- a walking 4/4, pan flute and fiddle over
+  accordion, nylon and harp, and in half its loops a chug, a short bass
+  note on every eighth with the brushes swishing along. Listen for wheels
+  on rails rather than a machine gun, and whether I-IV-v-IV's minor v in
+  mixolydian and dorian should go.
