@@ -161,10 +161,11 @@ Notes worth knowing if you go digging:
   Repetition with variation is most of what separates a composed line from a
   sprayed one.
 - **Rhythm is drawn before pitch.** The motif takes its note positions and
-  lengths from one of thirty rhythmic cells -- dotted, syncopated,
+  lengths from one of forty rhythmic cells -- dotted, syncopated,
   anticipated, short-short-long, three-against-four, staccato bursts, long
-  sustains -- with separate tables for 16- and 12-step bars, and the rest
-  built to fit whatever other metre a profile asks for. Which cells are
+  sustains -- with separate tables for 4/4, 6/8 and the waltz (long notes
+  on the beat, lilting pickups into the bar line), and the rest built to
+  fit whatever other metre a profile asks for. Which cells are
   likely follows the loop's energy and lift, so a joyful loop gets a
   bouncier figure and a reflective one gets long notes. Pitch is a random
   walk laid over whatever the cell decided.
@@ -184,10 +185,14 @@ Notes worth knowing if you go digging:
   and its tempo band from the gait, so a gentle loop is never a fast one.
   It plays its own progressions (the I-bVII shuttle, i-bVII-bVI-bVII,
   I-IV-I-V, IV-I endings) as written, and about a third of its loops hold
-  the tonic and fifth as a drone under the changing chords. A loop whose
-  profile does not ask draws exactly what it drew before: the gait and the
-  drone come from streams of their own, and the progression is the same
-  one draw, from a different pool.
+  the tonic and fifth as a drone under the changing chords. Its tunes take
+  ornaments -- cuts and turns, the grace notes of folk fiddle and whistle,
+  played 30-60 ms ahead of the note and never on the step grid -- and in
+  some loops a second line in thirds or sixths under the held notes. A
+  loop whose profile does not ask draws exactly what it drew before: the
+  gait, the drone, the ornaments and the harmony come from streams of
+  their own, and the progression is the same one draw, from a different
+  pool.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like

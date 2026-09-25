@@ -871,6 +871,26 @@ const CELLS_12 = [
   cell('skip12',       2.1,  1.5, 1.4, [[0, 2, 1], [3, 1], [4, 2], [6, 2, 1], [9, 1], [10, 2]]),
 ];
 
+// 12 steps read as 3/4, the waltz: three beats at 0, 4 and 8, eighths on the
+// even steps. A waltz tune leans on the downbeat and holds, and lilts into
+// the next bar with a pickup on the third beat; the cross-rhythms that carry
+// 6/8 would put its weight in the wrong places.
+const CELLS_34 = [
+  cell('waltz34',     -1.4, -0.4, 2.0, [[0, 8, 1], [8, 4]]),
+  cell('whole34',     -3.0, -1.4, 0.8, [[0, 12, 1]]),
+  cell('beats34',     -0.6, -0.2, 1.8, [[0, 4, 1], [4, 4], [8, 4]]),
+  cell('shortLong34', -0.2,  0.1, 1.3, [[0, 4, 1], [4, 8]]),
+  // Pickups: the third beat broken into two eighths that lean into the bar
+  // line.
+  cell('pickup34',     0.2,  0.4, 2.2, [[0, 8, 1], [8, 2], [10, 2]]),
+  cell('beatPick34',   0.6,  0.6, 1.6, [[0, 4, 1], [4, 4], [8, 2], [10, 2]]),
+  // The lilt: a dotted beat and the eighth after it.
+  cell('lilt34',       0.3,  0.5, 2.0, [[0, 6, 1], [6, 2], [8, 4]]),
+  cell('dotPick34',    0.8,  0.8, 1.6, [[0, 6, 1], [6, 2], [8, 2], [10, 2]]),
+  cell('turn34',       1.0,  0.9, 1.4, [[0, 2, 1], [2, 2], [4, 4], [8, 4]]),
+  cell('eighths34',    2.0,  1.4, 1.1, [[0, 2, 1], [2, 2], [4, 2], [6, 2], [8, 2], [10, 2]]),
+];
+
 // Any other metre -- 5/4 exists in the thaw profile, and nothing stops a
 // later one being added -- gets the same families built to fit, rather than a
 // 16-step cell with its tail lopped off. Fewer figures, because a rare metre
@@ -916,16 +936,20 @@ function usable(list, spb) {
 
 const CELL_POOLS = new Map();
 
-function cellsFor(spb) {
-  if (!CELL_POOLS.has(spb)) {
-    const table = spb === 16 ? CELLS_16 : spb === 12 ? CELLS_12 : genericCells(spb);
-    CELL_POOLS.set(spb, usable(table, spb));
+// By metre as well as step count: twelve steps are 6/8 or 3/4.
+function cellsFor(spb, metre) {
+  const key = `${spb}|${metre}`;
+  if (!CELL_POOLS.has(key)) {
+    const table = spb === 16 ? CELLS_16
+      : spb === 12 ? (metre === '3/4' ? CELLS_34 : CELLS_12)
+        : genericCells(spb);
+    CELL_POOLS.set(key, usable(table, spb));
   }
-  return CELL_POOLS.get(spb);
+  return CELL_POOLS.get(key);
 }
 
-function drawCell(r, spb, energy, lift) {
-  return r.weighted(cellsFor(spb).map((c) => [
+function drawCell(r, spb, metre, energy, lift) {
+  return r.weighted(cellsFor(spb, metre).map((c) => [
     c,
     c.w * Math.pow(2, c.e * (energy - 0.5) * 2) * Math.pow(2, c.l * (lift - 0.5) * 2),
   ]));
@@ -956,7 +980,8 @@ function genMelody(spec, harmony) {
   // whole reason rhythm is drawn separately from pitch.
   const driven = lf.energy > 0.6;
   const pointillist = c.pointillist || 0;
-  const rhythm = drawCell(r, spb, lf.energy, mood);
+  const waltz = metreOf(spec) === '3/4';
+  const rhythm = drawCell(r, spb, metreOf(spec), lf.energy, mood);
 
   const motif = [];
   let deg = 0;
@@ -1044,11 +1069,16 @@ function genMelody(spec, harmony) {
         return m.map((x, i) => ({ ...x, degree: m[m.length - 1 - i].degree }));
       case 'fragment': {
         const head = m.slice(0, Math.max(2, Math.ceil(m.length / 2)));
-        return head.concat(head.map((x) => ({
+        const half = Math.floor(spb / 2);
+        const answer = head.map((x) => ({
           ...x,
-          offset: Math.min(spb - 1, x.offset + Math.floor(spb / 2)),
+          offset: Math.min(spb - 1, x.offset + half),
           degree: x.degree + amount,
-        })));
+        }));
+        // The clamp piles a note pushed past the bar line onto the bar's
+        // last sixteenth, on top of any other it pushed there. A waltz tune
+        // drops it instead, and keeps to its beats and eighths.
+        return head.concat(waltz ? answer.filter((_, i) => head[i].offset + half < spb) : answer);
       }
       case 'augment':
         // Half as many notes, twice as long: the phrase in slow motion.
@@ -1642,6 +1672,83 @@ function annotatePrev(events, spec, cycleSteps) {
   }
 }
 
+// ----------------------------------------------- ornaments and harmony
+
+// Cuts and turns, the quick grace notes of folk fiddle and whistle. The
+// composer only marks which notes take one and what kind; the engine plays
+// the graces between the steps, 30-60 ms ahead of the note, and works out
+// their pitches from the note as it is played (`gracesOf`), since drift can
+// move a melody note after this has run.
+//
+// A salted draw, and only for a profile that asks (`ornament`, the share of
+// eligible notes that take one), so no other loop's streams or events move.
+// Eligible means sounding, on a beat, and long enough to lead into: a grace
+// before a sixteenth is clutter, not ornament.
+const ORNAMENT_SALT = 0x0a11e7ed;
+function ornament(events, spec, c) {
+  if (!c.ornament) return;
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const beat = metreOf(spec) === '6/8' ? 6 : 4;
+  const sd = 60 / spec.bpm / 4;
+  const r = new Rng(((spec.layerSeeds.melody ^ ORNAMENT_SALT) >>> 0) || 1);
+  for (const e of events) {
+    if (!e.vel || (e.step % spb) % beat !== 0) continue;
+    if (e.dur < 2 || e.dur * sd < 0.15) continue;
+    if (!r.chance(c.ornament)) continue;
+    // A cut is one grace from the note above; a turn goes above and below
+    // before landing, and only has room in front of a longer note.
+    e.orn = e.dur >= 4 && r.chance(0.25) ? 'turn' : 'cut';
+  }
+}
+
+// A second line in thirds or sixths under the tune, on the notes that hold
+// still long enough for a harmony to register -- long notes and the note
+// each phrase lands on -- and never all of them: where held notes are most
+// of the tune, only the phrase ends take one. `harmonize` is the share of a
+// profile's loops that carry the line; a salted draw, like the ornaments.
+// The engine plays it in the melody's voice, softer, through the budget
+// like any other note.
+const HARMONY_SALT = 0x7417d5e5;
+function harmonize(events, spec, c) {
+  if (!c.harmonize) return;
+  const r = new Rng(((spec.layerSeeds.melody ^ HARMONY_SALT) >>> 0) || 1);
+  if (!r.chance(c.harmonize)) return;
+  const kind = r.weighted([['third', 2], ['sixth', 1]]);
+  const sounding = events.filter((e) => e.vel);
+  const last = new Map();
+  for (const e of sounding) {
+    const at = last.get(e.phrase);
+    if (!at || e.step > at.step) last.set(e.phrase, e);
+  }
+  const ends = new Set(last.values());
+  const held = sounding.filter((e) => e.dur >= 6);
+  const chosen = held.length * 2 > sounding.length ? ends : new Set([...held, ...ends]);
+  if (chosen.size >= sounding.length) return;
+  for (const e of chosen) e.harm = kind;
+}
+
+// The grace notes before a marked note, from the note as it stands.
+export function gracesOf(e, spec) {
+  if (!e.orn) return [];
+  const steps = SCALES[spec.scale].steps;
+  const above = neighbourInScale(e.midi, spec.root, steps, 1);
+  return e.orn === 'turn' ? [above, neighbourInScale(e.midi, spec.root, steps, -1)] : [above];
+}
+
+// The harmony under a marked note: two scale tones down for a third, five
+// for a sixth. Only ever a real third (3-4 semitones) or sixth (8-9); in a
+// scale where counting tones lands elsewhere -- a pentatonic's gaps -- the
+// note plays alone.
+export function harmonyOf(e, spec) {
+  if (!e.harm) return null;
+  const steps = SCALES[spec.scale].steps;
+  const [count, lo, hi] = e.harm === 'sixth' ? [5, 8, 9] : [2, 3, 4];
+  let m = e.midi;
+  for (let i = 0; i < count; i++) m = neighbourInScale(m, spec.root, steps, -1);
+  const gap = e.midi - m;
+  return gap >= lo && gap <= hi ? m : null;
+}
+
 // --------------------------------------------------------------- render
 
 export function render(spec) {
@@ -1695,6 +1802,14 @@ export function render(spec) {
 
   // After the register work, so the pitch written down is the pitch played.
   annotatePrev(tracks.melody, spec, (spec.cycles && spec.cycles.melody) || spec.bars * spb);
+
+  // Last, on what is heard. Not on a choir: a sung doubling does not flick
+  // graces or split into harmony.
+  if (!choir) {
+    const lead = characterOf(spec);
+    ornament(tracks.melody, spec, lead);
+    harmonize(tracks.melody, spec, lead);
+  }
 
   // Something has to get out of the way or the doubling is inaudible.
   //
@@ -1820,12 +1935,15 @@ export function genGaps(spec) {
   // Busier profiles want fewer of these; still ones want more.
   if (!r.chance(0.18 + (c.airy ?? 0.2) * 0.5)) return [];
   const count = r.weighted([[1, 4], [2, 3], [3, 1.5]]);
+  // A beat is a quarter of the bar, except in the waltz, which counts its
+  // twelve steps as three beats of four.
+  const beat = metreOf(spec) === '3/4' ? 4 : spb / 4;
   const gaps = [];
   for (let i = 0; i < count; i++) {
-    // A quarter, a half or a whole bar, landing on a beat.
-    const len = r.pick([spb / 4, spb / 4, spb / 2, spb / 2, spb]);
-    const beats = Math.max(1, Math.floor(total / (spb / 4)));
-    const start = r.int(1, beats - 1) * (spb / 4);
+    // A beat, two beats or a whole bar, landing on a beat.
+    const len = r.pick([beat, beat, beat * 2, beat * 2, spb]);
+    const beats = Math.max(1, Math.floor(total / beat));
+    const start = r.int(1, beats - 1) * beat;
     if (start + len > total) continue;
     gaps.push({ start: Math.round(start), len: Math.round(len) });
   }
