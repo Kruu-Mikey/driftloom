@@ -521,6 +521,56 @@ export const CHARACTERS = {
     tone: { warmth: [0.35, 0.65], space: [0.25, 0.55], wobble: [0.03, 0.2] },
     feel: { lift: [0.25, 0.75], energy: [0.65, 1], warmth: [0.4, 0.75] },
   },
+
+  // The travelling music: steady, bright and moving, a journey by rail or
+  // road. Mostly a walking 4/4, some 6/8, and in half its loops a chug
+  // under the tune -- eighth notes on the bass, and on the brushes when
+  // brushes play -- like wheels on rails.
+  wayfare: {
+    label: 'Wayfare',
+    weight: 1.4,
+    // Measured, not guessed: at 0.8 the loops wayfare leads came out 0.8 LU
+    // over the catalogue median (measure.mjs --profile wayfare --n 60
+    // against --n 100); this is the level that puts their mean on it.
+    level: 0.71,
+    bpm: [104, 138],
+    stepsPerBar: [[16, 8], [12, 2]],
+    gaits: [
+      { weight: 8, metre: '4/4', stepsPerBar: 16, bpm: [104, 138] },
+      { weight: 2, metre: '6/8', stepsPerBar: 12, bpm: [104, 138] },
+    ],
+    bars: [[4, 4], [8, 4], [16, 1], [2, 0.5]],
+    airy: 0.2,
+    swing: [0, 0.06],
+    scales: [
+      ['mixolydian', 3], ['ionian', 2.5], ['dorian', 2], ['lydian', 1.5], ['majorPent', 1.5],
+    ],
+    // Drums in about five loops in six of those wayfare leads (86%
+    // measured; the rest of a blend pulls the profile's 0.9 down).
+    drums: 0.9,
+    kits: [['brush', 3], ['tape', 2], ['hand', 1.5]],
+    hatDensity: [0.3, 0.65],
+    chordVoices: [['accordion', 3], ['nylon', 2.5], ['harp', 2]],
+    melodyVoices: [['panflute', 4], ['fiddle', 3], ['whistle', 2.5], ['ocarina', 2]],
+    bassStyles: [['pulse', 3], ['walk', 2.5], ['held', 1]],
+    // Half its loops chug; the rest draw from bassStyles as ever.
+    chug: 0.5,
+    bassVoices: [['pluckbass', 3], ['round', 2.5]],
+    textures: [['none', 4], ['swell', 1.5], ['chime', 1]],
+    restBar: 0.12,
+    chordSize: [[3, 4], [4, 1.5]],
+    // Filtered per mode as tide's are: a progression plays where every
+    // chord of it is a plain major or minor triad. I-bVII-IV-I plays in
+    // mixolydian and, as i-bVII-IV-i, in dorian; I-IV-V-IV in ionian and,
+    // with its minor v, in mixolydian and dorian. Lydian's IV is
+    // diminished, so lydian draws the ordinary progressions.
+    progressions: [
+      [0, 6, 3, 0], // I-bVII-IV-I
+      [0, 3, 4, 3], // I-IV-V-IV
+    ],
+    tone: { warmth: [0.35, 0.7], space: [0.3, 0.6], wobble: [0.03, 0.2] },
+    feel: { lift: [0.55, 1], energy: [0.5, 0.9], warmth: [0.45, 0.8] },
+  },
 };
 
 // Saved loops from before the rename still resolve.
@@ -662,7 +712,7 @@ export function blendMix(mix) {
   // together, which kits it plays, its progressions, the drone, ornaments
   // and the harmony line. A loop that tide merely colours does not start
   // waltzing.
-  for (const k of ['gaits', 'kits', 'progressions', 'drone', 'ornament', 'harmonize']) {
+  for (const k of ['gaits', 'kits', 'progressions', 'drone', 'ornament', 'harmonize', 'chug']) {
     if (CHARACTERS[lead][k] !== undefined) out[k] = CHARACTERS[lead][k];
   }
   return out;

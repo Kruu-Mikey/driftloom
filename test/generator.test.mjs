@@ -239,6 +239,50 @@ check('graces and harmony over a spelled chord stay in its scale', cadences.ever
 check('no profile but cinder spells a chord', tides.every(({ p }) => p.harmony.slots.every((s) => !s.steps)));
 
 // ---------------------------------------------------------------------
+console.log('\nWayfare');
+
+const wayfares = [];
+for (let i = 0; wayfares.length < 300 && i < 20000; i++) {
+  const spec = newSpec(randomSeed());
+  const lead = Object.entries(spec.mix).sort((x, y) => y[1] - x[1])[0][0];
+  if (lead === 'wayfare') wayfares.push({ spec, p: render(spec) });
+}
+check('wayfare loops walk in 4/4, some 6/8', wayfares.length === 300 && wayfares.every(({ spec }) => (spec.stepsPerBar === 16
+  || spec.stepsPerBar === 12) && spec.bpm >= 104 && spec.bpm <= 138));
+const wayDrums = wayfares.filter(({ p }) => p.tracks.drums.length).length;
+check('drums play in about five wayfare loops in six', wayDrums > 300 * 0.75 && wayDrums < 300 * 0.95, `${wayDrums} of 300`);
+// The chug: an eighth on every eighth, on the chord's bass note, short, and
+// never a gap; under brushes, a swish on every eighth as well.
+const chugs = wayfares.filter(({ p }) => p.meta.bassStyle === 'chug');
+check('about half of wayfare\'s loops chug', chugs.length > 300 * 0.35 && chugs.length < 300 * 0.65, `${chugs.length} of 300`);
+const everyEighth = (spec, steps) => {
+  const at = new Set(steps);
+  for (let s = 0; s < spec.bars * spec.stepsPerBar; s += 2) if (!at.has(s)) return false;
+  return steps.every((s) => s % 2 === 0);
+};
+check('a chug is a short bass note on every eighth, on the chord\'s bass', chugs.every(({ spec, p }) => everyEighth(spec, p.tracks.bass.map((e) => e.step))
+  && p.tracks.bass.every((e) => {
+    const slot = p.harmony.slots.filter((sl) => sl.startStep <= e.step).pop();
+    return e.dur === 1 && e.chug === true && pcOf(e.midi - slot.bassMidi) === 0;
+  })));
+check('only a chug note is marked as one', wayfares.every(({ p }) => p.meta.bassStyle === 'chug'
+  || p.tracks.bass.every((e) => e.chug === undefined)));
+const brushed = chugs.filter(({ p }) => p.meta.kit === 'brush');
+check('under a chug the brushes swish every eighth, none open', brushed.length > 20 && brushed.every(({ spec, p }) => {
+  const hats = p.tracks.drums.filter((e) => (e.inst === 'hat' || e.inst === 'ohat') && !e.roll);
+  return hats.every((e) => e.inst === 'hat') && everyEighth(spec, hats.map((e) => e.step));
+}), `${brushed.length} loops`);
+check('no loop wayfare does not lead chugs', [...tides, ...cinders].every(({ p }) => p.meta.bassStyle !== 'chug'));
+// Its progressions, filtered per mode: I-bVII-IV-I and I-IV-V-IV, each
+// played only where every chord of it is a plain triad.
+const ways = wayfares.filter(({ spec, p }) => ['mixolydian', 'ionian', 'dorian'].includes(spec.scale) && p.harmony.slots.length >= 4);
+check('wayfare plays I-bVII-IV-I and I-IV-V-IV where the mode has them', ways.length > 50 && ways.every(({ spec, p }) => {
+  const roots = p.harmony.slots.slice(0, 4).map((s) => pcOf(s.rootMidi - spec.root)).join();
+  return roots === '0,10,5,0' || roots === '0,5,7,5';
+}) && ways.filter(({ spec }) => spec.scale === 'ionian').every(({ spec, p }) => p.harmony.slots.slice(0, 4)
+  .map((s) => pcOf(s.rootMidi - spec.root)).join() === '0,5,7,5'), `${ways.length} loops`);
+
+// ---------------------------------------------------------------------
 console.log('\nNames');
 
 const names = new Set();

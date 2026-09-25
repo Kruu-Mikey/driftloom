@@ -750,6 +750,17 @@ const PULSE_34 = [[0], [0, 8], [0, 10], [0, 6]];
 // decision is a salted draw, so no other loop's bass stream moves.
 const DRONE_SALT = 0x0d7011e5;
 
+// The chug: eighth notes on the bass under the tune, like wheels on rails,
+// and on the brushes when brushes play. It is the profile's to ask for
+// (wayfare asks in half its loops), and it is decided once for the loop,
+// from its seed and a salt of its own: the bass and the drums read the same
+// answer, re-rolling either keeps it, and no other loop's streams move.
+const CHUG_SALT = 0x0c4a6e11;
+function chugs(spec) {
+  const c = characterOf(spec);
+  return !!c.chug && new Rng(((spec.seed ^ CHUG_SALT) >>> 0) || 1).chance(c.chug);
+}
+
 function genBass(spec, harmony) {
   const r = new Rng(spec.layerSeeds.bass);
   const c = characterOf(spec);
@@ -762,6 +773,7 @@ function genBass(spec, harmony) {
         ? c.bassStyles.filter(([k]) => k !== 'sparse') : c.bassStyles)
     : r.weighted(c.bassStyles);
   if (c.drone && new Rng(((spec.layerSeeds.bass ^ DRONE_SALT) >>> 0) || 1).chance(c.drone)) style = 'drone';
+  if (chugs(spec)) style = 'chug';
   const voice = r.weighted(c.bassVoices || [['sub', 1]]);
   const glideChance = c.glide || 0;
   const octaveShift = r.chance(0.25) ? -12 : 0;
@@ -783,6 +795,21 @@ function genBass(spec, harmony) {
       if (voice !== 'fifths') {
         const root = events[events.length - 1];
         events.push({ ...root, midi: root.midi + 7, vel: 0.4 });
+      }
+    }
+    return { events, style, voice };
+  }
+
+  if (style === 'chug') {
+    // Every eighth, on the chord's bass note, short, the beats leaned on.
+    // Never a slot left out: wheels do not stop for a bar.
+    const beat = metre === '6/8' ? 6 : 4;
+    for (const slot of harmony.slots) {
+      const base = (slot.bassMidi != null ? slot.bassMidi : slot.rootMidi) - 24;
+      for (let s = 0; s < slot.lengthSteps; s += 2) {
+        place(slot.startStep + s, 1, base, (s % beat === 0 ? 0.62 : 0.46) + r.f() * 0.06);
+        // Marked, so the synth holds its budget only as long as it sounds.
+        events[events.length - 1].chug = true;
       }
     }
     return { events, style, voice };
@@ -1447,6 +1474,9 @@ function genDrums(spec) {
     r.range(c.hatDensity[0], c.hatDensity[1]) * (0.55 + feel.energy * 0.9));
   const hatGrid = r.chance(0.55) ? 2 : 1; // eighths or sixteenths
   const useShaker = r.chance(0.4);
+  // Under a chug the brushes go with the bass: a swish on every eighth,
+  // leaned on the beat, none of them open.
+  const chug = kit === 'brush' && chugs(spec);
 
   for (let bar = 0; bar < spec.bars; bar++) {
     const b = bar * spb;
@@ -1462,15 +1492,17 @@ function genDrums(spec) {
     // Ghost notes give the groove its lean.
     if (r.chance(0.4)) events.push({ step: b + r.int(1, spb - 1), inst: 'rim', vel: 0.22 });
 
-    for (let s = 0; s < spb; s += hatGrid) {
+    for (let s = 0; s < spb; s += chug ? 2 : hatGrid) {
       // Offbeat hats against a steady kick, which is where the lift comes
       // from in this music.
-      if (fourFloor && s % 4 !== 2) { if (!r.chance(hatDensity * 0.25)) continue; }
-      else if (!r.chance(hatDensity)) continue;
+      if (!chug) {
+        if (fourFloor && s % 4 !== 2) { if (!r.chance(hatDensity * 0.25)) continue; }
+        else if (!r.chance(hatDensity)) continue;
+      }
       const open = r.chance(0.08);
       events.push({
         step: b + s,
-        inst: open ? 'ohat' : 'hat',
+        inst: open && !chug ? 'ohat' : 'hat',
         vel: (s % beat === 0 ? 0.5 : 0.3) + r.f() * 0.2,
       });
     }

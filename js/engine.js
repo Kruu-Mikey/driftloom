@@ -314,7 +314,7 @@ export class Engine {
       const s = at('bass');
       for (const e of p.tracks.bass) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice);
+        this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice, e.chug);
       }
     }
     // An ensemble does not attack together. The composer's detune keeps
