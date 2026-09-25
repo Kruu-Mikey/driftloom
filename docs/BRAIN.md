@@ -101,6 +101,15 @@ These are stated decisions, not inferences.
   verifies from GitHub; Mikey's listening happens later in one combined
   review album built from the queue's Done list, and anything he dislikes
   gets tuned or reverted then.
+  Progress, 2026-09-25: items 0-4 merged by Claude Code under the merge
+  policy (#59 v44, #62 v45, #63 v46, #64 v47, #65 v48, #66 v49); item 5,
+  `wayfare`, open as #67. Brain check on main: tests and `--check` pass;
+  3000 specs from before the queue render identically unless tide is in
+  their mix. Open follow-up the hands raised: a fast blend that draws
+  shrine's temple bell (cost 12, long ring) can starve the melody (one
+  cinder loop in 183 lost half its tune; the same case exists in shatter
+  and undertow blends on main). The review album is built from the Done
+  list once #67 merges.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
