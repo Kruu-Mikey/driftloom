@@ -111,8 +111,8 @@ The travelling music: steady, bright, moving.
 
 Mikey decides this line:
 
-- (pending) When CI is green and every check above passes, Claude Code
-  merges its own PR and starts the next item.
+- (yes, from Mikey) When CI is green and every check above passes, Claude
+  Code merges its own PR and starts the next item.
 
 ## Notes from Claude Code
 
