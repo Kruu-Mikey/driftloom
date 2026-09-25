@@ -529,7 +529,10 @@ export const CHARACTERS = {
   wayfare: {
     label: 'Wayfare',
     weight: 1.4,
-    level: 0.8,
+    // Measured, not guessed: at 0.8 the loops wayfare leads came out 0.8 LU
+    // over the catalogue median (measure.mjs --profile wayfare --n 60
+    // against --n 100); this is the level that puts their mean on it.
+    level: 0.71,
     bpm: [104, 138],
     stepsPerBar: [[16, 8], [12, 2]],
     gaits: [
@@ -542,6 +545,8 @@ export const CHARACTERS = {
     scales: [
       ['mixolydian', 3], ['ionian', 2.5], ['dorian', 2], ['lydian', 1.5], ['majorPent', 1.5],
     ],
+    // Drums in about five loops in six of those wayfare leads (86%
+    // measured; the rest of a blend pulls the profile's 0.9 down).
     drums: 0.9,
     kits: [['brush', 3], ['tape', 2], ['hand', 1.5]],
     hatDensity: [0.3, 0.65],
