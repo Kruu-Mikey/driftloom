@@ -424,7 +424,20 @@ a diminished vii in ionian), and glade's bVII ending no longer rewrites
 tide's own progressions. Left for part 2: 3/4 melody rhythms still use
 the 6/8 cells, 3/4 gaps still count 3-step beats. The tide album waits
 for fiddle take two, since tide leans on the fiddle; #57 should merge
-first so take two is built on top of it. The hands found, and left, the
+first so take two is built on top of it. (It merged mid-build; take two
+rebased onto it.)
+
+**#59, v44, fiddle and accordion take two -- in flight.** Synth only (the
+diff touches synth.js and the stamps), built on main with tide. Tone
+probe: both now read under flute in the 2-5 kHz share, against 11-14%
+for take one. The hands found and fixed two accordion faults on the way:
+two equal reeds 2.5 cents apart cancel at the bottom of each beat (second
+reed now at 0.35), and in-phase starts skewed short versus long notes
+(the second reed now starts 2-8 ms late). Costs re-measured: fiddle 8,
+accordion 9, about a third of take one. After-runs pending. Two albums
+out on the commit preview 2c98c11d: the same "Fiddle and accordion" (keep
+/ tune / drop) and "Tide" (8 tide-led loops across waltz, jig and reel,
+fiddle, whistle, ocarina and accordion leads, drums and drone). The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
