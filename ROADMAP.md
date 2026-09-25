@@ -716,6 +716,14 @@ bells out of fast blends.
 melody at full quality to this case, with refusals re-measured on full
 and lite.
 
+**A related budget fix, same priority** (raised in #67). Every bass voice
+except `fifths` reserves budget for 0.8 s past its note but stops sounding
+at 0.4 s, so bass holds room it doesn't use in every loop. `wayfare`'s
+chug already reserves only while it sounds (#67); doing the same for all
+bass notes would free room for the tune everywhere, lite especially. It
+changes how existing loops sound (fewer refusals), so it gets a refusal
+run on full and lite before and after.
+
 ---
 
 ## Decided against

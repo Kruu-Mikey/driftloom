@@ -109,7 +109,12 @@ These are stated decisions, not inferences.
   shrine's temple bell (cost 12, long ring) can starve the melody (one
   cinder loop in 183 lost half its tune; the same case exists in shatter
   and undertow blends on main). The review album is built from the Done
-  list once #67 merges.
+  list once #67 merges. **Queue finished 2026-09-25:** #67 (`wayfare`,
+v50) merged; brain check on main: tests and `--check` pass, 3000 v49
+specs render identically. Taste questions left for the review album:
+cinder's occasional added F over the E chord (the b9), wayfare's minor v
+in I-IV-V-IV in mixolydian and dorian, and whether the chug sounds like
+wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
