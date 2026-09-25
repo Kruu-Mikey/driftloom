@@ -43,9 +43,12 @@ const VOICE_COST = {
   ocarina: 15, flute: 16,
   // Measured, not guessed: marginal render time of 1s notes through the real
   // Synth, budget off, against an empty render, converted through the voices
-  // above at the median rate (1.11 units a ms). Two passes: fiddle 24.2 and
-  // 24.4, accordion 22.5 and 23.6. A flute, the nearest build, reads 15-16.
-  fiddle: 24, accordion: 23,
+  // above at the median rate (1.14-1.18 units a ms). Take one was 24 and 23,
+  // and the same method still reads 24.8 and 23.2 for it. Take two drops
+  // the bow noise and shares one fixed body per channel instead of filters
+  // on every note, so a note is its oscillators and a gain or two. Two
+  // passes: fiddle 7.9 and 8.3, accordion 8.7 and 9.1.
+  fiddle: 8, accordion: 9,
   templebell: 12, tubular: 12,
 };
 const DEFAULT_COST = 12; // any voice not listed above
@@ -54,8 +57,70 @@ const DEFAULT_COST = 12; // any voice not listed above
 // 0.4s notes to the median of each layer that draws them (contribution rule
 // 5). The accordion is drawn for both melody and chords, and a chord note
 // goes through the engine's spread, so each layer gets its own level.
-const FIDDLE_LEVEL = 0.141;
-const ACCORDION_LEVEL = { melody: 0.088, chords: 0.102 };
+//
+// Re-measured for take two below (--voice all --note 0.4, the mean of the
+// two velocities): the new fiddle arrives in 20-40 ms where take one's bow
+// took 80-120, so it came out 5.6 LU over the melody median and gave that
+// back (0.141 -> 0.0736); the accordion 0.1 under as a tune (0.088 ->
+// 0.0892) and 1.0 over as chords (0.102 -> 0.0909).
+const FIDDLE_LEVEL = 0.0736;
+const ACCORDION_LEVEL = { melody: 0.0892, chords: 0.0909 };
+
+// The folk voices' sources and bodies (take two). Take one was a raw
+// sawtooth under a filter that swept open on every note: the family the
+// lead audition had already called harsh, with a wah on every note, and
+// heard as "a toy fiddle and accordion played badly by a child".
+//
+// Harmonic slope of each source, as 1/n^slope. A sawtooth is 1; the sung
+// voices' glottal source is 2.5. A reed's even harmonics are weaker than
+// its odd ones.
+//
+// Set by the tone probe (measure.mjs --voice): each voice's A-weighted
+// share of energy in 2-5 kHz, the band where a voice reads as harsh, has to
+// land among the voices Mikey likes -- ocarina, harp and kalimba near 0.02%,
+// flute 0.75% -- and not the leads he called harsh, saw, moog and
+// analoglead at 8-13%. Take one's fiddle measured 12-14% and its accordion
+// 11%.
+const BOWED_SLOPE = 2.2;
+const REED_SLOPE = 2.0;
+const REED_EVEN = 0.6;
+// Fixed resonances: [type, Hz, Q, dB]. The violin's wood around 300 Hz and
+// a gentle bridge hill at 2.7 kHz, with the fizz above it rolled away; the
+// accordion's milder reed formant, under a lowpass near 3 kHz. A lowpass
+// Q is in dB in Web Audio, so -3 is the plain, unresonant slope.
+const BODIES = {
+  fiddle: [
+    ['peaking', 300, 1.2, 5],
+    ['peaking', 2700, 0.9, 2],
+    ['lowpass', 4500, -3],
+  ],
+  accordion: [
+    ['peaking', 1250, 0.9, 3],
+    ['lowpass', 2800, -3],
+  ],
+};
+// Reeds 2-3 cents apart: a slow shimmer, not a beat. Two equal reeds that
+// close together cancel outright at the bottom of every beat -- a second
+// and a half apart around G4 -- and a held note swelled and all but
+// vanished; measured, the accordion was no louder on a 1.6 s note than a
+// 0.4 s one, where every other voice gains 2-3.6 LU. Real reeds never
+// cancel that cleanly, so the second one sounds softer: the beat becomes a
+// wave of about +2 and -4 dB. Nor do they start a note in step, so the
+// second one comes in at a random point of its cycle, under a period late
+// and inside the attack; started together, every short note sat on the
+// crest of the beat, about 2 dB over what a held note averages.
+const REED_CENTS = 1.25;
+const SECOND_REED = 0.35;
+// A note speaks in 20-40 ms when it is short and bows or swells in only
+// when it is long: the median melody note is 0.35 s, and take one spent a
+// third of that arriving. A slurred note is not attacked at all, beyond
+// the few ms that keep it from clicking.
+const speak = (dur) => Math.min(0.1, Math.max(0.02, 0.015 + dur * 0.06));
+const SLUR_ATTACK = 0.012;
+// Vibrato only on notes long enough to hold, arriving once the note has
+// settled, and never twice the same: rate and depth are drawn per note and
+// drift across it, widening as it holds, as a player's does.
+const VIBRATO_MIN_DUR = 0.5;
 
 // Slid attacks, for the wind voices. See `_slide`.
 //
@@ -149,6 +214,9 @@ export class Synth {
     this._releases = [];
     this.noise = this._makeNoise(2.0);
     this.glottal = this._makeGlottal();
+    this.bowed = this._makeWave(BOWED_SLOPE);
+    this.reed = this._makeWave(REED_SLOPE, REED_EVEN);
+    this._bodies = new Map();
     this._build();
   }
 
@@ -191,6 +259,43 @@ export class Synth {
     return this.ctx.createPeriodicWave(real, imag);
   }
 
+  // The same idea for the folk voices: a source built with the slope it
+  // should have, instead of a raw sawtooth filtered after the fact. `even`
+  // scales the even harmonics, which is most of what makes a reed a reed.
+  _makeWave(slope, even = 1, harmonics = 64) {
+    const real = new Float32Array(harmonics + 1);
+    const imag = new Float32Array(harmonics + 1);
+    for (let n = 1; n <= harmonics; n++) imag[n] = (n % 2 ? 1 : even) / Math.pow(n, slope);
+    return this.ctx.createPeriodicWave(real, imag);
+  }
+
+  // An instrument's body, shared by every note that voice plays into one
+  // channel. The resonances are fixed -- a violin's wood does not retune
+  // itself each note -- so one chain per channel does what a filter per
+  // note did, and a note costs its oscillators and a gain. Built the first
+  // time it is asked for; a quality toggle builds a new Synth, and a new
+  // set with it.
+  _body(kind, dest) {
+    let byDest = this._bodies.get(kind);
+    if (!byDest) this._bodies.set(kind, byDest = new Map());
+    let input = byDest.get(dest);
+    if (input) return input;
+    const ctx = this.ctx;
+    const nodes = BODIES[kind].map(([type, frequency, Q, gain]) => {
+      const b = ctx.createBiquadFilter();
+      b.type = type;
+      b.frequency.value = frequency;
+      b.Q.value = Q;
+      if (gain != null) b.gain.value = gain;
+      return b;
+    });
+    for (let i = 0; i + 1 < nodes.length; i++) nodes[i].connect(nodes[i + 1]);
+    nodes[nodes.length - 1].connect(dest);
+    input = nodes[0];
+    byDest.set(dest, input);
+    return input;
+  }
+
   // Slid attacks (roadmap item 9 v2).
   //
   // The wind voices had vibrato and breath and still did not sound played,
@@ -228,12 +333,28 @@ export class Synth {
       ? midiToFreq(prev)
       : f * Math.pow(2, -SLIDE_SCOOP / 12);
 
-    // Short, and landing well before the midpoint: the note has to be
-    // *on* pitch for most of its length or the slide stops being an
-    // attack and becomes the note.
-    const reach = Math.min(0.09, Math.max(0.03, dur * 0.22));
+    this._arrive(param, from, f, time, Math.min(0.09, Math.max(0.03, dur * 0.22)));
+    return true;
+  }
+
+  // Short, and landing well before the midpoint: the note has to be *on*
+  // pitch for most of its length or the slide stops being an attack and
+  // becomes the note.
+  _arrive(param, from, f, time, reach) {
     param.setValueAtTime(from, time);
     param.exponentialRampToValueAtTime(f, time + reach);
+  }
+
+  // A slur: a note joined to the one before it (`prev`, as the slides
+  // read it) is not attacked again. On a string the finger moves and the
+  // bow does not, so the pitch travels from the last note, quicker than a
+  // slide, since the note is the point and not the reaching. A leap past
+  // a fourth or a repeated note simply changes: no glide, still no attack.
+  // Every joined note slurs; there is no draw.
+  _slur(param, midi, time, dur, prev) {
+    const step = midi - prev;
+    if (step === 0 || Math.abs(step) > SLIDE_MAX_STEP) return false;
+    this._arrive(param, midiToFreq(prev), midiToFreq(midi), time, Math.min(0.045, Math.max(0.02, dur * 0.12)));
     return true;
   }
 
@@ -1053,90 +1174,72 @@ export class Synth {
         return;
       }
 
-      // Fiddle: a bowed string. The sawtooth is the bowed waveform; what makes
-      // it bowed rather than a synth lead is everything around it. The bow
-      // takes 80-120ms to catch the string (quicker on short notes, the way
-      // a player bows them), the lowpass opens as it does, bow noise rides
-      // the note, and the vibrato only arrives once the note has settled.
+      // Fiddle: a bowed string. A source with the slope a bowed string has
+      // once the violin's body has had it, the body's fixed resonances, an
+      // attack sized to the note, slurs between joined notes, and a vibrato
+      // that breathes on the long ones. No bow noise: it read as grit.
       case 'fiddle': {
         if (!this._budget(time, soft, VOICE_COST.fiddle)) return;
-        const bow = 0.08 + 0.04 * Math.min(1, dur / 1.2);
+        const joined = opts.prev != null;
         const o = ctx.createOscillator();
-        o.type = 'sawtooth';
-        o.frequency.value = f;
-        const vib = ctx.createOscillator();
-        vib.frequency.value = 5.5;
-        const vibAmt = ctx.createGain();
-        vibAmt.gain.setValueAtTime(0, time);
-        vibAmt.gain.setValueAtTime(0, time + 0.3);
-        vibAmt.gain.linearRampToValueAtTime(8, time + 0.6);
-        vib.connect(vibAmt).connect(o.detune);
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.Q.value = 0.8;
-        lp.frequency.setValueAtTime(Math.min(900, f * 2), time);
-        lp.frequency.linearRampToValueAtTime(Math.min(5200, f * 8), time + bow);
-        lp.frequency.setTargetAtTime(Math.min(3800, f * 6), time + bow, 0.25);
+        o.setPeriodicWave(this.bowed);
+        // The vibrato rides on detune, so the frequency is free for the slur.
+        if (!(joined && this._slur(o.frequency, midi, time, dur, opts.prev))) o.frequency.value = f;
+        let vib = null;
+        if (dur >= VIBRATO_MIN_DUR) {
+          vib = ctx.createOscillator();
+          const rate = 4.8 + Math.random() * 1.3;
+          vib.frequency.setValueAtTime(rate, time);
+          vib.frequency.linearRampToValueAtTime(rate * (0.9 + Math.random() * 0.2), time + dur);
+          const depth = 10 + Math.random() * 10;
+          const onset = Math.min(0.3, dur * 0.3);
+          const vibAmt = ctx.createGain();
+          vibAmt.gain.setValueAtTime(0, time);
+          vibAmt.gain.setValueAtTime(0, time + onset);
+          vibAmt.gain.linearRampToValueAtTime(depth * 0.6, time + onset + 0.2);
+          vibAmt.gain.linearRampToValueAtTime(depth, time + dur);
+          vib.connect(vibAmt).connect(o.detune);
+        }
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(vel * FIDDLE_LEVEL, time + bow);
+        g.gain.linearRampToValueAtTime(vel * FIDDLE_LEVEL, time + (joined ? SLUR_ATTACK : speak(dur)));
         g.gain.setTargetAtTime(0.0001, time + dur * 0.9, 0.07);
-        o.connect(lp).connect(g).connect(dest);
-        // Rosin on the string: noise band-passed around the upper partials,
-        // a little stronger while the bow bites, then riding the note.
-        const rosin = ctx.createBufferSource();
-        rosin.buffer = this.noise;
-        rosin.loop = true;
-        rosin.playbackRate.value = 0.9 + Math.random() * 0.2;
-        const bp = ctx.createBiquadFilter();
-        bp.type = 'bandpass';
-        bp.frequency.value = Math.min(6000, f * 4);
-        bp.Q.value = 1.5;
-        const ng = ctx.createGain();
-        ng.gain.setValueAtTime(0.0001, time);
-        ng.gain.linearRampToValueAtTime(vel * FIDDLE_LEVEL * 0.22, time + bow * 0.6);
-        ng.gain.linearRampToValueAtTime(vel * FIDDLE_LEVEL * 0.08, time + bow * 1.5);
-        ng.gain.setTargetAtTime(0.0001, time + dur * 0.9, 0.07);
-        rosin.connect(bp).connect(ng).connect(dest);
-        o.start(time); vib.start(time); rosin.start(time);
-        o.stop(time + dur + 0.4); vib.stop(time + dur + 0.4); rosin.stop(time + dur + 0.4);
+        o.connect(g).connect(this._body('fiddle', dest));
+        o.start(time);
+        o.stop(time + dur + 0.4);
+        if (vib) { vib.start(time); vib.stop(time + dur + 0.4); }
         this._release(time, dur + 0.4, VOICE_COST.fiddle);
         return;
       }
 
-      // Accordion: two reeds a few cents apart, which is the musette
-      // shimmer, a bellows swell into the note, and a band-limited tone
-      // with the reed's nasal lift. Two oscillators, not three: a third
-      // reed is a different register stop, not more accordion.
+      // Accordion: two soft reeds a couple of cents apart, the second one
+      // quieter, which is the musette shimmer without the beating, through
+      // the reed's fixed formant and a lowpass. The bellows swell only into
+      // long notes, and not at all into a joined one: the bellows keep
+      // moving and the next button speaks. No glide, since there is no
+      // string to slide on. Two reeds, not three: a third is a different
+      // register stop, not more accordion.
       case 'accordion': {
         if (!this._budget(time, soft, VOICE_COST.accordion)) return;
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.Q.value = 0.7;
-        lp.frequency.value = Math.min(3400, f * 7);
-        const reed = ctx.createBiquadFilter();
-        reed.type = 'peaking';
-        reed.frequency.value = 1400;
-        reed.Q.value = 1.1;
-        reed.gain.value = 5;
         const g = ctx.createGain();
         // A chord is several notes at once through the engine's spread, so
         // the two layers take separate levels; see ACCORDION_LEVEL.
         const level = vel * (soft ? ACCORDION_LEVEL.chords : ACCORDION_LEVEL.melody);
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(level, time + Math.min(0.15, dur * 0.5));
+        g.gain.linearRampToValueAtTime(level, time + (opts.prev != null ? SLUR_ATTACK : speak(dur)));
         g.gain.setTargetAtTime(0.0001, time + dur * 0.92, 0.06);
-        lp.connect(reed).connect(g).connect(dest);
-        const oscs = [];
-        for (const cents of [-6, 6]) {
+        g.connect(this._body('accordion', dest));
+        const second = ctx.createGain();
+        second.gain.value = SECOND_REED;
+        second.connect(g);
+        for (const [cents, into, late] of [[-REED_CENTS, g, 0], [REED_CENTS, second, Math.random() / f]]) {
           const o = ctx.createOscillator();
-          o.type = 'sawtooth';
+          o.setPeriodicWave(this.reed);
           o.frequency.value = f;
           o.detune.value = cents;
-          o.connect(lp);
-          o.start(time);
+          o.connect(into);
+          o.start(time + late);
           o.stop(time + dur + 0.35);
-          oscs.push(o);
         }
         this._release(time, dur + 0.35, VOICE_COST.accordion);
         return;
