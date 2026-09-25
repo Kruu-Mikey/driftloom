@@ -414,9 +414,17 @@ slurred legato, a drifting vibrato, closer reeds, little or no bow noise
 2-5 kHz share must land among voices Mikey likes (ocarina, flute, harp,
 kalimba), not the harsh leads. Same album afterwards.
 
-**Next build: `tide`, part 1** -- the profile itself with existing voices,
-folk progressions, the drone, and a 3/4 reading of 12 steps, tempo and
-metre drawn together. Brief written 2026-09-24. The hands found, and left, the
+**#57, v43, `tide` part 1 -- verified.** 3000 of main's specs render
+identically under the new code (fresh seeds differ, as they must, since
+the profile pool grew). Tests and `--check` pass on the re-baselined file.
+Tide leads about 10% of fresh loops; 32% of those get the drone. Level
+0.83, solved from measurement. The hands fixed two things beyond the
+brief, both right: progressions filtered per mode (the I-bVII shuttle is
+a diminished vii in ionian), and glade's bVII ending no longer rewrites
+tide's own progressions. Left for part 2: 3/4 melody rhythms still use
+the 6/8 cells, 3/4 gaps still count 3-step beats. The tide album waits
+for fiddle take two, since tide leans on the fiddle; #57 should merge
+first so take two is built on top of it. The hands found, and left, the
 other 16-step assumptions in 12-step bars: shaker on 2/6/10, hat accents
 on 0/4/8, 4-step rolls, gaps counting 3-step beats, 32-step swells, and
 the walk at [0,3,6,9] (a 6/8 walk would be [0,4,6,10]); plus a 4/4 dub
