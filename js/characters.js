@@ -421,8 +421,8 @@ export const CHARACTERS = {
     // The hand kit: a frame drum and a tambourine playing the kit's part.
     kits: [['brush', 3], ['tape', 2], ['hand', 2]],
     hatDensity: [0.1, 0.45],
-    chordVoices: [['harp', 3], ['accordion', 2], ['keys', 1]],
-    melodyVoices: [['fiddle', 4], ['whistle', 3], ['ocarina', 2], ['accordion', 1.5]],
+    chordVoices: [['harp', 3], ['accordion', 2], ['keys', 1], ['nylon', 2.5]],
+    melodyVoices: [['fiddle', 4], ['whistle', 3], ['ocarina', 2], ['accordion', 1.5], ['panflute', 1.5]],
     bassStyles: [['held', 3], ['pulse', 3], ['walk', 1.5], ['sparse', 1]],
     // A third of loops hold the tonic and fifth under the changing chords.
     drone: 1 / 3,
