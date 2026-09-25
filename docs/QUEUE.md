@@ -125,3 +125,9 @@ Mikey decides this line:
   softer fiddle and accordion with no rasp or buzz; short notes speak at
   once and joined fiddle notes slur; vibrato only on long fiddle notes; the
   accordion's shimmer slow and gentle, never dropping out on a held note.
+- #62, tide part 2a (v45),
+  https://23353f47-driftloom.kruu-mikey-thaiculture.workers.dev: waltz
+  tunes leaning on the beat with pickups into the bar; quick grace notes
+  (cuts and turns) on some of tide's beat notes; in some loops a second
+  line in thirds or sixths under the held notes. Listen for graces that
+  sound played rather than glitchy, and a harmony that stays underneath.

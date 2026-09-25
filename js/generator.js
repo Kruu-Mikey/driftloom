@@ -1364,6 +1364,10 @@ const SNARE_34 = [[4, 8], [8], [6, 10], [4, 8]];
 // 5/4: group as 3+2 rather than 2+3, which is the friendlier of the two.
 const KICK_20 = [[0, 12], [0], [0, 8, 12], [0, 12, 16]];
 const SNARE_20 = [[8], [8, 16], [12]];
+// The hand kit's instruments, by the kit instrument each one stands in for:
+// the frame drum's low note for the kick, its tipper tap for the snare,
+// clap and rim, the tambourine's zils for the hats. The shaker stays.
+const HAND_KIT = { kick: 'frame', snare: 'tap', clap: 'tap', rim: 'tap', hat: 'jingle', ohat: 'ojingle' };
 
 function genDrums(spec) {
   const r = new Rng(spec.layerSeeds.drums);
@@ -1466,7 +1470,14 @@ function genDrums(spec) {
       }
     }
   }
-  return { events: events.filter((e) => e.step < total), kit, hatDensity };
+  const played = events.filter((e) => e.step < total);
+  // The hand kit plays the same pattern on a frame drum and a tambourine:
+  // every draw above is the same, and only the instruments are renamed.
+  return {
+    events: kit === 'hand' ? played.map((e) => ({ ...e, inst: HAND_KIT[e.inst] || e.inst })) : played,
+    kit,
+    hatDensity,
+  };
 }
 
 // ------------------------------------------------------------- texture
@@ -1527,6 +1538,15 @@ function genTexture(spec, harmony) {
         vel: 0.1 + r.f() * 0.1,
         kind: 'chime',
       });
+    }
+  } else if (kind === 'waves') {
+    // The sea: one slow swell after another, each six to nine seconds long
+    // whatever the tempo, now and then with a breath between two of them.
+    const sd = 60 / spec.bpm / 4;
+    for (let st = 0; st < total;) {
+      const len = Math.max(spb, Math.round((6 + r.f() * 3) / sd));
+      events.push({ step: st, dur: len, notes: [], vel: 0.14 + r.f() * 0.08, kind: 'waves' });
+      st += len + (r.chance(0.3) ? Math.round((1 + r.f() * 2) / sd) : 0);
     }
   } else {
     // Wind used to be one source running the whole loop, which is why it
@@ -2095,16 +2115,22 @@ export function drift(pattern, rng, amount) {
   const scale = SCALES[spec.scale].steps;
   const a = amount;
 
-  // Hats flicker in and out.
+  // Hats flicker in and out, and so do the hand kit's zils, which play
+  // the hats' part.
+  const hand = pattern.meta && pattern.meta.kit === 'hand';
   for (const e of p.tracks.drums) {
-    if ((e.inst === 'hat' || e.inst === 'shaker') && rng.chance(0.1 * a)) e.vel = 0;
-    if (e.inst === 'hat' && rng.chance(0.05 * a)) e.inst = 'ohat';
+    const hat = e.inst === 'hat' || e.inst === 'jingle';
+    if ((hat || e.inst === 'shaker') && rng.chance(0.1 * a)) e.vel = 0;
+    if (hat && rng.chance(0.05 * a)) e.inst = e.inst === 'hat' ? 'ohat' : 'ojingle';
   }
-  // An extra ghost hit.
+  // An extra ghost hit, on whichever kit the loop is playing.
   if (rng.chance(0.4 * a) && p.tracks.drums.length) {
+    // Drawn in the order the literal always drew them: step, inst, vel.
+    const step = rng.int(0, p.totalSteps - 1);
+    const inst = rng.pick(['rim', 'shaker', 'hat']);
     p.tracks.drums.push({
-      step: rng.int(0, p.totalSteps - 1),
-      inst: rng.pick(['rim', 'shaker', 'hat']),
+      step,
+      inst: hand ? HAND_KIT[inst] || inst : inst,
       vel: 0.16 + rng.f() * 0.14,
     });
   }
