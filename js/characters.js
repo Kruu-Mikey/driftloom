@@ -390,6 +390,57 @@ export const CHARACTERS = {
     tone: { warmth: [0.4, 0.75], space: [0.45, 0.8], wobble: [0.1, 0.4] },
     feel: { lift: [0.25, 0.75], energy: [0.55, 0.9], warmth: [0.4, 0.8] },
   },
+
+  // Sea and island folk: the sailing tunes of Wind Waker and Spirit Tracks.
+  // A loop is a gentle, rocking waltz or a lively, dancing jig, now and then
+  // a reel. Tempo and metre are drawn together from `gaits`, because a fast
+  // waltz or a slow jig is neither; `bpm` and `stepsPerBar` below are only
+  // what a blend sees when tide colours another profile's loop.
+  tide: {
+    label: 'Tide',
+    weight: 2.0,
+    // Measured, not guessed: at 0.8 the loops tide leads came out 0.25 LU
+    // under the catalogue median (measure.mjs --profile tide --n 60 against
+    // --n 100). A loop's level is blended across its mix, so this is the
+    // profile level that puts their mean on the median.
+    level: 0.83,
+    bpm: [84, 140],
+    stepsPerBar: [[12, 9], [16, 1]],
+    gaits: [
+      { weight: 5, metre: '3/4', stepsPerBar: 12, bpm: [84, 104] },
+      { weight: 4, metre: '6/8', stepsPerBar: 12, bpm: [112, 140] },
+      { weight: 1, metre: '4/4', stepsPerBar: 16, bpm: [112, 136] },
+    ],
+    bars: [[4, 4], [8, 4], [16, 1.5], [2, 0.5]],
+    airy: 0.3,
+    swing: [0, 0.08],
+    scales: [
+      ['dorian', 3], ['mixolydian', 3], ['ionian', 2.5], ['aeolian', 2], ['majorPent', 1.5],
+    ],
+    drums: 0.6,
+    kits: [['brush', 3], ['tape', 2]],
+    hatDensity: [0.1, 0.45],
+    chordVoices: [['harp', 3], ['accordion', 2], ['keys', 1]],
+    melodyVoices: [['fiddle', 4], ['whistle', 3], ['ocarina', 2], ['accordion', 1.5]],
+    bassStyles: [['held', 3], ['pulse', 3], ['walk', 1.5], ['sparse', 1]],
+    // A third of loops hold the tonic and fifth under the changing chords.
+    drone: 1 / 3,
+    bassVoices: [['round', 3], ['pluckbass', 3], ['fifths', 1.5]],
+    textures: [['bells', 2.5], ['chime', 2], ['swell', 2], ['none', 2]],
+    restBar: 0.14,
+    chordSize: [[3, 5], [4, 2]],
+    // Scale degrees, as SHAPES_7 in the generator. Only for the seven-note
+    // modes; a pentatonic tide loop draws the ordinary pentatonic shapes.
+    progressions: [
+      [0, 6, 0, 6], // the I-bVII shuttle
+      [0, 6, 5, 6], // i-bVII-bVI-bVII
+      [0, 3, 0, 4], // I-IV-I-V
+      [0, 4, 3, 0], // I-V-IV-I, ending IV-I
+      [0, 5, 3, 0], // I-vi-IV-I, ending IV-I
+    ],
+    tone: { warmth: [0.3, 0.6], space: [0.4, 0.75], wobble: [0.05, 0.25] },
+    feel: { lift: [0.45, 1], energy: [0.35, 0.9], warmth: [0.4, 0.8] },
+  },
 };
 
 // Saved loops from before the rename still resolve.
@@ -527,5 +578,11 @@ export function blendMix(mix) {
   const lead = keys.reduce((a, b) => (w[a] >= w[b] ? a : b));
   out.polymeter = !!CHARACTERS[lead].polymeter;
   out.microLoop = !!CHARACTERS[lead].microLoop;
+  // So are the things a profile brings of its own: how tempo and metre go
+  // together, which kits it plays, its progressions and the drone. A loop
+  // that tide merely colours does not start waltzing.
+  for (const k of ['gaits', 'kits', 'progressions', 'drone']) {
+    if (CHARACTERS[lead][k] !== undefined) out[k] = CHARACTERS[lead][k];
+  }
   return out;
 }

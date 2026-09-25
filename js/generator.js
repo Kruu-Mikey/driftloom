@@ -125,8 +125,17 @@ export function newSpec(seed = randomSeed()) {
   // bright melody sit over a settled accompaniment.
   const coherence = q8(r.range(0.42, 0.82));
 
-  const stepsPerBar = r.weighted(c.stepsPerBar);
+  let stepsPerBar = r.weighted(c.stepsPerBar);
   const bars = r.weighted(c.bars);
+  // A profile with gaits draws tempo and metre together, from its own salted
+  // stream so every other loop's draws stay where they were. The two draws
+  // above and the tempo draw below are still made, and simply overruled.
+  const gait = gaitFor(seed, c);
+  if (gait) stepsPerBar = gait.stepsPerBar;
+  const tempoDraw = r.f();
+  const band = gait ? gait.bpm : c.bpm;
+  const tempo = Math.round(band[0] + tempoDraw * (band[1] - band[0])
+    + (feel.lift - 0.5) * 5 + (feel.energy - 0.5) * 10);
 
   const spec = {
     seed,
@@ -138,9 +147,9 @@ export function newSpec(seed = randomSeed()) {
     mood: feel.lift, // kept so older code and saves still read something
     // Clamped to the range the tempo control can actually represent, so the
     // slider and the readout can never disagree.
-    bpm: Math.max(32, Math.min(190, Math.round(
-      r.range(c.bpm[0], c.bpm[1]) + (feel.lift - 0.5) * 5 + (feel.energy - 0.5) * 10
-    ))),
+    bpm: gait
+      ? Math.max(gait.bpm[0], Math.min(gait.bpm[1], tempo))
+      : Math.max(32, Math.min(190, tempo)),
     root: r.int(0, 11),
     scale: r.weighted(moodWeighted(c.scales, feel.lift)),
     bars,
@@ -391,13 +400,33 @@ const SHAPES_PENT = [
   [0, 2, 3, 1],
 ];
 
+// Semitones from a scale degree up to the degree four above it: the fifth
+// of the triad built on it. 7 is a perfect fifth, a major or minor chord.
+function fifthAbove(steps, degree) {
+  const n = steps.length;
+  return (steps[(degree + 4) % n] - steps[degree % n] + 12) % 12;
+}
+
+// A profile's gait: tempo band, step count and metre, drawn together.
+// Only the leading profile's gaits count (see blendMix), and the draw comes
+// from the seed alone, so newSpec and metreOf always agree, and a share
+// code, which carries the seed and the mix, rebuilds the same metre.
+const GAIT_SALT = 0x6a1c0de5;
+function gaitFor(seed, c) {
+  if (!c.gaits) return null;
+  return new Rng(((seed ^ GAIT_SALT) >>> 0) || 1).weighted(c.gaits.map((g) => [g, g.weight]));
+}
+
 // How a bar is counted. The step count alone cannot say: twelve steps are
-// 6/8 today, and a waltz will want to read the same twelve as 3/4 (item
-// 14c). That reading gets its own name and its own tables; it does not
-// reinterpret the 6/8 ones.
+// 6/8, unless the loop's gait reads them as 3/4, the waltz: three beats at
+// 0, 4 and 8. Each reading has its own name and its own tables.
 function metreOf(spec) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
-  return spb === 12 ? '6/8' : spb === 20 ? '5/4' : '4/4';
+  if (spb === 12) {
+    const gait = gaitFor(spec.seed, characterOf(spec));
+    return gait && gait.metre === '3/4' ? '3/4' : '6/8';
+  }
+  return spb === 20 ? '5/4' : '4/4';
 }
 
 // Each entry is a bar's worth of hits: [startStep, durationInSteps]. One
@@ -444,6 +473,25 @@ const CHORD_RHYTHMS = {
     // the second beat.
     stutter: [[0, 2], [3, 2], [6, 3]],
   },
+  // Three beats at 0, 4 and 8: the waltz. The bass takes the downbeat and
+  // the chords answer on the other two, the oom-pah-pah, so every name here
+  // is a way of playing that pah-pah. Chords move on the beats and hold;
+  // the figures some names add sit between the beats.
+  '3/4': {
+    // Pah-pah, each held to the next beat.
+    pad: [[4, 4], [8, 4]],
+    breathe: [[4, 4], [8, 4]],
+    // Pah-pah, a touch detached: the classic.
+    twoAndFour: [[4, 3], [8, 3]],
+    // With a pickup eighth into the next downbeat.
+    pushed: [[4, 4], [8, 2], [10, 2]],
+    // Pah-a-pah-a: the eighth after each beat as well.
+    offbeat: [[4, 2], [6, 2], [8, 2], [10, 2]],
+    // One pah on the second beat, held through the third.
+    lateBloom: [[4, 8]],
+    // A quick catch after the second beat, then the third.
+    stutter: [[4, 2], [6, 2], [8, 3]],
+  },
 };
 
 function genHarmony(spec) {
@@ -459,22 +507,35 @@ function genHarmony(spec) {
   const metre = metreOf(spec);
   const scale = SCALES[spec.scale].steps;
   const pentatonic = scale.length <= 5;
-  const shapePool = pentatonic ? SHAPES_PENT : SHAPES_7;
+  // A profile may bring its own progressions for the seven-note modes, and
+  // plays those whose every chord is a plain major or minor triad in the
+  // loop's mode: the I-bVII shuttle wants a flat seventh, and in ionian its
+  // "bVII" would be the diminished vii. The pick is the same one draw
+  // either way.
+  const fitting = scale.length === 7 && c.progressions
+    ? c.progressions.filter((p) => p.every((d) => fifthAbove(scale, d) === 7))
+    : [];
+  const own = fitting.length ? fitting : null;
+  const shapePool = pentatonic ? SHAPES_PENT : own || SHAPES_7;
   let shape = r.pick(shapePool).slice();
 
   // A gentle mutation so we aren't just replaying twelve fixed progressions.
+  // A profile's own progressions are idioms and stay as written; the draws
+  // are made all the same.
   if (r.chance(0.35)) {
     const i = r.int(1, shape.length - 1);
-    shape[i] = (shape[i] + r.pick([-1, 1, 2])) % scale.length;
-    if (shape[i] < 0) shape[i] += scale.length;
+    const moved = (shape[i] + r.pick([-1, 1, 2]) + scale.length) % scale.length;
+    if (!own) shape[i] = moved;
   }
 
-  // bVII is the Kondo move: it ends a phrase without ending it.
-  if (c.flatSeven && !pentatonic && r.chance(c.flatSeven)) {
+  // bVII is the Kondo move: it ends a phrase without ending it. A profile's
+  // own progressions end as written, so the draw decides nothing there.
+  if (c.flatSeven && !pentatonic && r.chance(c.flatSeven) && !own) {
     shape[shape.length - 1] = 6;
   }
 
-  const chordsPerBar = r.chance(0.18) && spb % 2 === 0 ? 2 : 1;
+  // A waltz bar does not split in half: the change would land mid-beat.
+  const chordsPerBar = r.chance(0.18) && spb % 2 === 0 && metre !== '3/4' ? 2 : 1;
   const slotLen = Math.floor(spb / chordsPerBar);
   const slotCount = spec.bars * chordsPerBar;
 
@@ -627,7 +688,19 @@ const DUB = {
 const WALK = {
   '4/4': [[0, 3], [4, 3], [8, 3], [12, 3]],
   '6/8': [[0, 3], [3, 3], [6, 3], [9, 3]],
+  // The waltz's bass has the downbeat: the root held through the second
+  // beat, and a walking note on the third into the next bar.
+  '3/4': [[0, 8], [8, 4]],
 };
+
+// The waltz's pulse: the oom alone, or with the third beat, a pickup into
+// the next bar, or a push across the middle of it.
+const PULSE_34 = [[0], [0, 8], [0, 10], [0, 6]];
+
+// A drone holds the key's tonic and fifth under whatever the chords do. It
+// is the profile's to ask for (tide asks in a third of its loops), and the
+// decision is a salted draw, so no other loop's bass stream moves.
+const DRONE_SALT = 0x0d7011e5;
 
 function genBass(spec, harmony) {
   const r = new Rng(spec.layerSeeds.bass);
@@ -636,10 +709,11 @@ function genBass(spec, harmony) {
   const metre = metreOf(spec);
   const scale = SCALES[spec.scale].steps;
   const total = spec.bars * spb;
-  const style = forced(spec, 'bass')
+  let style = forced(spec, 'bass')
     ? r.weighted(c.bassStyles.filter(([k]) => k !== 'sparse').length
         ? c.bassStyles.filter(([k]) => k !== 'sparse') : c.bassStyles)
     : r.weighted(c.bassStyles);
+  if (c.drone && new Rng(((spec.layerSeeds.bass ^ DRONE_SALT) >>> 0) || 1).chance(c.drone)) style = 'drone';
   const voice = r.weighted(c.bassVoices || [['sub', 1]]);
   const glideChance = c.glide || 0;
   const octaveShift = r.chance(0.25) ? -12 : 0;
@@ -652,6 +726,20 @@ function genBass(spec, harmony) {
     events.push({ step: step % total, dur, midi: m, vel, glide, voice });
   };
 
+  if (style === 'drone') {
+    // Re-struck each bar so a voice that decays keeps sounding. The fifths
+    // voice already sounds the fifth, so it takes the tonic alone.
+    const tonic = scalePitch(spec.root, scale, 0, 0) - 24;
+    for (let bar = 0; bar < spec.bars; bar++) {
+      place(bar * spb, spb - 1, tonic, 0.58);
+      if (voice !== 'fifths') {
+        const root = events[events.length - 1];
+        events.push({ ...root, midi: root.midi + 7, vel: 0.4 });
+      }
+    }
+    return { events, style, voice };
+  }
+
   for (const slot of harmony.slots) {
     // Follow the slash note, not the chord root.
     const base = (slot.bassMidi != null ? slot.bassMidi : slot.rootMidi) - 24;
@@ -662,7 +750,9 @@ function genBass(spec, harmony) {
       place(slot.startStep, len - 1, base, 0.62 + r.f() * 0.15, r.chance(glideChance));
       if (r.chance(0.3)) place(slot.startStep + len - 2, 2, base + 7, 0.4);
     } else if (style === 'pulse') {
-      const grid = spb === 12
+      const grid = metre === '3/4'
+        ? r.pick(PULSE_34)
+        : spb === 12
         ? r.pick([[0, 6], [0, 3, 6, 9], [0, 4, 8], [0, 6, 9]])
         : r.pick([[0, 8], [0, 6, 10], [0, 4, 8, 12], [0, 7, 10]]);
       for (const g of grid) {
@@ -1237,6 +1327,10 @@ const SNARE_PATTERNS = [[4, 12], [12], [4, 12], [4, 12, 14], [8]];
 // 6/8: two dotted-crotchet beats, so the accents fall on 0 and 6.
 const KICK_12 = [[0, 6], [0], [0, 7], [0, 6, 9], [0, 4]];
 const SNARE_12 = [[6], [3, 9], [6], [6, 10]];
+// 3/4 keeps the twelve-step kicks, cross-rhythms and all, since each lands
+// on the downbeat. The snare is what the waltz needs: the pah-pah on the
+// second and third beats half the time, the third alone, or the old cross.
+const SNARE_34 = [[4, 8], [8], [6, 10], [4, 8]];
 // 5/4: group as 3+2 rather than 2+3, which is the friendlier of the two.
 const KICK_20 = [[0, 12], [0], [0, 8, 12], [0, 12, 16]];
 const SNARE_20 = [[8], [8, 16], [12]];
@@ -1246,12 +1340,14 @@ function genDrums(spec) {
   const c = characterOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const metre = metreOf(spec);
-  // Steps to a beat: a crotchet in 4/4 and 5/4, a dotted crotchet in 6/8.
+  // Steps to a beat: a crotchet in 4/4, 3/4 and 5/4, a dotted crotchet in
+  // 6/8. So a waltz accents its hats on all three beats, 0, 4 and 8.
   const beat = metre === '6/8' ? 6 : 4;
   const total = spec.bars * spb;
   const events = [];
   if (!forced(spec, 'drums') && !r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
-  const kit = r.weighted([['tape', 4], ['brush', 2], ['machine', 3]]);
+  // A profile may name its kits; the draw is the same one either way.
+  const kit = r.weighted(c.kits || [['tape', 4], ['brush', 2], ['machine', 3]]);
 
   // A bar of 6/8 is not a bar of 4/4 with four steps missing; it needs its
   // own patterns or the backbeat lands in the wrong place.
@@ -1261,7 +1357,8 @@ function genDrums(spec) {
   const kick = fourFloor
     ? [0, 4, 8, 12]
     : spb === 12 ? r.pick(KICK_12) : spb === 20 ? r.pick(KICK_20) : r.pick(KICK_PATTERNS);
-  const snare = spb === 12 ? r.pick(SNARE_12) : spb === 20 ? r.pick(SNARE_20) : r.pick(SNARE_PATTERNS);
+  const snare = spb === 12 ? r.pick(metre === '3/4' ? SNARE_34 : SNARE_12)
+    : spb === 20 ? r.pick(SNARE_20) : r.pick(SNARE_PATTERNS);
   const snareVoice = r.weighted([['snare', 3], ['rim', 2], ['clap', 1.5]]);
   const feel = feelForLayer(spec, 'drums');
   const hatDensity = Math.min(1,

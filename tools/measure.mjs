@@ -72,6 +72,8 @@ driftloom offline audio measurement
                     probes every voice characters.js draws, by layer
   --note <seconds>  how long each probed note is held       (default 1.6)
   --refusals [code] count voice-budget refusals per layer
+  --profile <id>    keep only loops that profile leads, drawing from the
+                    same corpus until --n of them are in
   --selftest        check the loudness meter against reference signals
   --help            this
 
@@ -91,6 +93,12 @@ driftloom offline audio measurement
   one loop; given nothing it draws a corpus and reports the distribution
   of per-loop melody refusal rates, because a mean hides the loops where
   the tune is actually being eaten.
+
+  --profile narrows the corpus, for the loudness report and for
+  --refusals, to the loops one profile leads: the ones the by-profile table
+  would have counted for it, only n of them rather than the handful a
+  mixed corpus of n holds. Its median is what that table's row sets
+  against the catalogue.
 
   --voice takes a comma-separated list (--voice vowel,hum,kalimba) and
   reports, for each one, the share of its A-weighted energy that lands in
@@ -122,6 +130,7 @@ function parseArgs(argv) {
   const opts = {
     n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
     jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
+    profile: null,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -167,6 +176,10 @@ function parseArgs(argv) {
           ? String(next) : 'corpus';
         break;
       }
+      case '--profile':
+        opts.profile = value();
+        if (!CHARACTERS[opts.profile]) fail(`no profile called '${opts.profile}'`);
+        break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${arg}`);
     }
@@ -376,6 +389,26 @@ async function inParallel(tasks, width) {
 // layer that sent it; a per-layer figure that silently folded in someone
 // else's tail would be worse than no figure at all.
 
+// The corpus, drawn the same way on every page: loops from the corpus seed
+// in order, and with --profile only the ones that profile leads. Without a
+// profile that is exactly n draws, the corpus it always was.
+const CORPUS = `
+function leadOf(spec) {
+  return Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '?';
+}
+function drawCorpus(seed, n, profile) {
+  const master = new Rng(seed);
+  const specs = [];
+  // Capped, so a profile that never leads cannot spin forever.
+  for (let tries = 0; specs.length < n && tries < n * 1000; tries++) {
+    const spec = newSpec(master.seed32());
+    if (!profile || leadOf(spec) === profile) specs.push(spec);
+  }
+  return specs;
+}
+`;
+const ledBy = (opts) => (opts.profile ? `, loops led by ${opts.profile}` : '');
+
 const PAGE = `<!doctype html><meta charset="utf-8"><title>measure</title>
 <script type="module">
 import { Engine } from '/js/engine.js';
@@ -385,6 +418,7 @@ import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ${JSON.stringify(LAYERS)};
 ${PAGE_HELPERS}
+${CORPUS}
 
 const scan = (d) => {
   let peak = 0, sumSq = 0, full = 0;
@@ -477,9 +511,7 @@ async function chainMakeup(opts) {
 }
 
 window.measure = async (opts) => {
-  const master = new Rng(opts.seed || 1);
-  const specs = [];
-  for (let i = 0; i < opts.n; i++) specs.push(newSpec(master.seed32()));
+  const specs = drawCorpus(opts.seed || 1, opts.n, opts.profile);
 
   const tasks = specs.map((spec) => async () => {
     // Render whole passes of whatever this loop is, so a slow twenty-four
@@ -781,6 +813,7 @@ import { decodeSong } from '/js/share.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
+${CORPUS}
 
 // Render one loop and count what each layer asked for and lost.
 async function runOne(spec, quality, rate) {
@@ -849,15 +882,13 @@ window.refusalsOne = async (o) => {
 };
 
 window.refusalsCorpus = async (o) => {
-  const master = new Rng(o.seed);
   const rows = [];
-  for (let i = 0; i < o.n; i++) {
-    const spec = newSpec(master.seed32());
+  for (const spec of drawCorpus(o.seed, o.n, o.profile)) {
     const r = await runOne(spec, o.quality, o.rate);
     rows.push({
       name: spec.name, seed: spec.seed,
       asked: r.asked, refused: r.refused,
-      profile: Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '?',
+      profile: leadOf(spec),
     });
   }
   return rows;
@@ -888,7 +919,7 @@ function reportRefusalsOne(data, opts) {
 function reportRefusalsCorpus(rows, opts) {
   const out = [''];
   out.push('driftloom voice-budget refusals, corpus');
-  out.push(`  ${rows.length} loops, corpus seed ${opts.seed}, quality '${opts.quality}'`);
+  out.push(`  ${rows.length} loops, corpus seed ${opts.seed}${ledBy(opts)}, quality '${opts.quality}'`);
   out.push('');
   const rate = (r, l) => (r.asked[l] ? r.refused[l] / r.asked[l] : null);
   const melody = rows.map((r) => rate(r, 'melody')).filter((x) => x != null);
@@ -940,7 +971,7 @@ function report(rows, opts, chain) {
   out.push('');
   out.push('driftloom offline audio measurement');
   out.push(`  ${rows.length} loops at ${(opts.rate / 1000).toFixed(1)}k, >=${opts.passes} passes each (20-70s), quality '${opts.quality}'`);
-  out.push(`  corpus seed ${opts.seed}, real Engine and Synth through an OfflineAudioContext`);
+  out.push(`  corpus seed ${opts.seed}${ledBy(opts)}, real Engine and Synth through an OfflineAudioContext`);
   out.push('');
   out.push('  seed         name             bpm    secs  passes    peak     rms  full-scale');
   out.push(`  ${'-'.repeat(74)}`);
@@ -1500,7 +1531,7 @@ try {
 if (counting) {
   const corpus = opts.refusals === 'corpus';
   const data = corpus
-    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate })
+    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate, profile: opts.profile })
     : await page.evaluate((o) => window.refusalsOne(o), { code: opts.refusals, rate: opts.rate });
   await browser.close();
   server.close();

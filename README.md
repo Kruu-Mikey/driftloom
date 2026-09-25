@@ -79,6 +79,7 @@ density, metre, form -- that move together.
 | **Hollow** | voices. Synthetic vowels and humming, wordless and unhurried |
 | **Shrine** | struck metal left to ring. Temple bowls and church bells, long decays, a lot of space between strikes |
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
+| **Tide** | sea and island folk. Fiddle and whistle over harp and accordion; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone |
 
 These are not ten boxes. Every loop draws a **weight across several of
 them** -- an exponential draw per profile, normalised, which is a Dirichlet
@@ -175,7 +176,18 @@ Notes worth knowing if you go digging:
   chords move on the two dotted beats and hold, figures between the beats
   are welcome, and a weak-eighth entry tied over the second beat or a chord
   cut short is not. Tables are keyed by metre, not step count, because a
-  waltz will read the same twelve steps as 3/4.
+  waltz reads the same twelve steps as 3/4: beats at 0, 4 and 8, the bass
+  on the downbeat and the chords answering on the other two, so every name
+  in its table is a way of playing the oom-pah-pah.
+- **A profile can bring its tempo, metre and harmony with it.** Tide draws
+  a gait -- a slow waltz, a quick jig or, now and then, a reel in four --
+  and its tempo band from the gait, so a gentle loop is never a fast one.
+  It plays its own progressions (the I-bVII shuttle, i-bVII-bVI-bVII,
+  I-IV-I-V, IV-I endings) as written, and about a third of its loops hold
+  the tonic and fifth as a drone under the changing chords. A loop whose
+  profile does not ask draws exactly what it drew before: the gait and the
+  drone come from streams of their own, and the progression is the same
+  one draw, from a different pool.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like
