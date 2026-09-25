@@ -143,3 +143,9 @@ Mikey decides this line:
   itself (the saw a pluck, the moog a little movement, the analoglead its
   detuned shimmer). Listen for leads that no longer grate, and whether the
   moog now reads as too dull.
+- #65, nylon guitar and pan flute (v48),
+  https://ce292354-driftloom.kruu-mikey-thaiculture.workers.dev: a nylon
+  guitar strumming tide's chords (down on the beat, up off it, the upstroke
+  lighter) and a breathy pan flute among tide's tunes. Listen for a strum
+  that sounds played rather than smeared, and a pan flute whose breath is
+  air, not hiss.

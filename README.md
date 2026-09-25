@@ -80,6 +80,7 @@ density, metre, form -- that move together.
 | **Shrine** | struck metal left to ring. Temple bowls and church bells, long decays, a lot of space between strikes |
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 | **Tide** | sea and island folk. Fiddle, whistle and pan flute over harp, accordion and a strummed nylon guitar; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone. A frame drum and tambourine in place of the kit, and the slow swell of waves |
+| **Cinder** | island and volcano: fast, rhythmic, Spanish-tinged. A driving 6/8 at 120-150 bpm, some 4/4, drums in nine loops in ten with the hand kit leading; a strummed nylon guitar on the Andalusian cadence, fiddle, whistle, marimba, accordion and pan flute on top |
 
 These are not ten boxes. Every loop draws a **weight across several of
 them** -- an exponential draw per profile, normalised, which is a Dirichlet
@@ -193,6 +194,16 @@ Notes worth knowing if you go digging:
   gait, the drone, the ornaments and the harmony come from streams of
   their own, and the progression is the same one draw, from a different
   pool.
+- **A progression can spell its own chords.** Cinder's signature is the
+  Andalusian cadence, Am-G-F-E in A, and it ends on a *major* V that no
+  mode it plays in gives by degrees alone: aeolian's fifth degree is
+  minor, harmonic minor's seventh is diminished. So its progressions are
+  written per mode, and a step can say `{ d: 4, major: true }` or
+  `flat: true`. A spelled chord brings its scale with it -- the mode with
+  that chord's root and third moved -- and the tune and the bass over it
+  play in that scale, G# over the E major rather than the mode's G against
+  it, graces and harmony included. Dorian's F# is the cadence's F, so
+  dorian cinder loops keep their own i-IV and i-bVII-IV.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like

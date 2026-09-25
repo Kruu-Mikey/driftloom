@@ -43,7 +43,7 @@ const SCALE_IDS = [
 const PROFILE_IDS = [
   'dust', 'glade', 'thaw', 'haven', 'bloom', 'vapor',
   'halcyon', 'clockwork', 'shatter', 'undertow',
-  'grove', 'hollow', 'shrine', 'tide',
+  'grove', 'hollow', 'shrine', 'tide', 'cinder',
 ];
 const MOOD_IDS = [
   'joyful', 'happy', 'enthusiastic', 'refreshing',

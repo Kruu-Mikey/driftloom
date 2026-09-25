@@ -56,6 +56,7 @@ const STYLE_BIAS = {
   hollow: ['clouds', 'flow'],
   shrine: ['rings', 'water'],
   tide: ['waves', 'water'],
+  cinder: ['plasma', 'flow'],
 };
 
 // Compositions. This is the part that was missing: where the picture *is*,

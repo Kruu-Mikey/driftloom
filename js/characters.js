@@ -447,6 +447,80 @@ export const CHARACTERS = {
     tone: { warmth: [0.3, 0.6], space: [0.4, 0.75], wobble: [0.05, 0.25] },
     feel: { lift: [0.45, 1], energy: [0.35, 0.9], warmth: [0.4, 0.8] },
   },
+
+  // Island and volcano: fast, rhythmic and Spanish-tinged, the fire temples
+  // and lava islands. A driving 6/8 most of the time, the hand kit leading
+  // and a nylon guitar strumming the Andalusian cadence.
+  cinder: {
+    label: 'Cinder',
+    weight: 1.4,
+    // Measured, not guessed: at 0.8 the loops cinder leads came out 1.7 LU
+    // over the catalogue median (measure.mjs --profile cinder --n 60
+    // against --n 100); this is the level that puts their mean on it.
+    level: 0.63,
+    bpm: [120, 150],
+    stepsPerBar: [[12, 8], [16, 2]],
+    gaits: [
+      { weight: 8, metre: '6/8', stepsPerBar: 12, bpm: [120, 150] },
+      { weight: 2, metre: '4/4', stepsPerBar: 16, bpm: [120, 150] },
+    ],
+    bars: [[4, 4], [8, 4], [16, 1], [2, 0.5]],
+    airy: 0.15,
+    swing: [0, 0.04],
+    scales: [
+      ['phrygianDominant', 3], ['harmonicMinor', 2.5], ['aeolian', 2], ['dorian', 1.5],
+      ['phrygian', 1.5],
+    ],
+    // 0.95 so that drums play in about nine loops in ten of those cinder
+    // leads: the rest of a blend pulls the figure down (89% measured).
+    drums: 0.95,
+    kits: [['hand', 4], ['tape', 1], ['brush', 1]],
+    hatDensity: [0.3, 0.7],
+    chordVoices: [['nylon', 5], ['marimba', 2], ['accordion', 2]],
+    melodyVoices: [
+      ['fiddle', 3], ['whistle', 2.5], ['marimba', 2], ['accordion', 2], ['panflute', 2],
+    ],
+    bassStyles: [['pulse', 3], ['walk', 2]],
+    bassVoices: [['pluckbass', 3], ['round', 2]],
+    textures: [['none', 4], ['swell', 1], ['drops', 1]],
+    restBar: 0.12,
+    chordSize: [[3, 4], [4, 1]],
+    // Per mode, because the Andalusian cadence -- in A, Am-G-F-E -- ends on
+    // a major V, and each mode has its own wrong chord somewhere in it:
+    // aeolian's V is minor, harmonic minor's VII is diminished, and so on.
+    // Those are spelled out (see stepDegree in the generator), and the
+    // melody follows the spelling. The cadence is listed twice so it is the
+    // signature, beside one other idiom of the mode. Dorian's raised sixth
+    // is the F of the cadence, so dorian keeps its own progressions.
+    progressions: {
+      aeolian: [
+        [0, 6, 5, { d: 4, major: true }], // Am-G-F-E
+        [0, 6, 5, { d: 4, major: true }],
+        [0, 5, 6, 0], // i-bVI-bVII-i
+      ],
+      harmonicMinor: [
+        [0, { d: 6, flat: true, major: true }, 5, 4], // Am-G-F-E
+        [0, { d: 6, flat: true, major: true }, 5, 4],
+        [0, 3, 4, 0], // i-iv-V-i
+      ],
+      phrygian: [
+        [3, 2, 1, { d: 0, major: true }], // Am-G-F-E, in E
+        [3, 2, 1, { d: 0, major: true }],
+        [0, 1, 2, 1], // Em-F-G-F
+      ],
+      phrygianDominant: [
+        [3, { d: 2, flat: true, major: true }, 1, 0], // Am-G-F-E, in E
+        [3, { d: 2, flat: true, major: true }, 1, 0],
+        [0, 1, 0, 1], // E-F, the flamenco vamp
+      ],
+      dorian: [
+        [0, 3, 0, 3], // i-IV, Am-D
+        [0, 6, 3, 0], // i-bVII-IV-i
+      ],
+    },
+    tone: { warmth: [0.35, 0.65], space: [0.25, 0.55], wobble: [0.03, 0.2] },
+    feel: { lift: [0.25, 0.75], energy: [0.65, 1], warmth: [0.4, 0.75] },
+  },
 };
 
 // Saved loops from before the rename still resolve.

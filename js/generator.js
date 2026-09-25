@@ -407,6 +407,37 @@ function fifthAbove(steps, degree) {
   return (steps[(degree + 4) % n] - steps[degree % n] + 12) % 12;
 }
 
+// A step of a profile's progression is a scale degree, or a degree with its
+// spelling written out: `{ d: 4, major: true }` is the major V the
+// Andalusian cadence ends on, which aeolian's own fifth degree would make
+// minor, and `flat: true` lowers the root a semitone (harmonic minor's
+// bVII, G against its G#). Degrees alone give the wrong chord there.
+function stepDegree(step) {
+  return typeof step === 'number' ? step : step.d;
+}
+
+// The scale a spelled chord sounds in: the mode with that chord's root and
+// third put where the spelling says. Every layer over the chord reads it,
+// so the melody plays G# over the E major, not the mode's G against it.
+// The altered tone always lands in a gap of the mode, a semitone from the
+// tone it replaces, so a pitch already spelled is never moved twice.
+function spelledSteps(scale, step) {
+  const n = scale.length;
+  const steps = scale.slice();
+  const d = step.d % n;
+  if (step.flat) steps[d] = (steps[d] + 11) % 12;
+  if (step.major) steps[(d + 2) % n] = (steps[d] + 4) % 12;
+  return steps;
+}
+
+// A progression plays in a mode only if every chord in it comes out right:
+// a plain degree must be a plain major or minor triad there, and a spelled
+// one must keep its fifth perfect once spelled.
+function plainTriad(scale, step) {
+  if (typeof step === 'number') return fifthAbove(scale, step) === 7;
+  return fifthAbove(spelledSteps(scale, step), step.d) === 7;
+}
+
 // A profile's gait: tempo band, step count and metre, drawn together.
 // Only the leading profile's gaits count (see blendMix), and the draw comes
 // from the seed alone, so newSpec and metreOf always agree, and a share
@@ -511,11 +542,16 @@ function genHarmony(spec) {
   // plays those whose every chord is a plain major or minor triad in the
   // loop's mode: the I-bVII shuttle wants a flat seventh, and in ionian its
   // "bVII" would be the diminished vii. The pick is the same one draw
-  // either way.
-  const fitting = scale.length === 7 && c.progressions
-    ? c.progressions.filter((p) => p.every((d) => fifthAbove(scale, d) === 7))
+  // either way. A profile may also write them per mode, when the one
+  // progression it is about needs spelling differently in each.
+  const written = Array.isArray(c.progressions)
+    ? c.progressions
+    : c.progressions && c.progressions[spec.scale];
+  const fitting = scale.length === 7 && written
+    ? written.filter((p) => p.every((st) => plainTriad(scale, st)))
     : [];
   const own = fitting.length ? fitting : null;
+  const perMode = own && !Array.isArray(c.progressions);
   const shapePool = pentatonic ? SHAPES_PENT : own || SHAPES_7;
   let shape = r.pick(shapePool).slice();
 
@@ -524,7 +560,7 @@ function genHarmony(spec) {
   // are made all the same.
   if (r.chance(0.35)) {
     const i = r.int(1, shape.length - 1);
-    const moved = (shape[i] + r.pick([-1, 1, 2]) + scale.length) % scale.length;
+    const moved = (stepDegree(shape[i]) + r.pick([-1, 1, 2]) + scale.length) % scale.length;
     if (!own) shape[i] = moved;
   }
 
@@ -561,15 +597,24 @@ function genHarmony(spec) {
   let prevVoicing = null;
 
   for (let s = 0; s < slotCount; s++) {
-    const degree = shape[s % shape.length];
+    const chord = shape[s % shape.length];
+    const degree = stepDegree(chord);
+    // A spelled chord is built, sevenths and ninths too, in its own scale.
+    const steps = typeof chord === 'number' ? scale : spelledSteps(scale, chord);
     let notes = quartal
-      ? [0, 3, 6, 9].slice(0, size).map((step) => scalePitch(spec.root, scale, degree + step, 0))
-      : buildChord(spec.root, scale, degree, size, 0);
+      ? [0, 3, 6, 9].slice(0, size).map((step) => scalePitch(spec.root, steps, degree + step, 0))
+      : buildChord(spec.root, steps, degree, size, 0);
     // Occasionally colour the chord with a ninth.
     const mood = feelForLayer(spec, 'chords').lift;
     if (!pentatonic && r.chance(0.18 + mood * 0.3)) {
       // The added ninth is most of what separates glad from merely pleasant.
-      notes.push(scalePitch(spec.root, scale, degree + 8, 0));
+      const ninth = scalePitch(spec.root, steps, degree + 8, 0);
+      // Harmonic minor's bVI and phrygian dominant's bII have an augmented
+      // second where the ninth would be: the F chord's "ninth" is G#, a
+      // minor third against its own A. A progression written for the mode
+      // leaves that out. One written for every mode, as tide's are, plays
+      // as it always has.
+      if (!perMode || (ninth - scalePitch(spec.root, steps, degree, 0)) % 12 !== 3) notes.push(ninth);
     }
     notes = voiceInRange(notes, 55, 79);
     // Voice leading: nudge the whole shape toward the previous chord, but
@@ -590,7 +635,7 @@ function genHarmony(spec) {
     // Held across the chord and usually across several, the way a sung line
     // stays on a vowel rather than changing on every note.
     const slotVowel = VOWEL_KEYS[Math.floor(s / (1 + r.int(0, 2))) % VOWEL_KEYS.length];
-    const rootMidi = scalePitch(spec.root, scale, degree, 0);
+    const rootMidi = scalePitch(spec.root, steps, degree, 0);
     // A bass note that disagrees with the chord is the one idea from the
     // theory sheets that transfers directly: every chord there is a slash
     // chord (Amaj13/B, Fm13/D). It is what stops harmony from settling.
@@ -598,7 +643,10 @@ function genHarmony(spec) {
     slots.push({
       startStep, lengthSteps: slotLen, degree, notes, rootMidi,
       bassDegree: pedalDegree,
-      bassMidi: scalePitch(spec.root, scale, pedalDegree, 0),
+      bassMidi: scalePitch(spec.root, steps, pedalDegree, 0),
+      // Only a spelled chord carries its scale, so every other slot is
+      // the object it always was.
+      ...(steps !== scale ? { steps } : {}),
     });
 
     // Hit positions are written relative to the chord's own slot, so a
@@ -1747,10 +1795,25 @@ function harmonize(events, spec, c) {
   for (const e of chosen) e.harm = kind;
 }
 
+// A note over a spelled chord moves to that chord's scale, and carries the
+// scale with it, so its graces, its harmony and any drift stay in it too.
+// A note on a tone the spelling leaves alone keeps its pitch.
+function spellOver(events, harmony, spec) {
+  const scale = SCALES[spec.scale].steps;
+  for (const e of events) {
+    if (e.midi == null) continue;
+    const slot = slotAt(harmony.slots, e.step, harmony.cycleSteps);
+    if (!slot.steps) continue;
+    const i = scale.indexOf((((e.midi - spec.root) % 12) + 12) % 12);
+    if (i >= 0) e.midi += ((slot.steps[i] - scale[i] + 18) % 12) - 6;
+    e.steps = slot.steps;
+  }
+}
+
 // The grace notes before a marked note, from the note as it stands.
 export function gracesOf(e, spec) {
   if (!e.orn) return [];
-  const steps = SCALES[spec.scale].steps;
+  const steps = e.steps || SCALES[spec.scale].steps;
   const above = neighbourInScale(e.midi, spec.root, steps, 1);
   return e.orn === 'turn' ? [above, neighbourInScale(e.midi, spec.root, steps, -1)] : [above];
 }
@@ -1761,7 +1824,7 @@ export function gracesOf(e, spec) {
 // note plays alone.
 export function harmonyOf(e, spec) {
   if (!e.harm) return null;
-  const steps = SCALES[spec.scale].steps;
+  const steps = e.steps || SCALES[spec.scale].steps;
   const [count, lo, hi] = e.harm === 'sixth' ? [5, 8, 9] : [2, 3, 4];
   let m = e.midi;
   for (let i = 0; i < count; i++) m = neighbourInScale(m, spec.root, steps, -1);
@@ -1819,6 +1882,14 @@ export function render(spec) {
   // sounding centroid by several semitones, and a separation that was
   // correct on paper is wrong in the room.
   separateRegisters(harmony, tracks, choir);
+
+  // Over a spelled chord the lines take its scale. Octaves are settled by
+  // now and a spelling only moves a pitch by a semitone, so it goes here,
+  // before the slurs read the pitches.
+  if (harmony.slots.some((sl) => sl.steps)) {
+    spellOver(tracks.melody, harmony, spec);
+    spellOver(tracks.bass, harmony, spec);
+  }
 
   // After the register work, so the pitch written down is the pitch played.
   annotatePrev(tracks.melody, spec, (spec.cycles && spec.cycles.melody) || spec.bars * spb);
@@ -2149,7 +2220,7 @@ export function drift(pattern, rng, amount) {
   // A melody note steps to a neighbour, or jumps an octave.
   for (const e of p.tracks.melody) {
     if (rng.chance(0.09 * a)) {
-      e.midi = neighbourInScale(e.midi, spec.root, scale, rng.chance(0.5) ? 1 : -1);
+      e.midi = neighbourInScale(e.midi, spec.root, e.steps || scale, rng.chance(0.5) ? 1 : -1);
     }
     // Keep the jump inside the melody's own window, the way the bass jump
     // below already does. It was unclamped and got away with it only
