@@ -698,6 +698,24 @@ melody's cost, which is #19's starvation); new jig and waltz cells
 **Done when** each step has been A/B'd by ear and the balance lock passes,
 or its baseline has moved with Mikey's say-so.
 
+## 15. Ringing bells in fast blends starve the tune — **S** — *low priority*
+
+Found by Claude Code while measuring `cinder` (#66), 2026-09-25. When a
+fast loop (around 136-146 bpm) blends in enough `shrine` to draw its
+temple bell, the bells ring long (about 1.4 s) at a cost of 12 each, and a
+dense tune of them fills the voice budget. One `cinder` loop in 183 lost
+48.7% of its melody at full quality. The same case already exists on
+`main` in `shatter` and `undertow` blends, so it is rare, not new.
+
+Mikey: worth fixing, not soon. Options when it comes up: shorten the
+bell's ring (and so its reservation) at fast tempos, reserve budget for
+the melody the way `SOFT_BUDGET` does for pads, or keep the long-ringing
+bells out of fast blends.
+
+**Done when** no loop in a 200-loop corpus loses more than 5% of its
+melody at full quality to this case, with refusals re-measured on full
+and lite.
+
 ---
 
 ## Decided against
