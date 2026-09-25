@@ -211,7 +211,9 @@ Notes worth knowing if you go digging:
   for the loop from its seed, so the drums hear it too -- under a chug a
   brush kit swishes on every eighth rather than drawing its hats. A loop
   wayfare does not lead never chugs, and every other loop draws what it
-  drew before.
+  drew before. A chug note holds the voice budget only as long as it
+  sounds (0.4 s past its end rather than the bass's usual 0.8): charged
+  the old way, eight short notes a bar took room the tune needed on lite.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like

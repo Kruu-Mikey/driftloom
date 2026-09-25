@@ -980,7 +980,7 @@ export class Synth {
   // One sawtooth-plus-sub recipe for every loop was both the muddiest option
   // and the most monotonous. Each of these keeps the low end clear a
   // different way: less sub, a steeper filter, or no sawtooth at all.
-  bass(midi, time, dur, vel = 0.7, glide = false, voice = 'sub') {
+  bass(midi, time, dur, vel = 0.7, glide = false, voice = 'sub', chug = false) {
     const cost = VOICE_COST[voice] ?? 8;
     if (!this._budget(time, false, cost)) return;
     const ctx = this.ctx;
@@ -1110,7 +1110,17 @@ export class Synth {
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
     }
-    this._release(time, dur + 0.8, cost);
+    // The budget holds a bass note for 0.8 s past its end: the longest tail
+    // here, the fifths voice's, which stops at stop + 0.4. Every other
+    // voice stops at dur + 0.4 (rhodesbass aside, which decays in fm()). A
+    // chug, a short note on every eighth, was charged for twice as long as
+    // it sounds -- about four notes at once, some 35 units on pluckbass --
+    // and on lite that came out of the tune: wayfare's chug loops lost
+    // melody notes twice as often as its others. A chug note is held as
+    // long as it sounds. Every other bass note keeps the old hold, so no
+    // loop that was already here refuses anything differently.
+    const exact = chug && voice !== 'fifths' && voice !== 'rhodesbass';
+    this._release(time, dur + (exact ? 0.4 : 0.8), cost);
   }
 
   // ------------------------------------------------------------- tuned

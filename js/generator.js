@@ -808,6 +808,8 @@ function genBass(spec, harmony) {
       const base = (slot.bassMidi != null ? slot.bassMidi : slot.rootMidi) - 24;
       for (let s = 0; s < slot.lengthSteps; s += 2) {
         place(slot.startStep + s, 1, base, (s % beat === 0 ? 0.62 : 0.46) + r.f() * 0.06);
+        // Marked, so the synth holds its budget only as long as it sounds.
+        events[events.length - 1].chug = true;
       }
     }
     return { events, style, voice };

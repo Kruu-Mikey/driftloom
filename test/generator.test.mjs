@@ -263,8 +263,10 @@ const everyEighth = (spec, steps) => {
 check('a chug is a short bass note on every eighth, on the chord\'s bass', chugs.every(({ spec, p }) => everyEighth(spec, p.tracks.bass.map((e) => e.step))
   && p.tracks.bass.every((e) => {
     const slot = p.harmony.slots.filter((sl) => sl.startStep <= e.step).pop();
-    return e.dur === 1 && pcOf(e.midi - slot.bassMidi) === 0;
+    return e.dur === 1 && e.chug === true && pcOf(e.midi - slot.bassMidi) === 0;
   })));
+check('only a chug note is marked as one', wayfares.every(({ p }) => p.meta.bassStyle === 'chug'
+  || p.tracks.bass.every((e) => e.chug === undefined)));
 const brushed = chugs.filter(({ p }) => p.meta.kit === 'brush');
 check('under a chug the brushes swish every eighth, none open', brushed.length > 20 && brushed.every(({ spec, p }) => {
   const hats = p.tracks.drums.filter((e) => (e.inst === 'hat' || e.inst === 'ohat') && !e.roll);
