@@ -115,6 +115,12 @@ specs render identically. Taste questions left for the review album:
 cinder's occasional added F over the E chord (the b9), wayfare's minor v
 in I-IV-V-IV in mixolydian and dorian, and whether the chug sounds like
 wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
+  **Review album sent 2026-09-25**, on the live site (v50): 19 tracks, one
+  per change -- fiddle and accordion take two (3), the softened saw, moog
+  and analoglead (3), tide (waltz with graces and harmony, hand-kit jig,
+  waves, nylon strum, pan flute, drone), cinder (with and without the
+  added F, hand kit and nylon), wayfare (chug under pan flute and under
+  fiddle, no chug, the minor v). Rated keep / tune / drop, not blind.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
