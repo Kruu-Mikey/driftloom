@@ -79,7 +79,7 @@ density, metre, form -- that move together.
 | **Hollow** | voices. Synthetic vowels and humming, wordless and unhurried |
 | **Shrine** | struck metal left to ring. Temple bowls and church bells, long decays, a lot of space between strikes |
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
-| **Tide** | sea and island folk. Fiddle and whistle over harp and accordion; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone. A frame drum and tambourine in place of the kit, and the slow swell of waves |
+| **Tide** | sea and island folk. Fiddle, whistle and pan flute over harp, accordion and a strummed nylon guitar; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone. A frame drum and tambourine in place of the kit, and the slow swell of waves |
 
 These are not ten boxes. Every loop draws a **weight across several of
 them** -- an exponential draw per profile, normalised, which is a Dirichlet

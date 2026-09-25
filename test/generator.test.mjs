@@ -167,6 +167,14 @@ check('the sea swells in waves of six to nine seconds', seas.length > 20 && seas
   return p.tracks.texture.length > 0 && p.tracks.texture.every((e) => e.kind === 'waves'
     && (e.dur * sd >= 5.9 || e.dur === spec.stepsPerBar) && e.dur * sd <= 9.1);
 }), `${seas.length} loops`);
+// A nylon guitar strums down on the beat and up off it; nothing else strums.
+const strummed = tides.filter(({ p }) => p.tracks.chords.some((e) => e.voice === 'nylon'));
+check('nylon strums down on the beat and up off it, and nothing else strums', strummed.length > 20 && tides.every(({ spec, p }) => {
+  const beat = spec.stepsPerBar === 12 && spec.bpm >= 112 ? 6 : 4;
+  return p.tracks.chords.every((e) => (e.voice === 'nylon'
+    ? e.strum === ((e.step % spec.stepsPerBar) % beat === 0 ? 'down' : 'up')
+    : e.strum === undefined));
+}), `${strummed.length} loops with nylon`);
 check('the harmony is a third or a sixth below', heard.filter(({ e }) => e.harm).every(({ spec, e }) => {
   const h = harmonyOf(e, spec);
   if (h == null) return true;

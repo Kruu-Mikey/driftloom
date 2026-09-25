@@ -1823,6 +1823,13 @@ export function render(spec) {
   // After the register work, so the pitch written down is the pitch played.
   annotatePrev(tracks.melody, spec, (spec.cycles && spec.cycles.melody) || spec.bars * spb);
 
+  // A nylon guitar strums: down on the beat and up off it. Written from the
+  // step alone, no draw; the engine plays the strum.
+  const beat = metreOf(spec) === '6/8' ? 6 : 4;
+  for (const e of tracks.chords) {
+    if (e.voice === 'nylon') e.strum = (e.step % spb) % beat === 0 ? 'down' : 'up';
+  }
+
   // Last, on what is heard. Not on a choir: a sung doubling does not flick
   // graces or split into harmony.
   if (!choir) {

@@ -137,3 +137,9 @@ Mikey decides this line:
   part (round low skin, soft tipper taps, zils above the harsh band); and
   waves as the air, slow swells of filtered sea. Listen for a hand kit that
   sits where the kit did, and waves that stay a background.
+- #64, the harsh leads softened (v47),
+  https://c5c031fd-driftloom.kruu-mikey-thaiculture.workers.dev: saw, moog
+  and analoglead without the rasp or the wah on every note -- each still
+  itself (the saw a pluck, the moog a little movement, the analoglead its
+  detuned shimmer). Listen for leads that no longer grate, and whether the
+  moog now reads as too dull.

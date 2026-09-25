@@ -55,6 +55,11 @@ const VOICE_COST = {
   // on every note, so a note is its oscillators and a gain or two. Two
   // passes: fiddle 7.9 and 8.3, accordion 8.7 and 9.1.
   fiddle: 8, accordion: 9,
+  // Pair 2, measured the same way: nylon 6.6 and 7.2 (two oscillators and
+  // two gains a note, into the shared body); pan flute 15.4 and 14.5 once
+  // its chiff rode the breath's own path -- with a noise source of its own
+  // it read 22.8 and 21.5.
+  nylon: 7, panflute: 15,
   templebell: 12, tubular: 12,
   // The hand kit, measured the way the folk voices were, but priced against
   // the kit instruments they stand in for rather than through the tonal
@@ -108,6 +113,11 @@ const REED_EVEN = 0.6;
 // accordion's milder reed formant, under a lowpass near 3 kHz. A lowpass
 // Q is in dB in Web Audio, so -3 is the plain, unresonant slope.
 const BODIES = {
+  nylon: [
+    ['peaking', 110, 1.0, 3],
+    ['peaking', 230, 1.2, 2],
+    ['lowpass', 3500, -3],
+  ],
   fiddle: [
     ['peaking', 300, 1.2, 5],
     ['peaking', 2700, 0.9, 2],
@@ -130,6 +140,33 @@ const BODIES = {
 // crest of the beat, about 2 dB over what a held note averages.
 const REED_CENTS = 1.25;
 const SECOND_REED = 0.35;
+
+// Nylon guitar (pair 2). A plucked string: bright for an instant and then
+// mellow, which is two layers here rather than a filter closing on every
+// note -- a bright one that dies in a tenth of a second over a mellow one
+// that rings on, lower strings longer. Both sources carry the comb of a
+// string plucked a fifth of the way along. The body is the guitar's air and
+// top-plate resonances, fixed, shared per channel like the fiddle's.
+// Level to the chords layer's median at 0.4 s notes (--voice all --note
+// 0.4, the mean of the two velocities): 5.8 LU over it at first, 0.2 ->
+// 0.1029. No profile draws nylon as a melody yet, so there is no melody
+// median to measure it against; it plays at the chords level until one does.
+const NYLON_LEVEL = 0.1029;
+const NYLON_PLUCK_AT = 0.2;
+const NYLON_BRIGHT = { slope: 1.4, share: 0.6, tau: 0.08 };
+const NYLON_MELLOW = { slope: 2.4, tau: 0.55 };
+
+// Pan flute (pair 2): the Spirit Tracks pipes. A flute's cousin with more
+// breath, a chiff of air as each pipe speaks, a small dip in pitch into the
+// note, and no vibrato on a short one. A closed pipe: odd partials only.
+// No slides: every note is its own pipe.
+// To the melody median at 0.4 s: 1.5 LU over at first, 0.12 -> 0.1011.
+const PANFLUTE_LEVEL = 0.1011;
+const PIPE_SLOPE = 2.5;
+const PANFLUTE_BREATH = 0.5;
+// The breath spikes to this at the chiff, then settles to PANFLUTE_BREATH.
+const PANFLUTE_CHIFF = 0.8;
+const PANFLUTE_DIP = 30; // cents
 // A note speaks in 20-40 ms when it is short and bows or swells in only
 // when it is long: the median melody note is 0.35 s, and take one spent a
 // third of that arriving. A slurred note is not attacked at all, beyond
@@ -261,6 +298,9 @@ export class Synth {
     this.glottal = this._makeGlottal();
     this.bowed = this._makeWave(BOWED_SLOPE);
     this.reed = this._makeWave(REED_SLOPE, REED_EVEN);
+    this.pipe = this._makeWave(PIPE_SLOPE, 0);
+    this.nylonBright = this._makePluck(NYLON_BRIGHT.slope, NYLON_PLUCK_AT);
+    this.nylonMellow = this._makePluck(NYLON_MELLOW.slope, NYLON_PLUCK_AT);
     this.leads = Object.fromEntries(Object.entries(LEAD_SLOPE).map(([k, slope]) => [k, this._makeWave(slope)]));
     this._bodies = new Map();
     this._build();
@@ -312,6 +352,16 @@ export class Synth {
     const real = new Float32Array(harmonics + 1);
     const imag = new Float32Array(harmonics + 1);
     for (let n = 1; n <= harmonics; n++) imag[n] = (n % 2 ? 1 : even) / Math.pow(n, slope);
+    return this.ctx.createPeriodicWave(real, imag);
+  }
+
+  // A plucked string's spectrum: the slope, times the comb of where it was
+  // plucked -- a string plucked at a fifth of its length has almost no
+  // fifth harmonic, and that gap is much of what tells a pluck from a beep.
+  _makePluck(slope, at, harmonics = 64) {
+    const real = new Float32Array(harmonics + 1);
+    const imag = new Float32Array(harmonics + 1);
+    for (let n = 1; n <= harmonics; n++) imag[n] = Math.sin(n * Math.PI * at) / Math.pow(n, slope);
     return this.ctx.createPeriodicWave(real, imag);
   }
 
@@ -1369,6 +1419,86 @@ export class Synth {
           o.stop(time + dur + 0.35);
         }
         this._release(time, dur + 0.35, VOICE_COST.accordion);
+        return;
+      }
+
+      // Nylon guitar; see NYLON_LEVEL. The string rings past the note as a
+      // plucked string does, and is damped where the note ends.
+      case 'nylon': {
+        if (!this._budget(time, soft, VOICE_COST.nylon)) return;
+        const level = vel * NYLON_LEVEL;
+        const ring = NYLON_MELLOW.tau * Math.pow(261.6 / f, 0.35);
+        const body = this._body('nylon', dest);
+        const stop = time + dur + 0.4;
+        for (const [wave, peak, tau] of [
+          [this.nylonMellow, level, ring],
+          [this.nylonBright, level * NYLON_BRIGHT.share, NYLON_BRIGHT.tau],
+        ]) {
+          const o = ctx.createOscillator();
+          o.setPeriodicWave(wave);
+          o.frequency.value = f;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, time);
+          g.gain.exponentialRampToValueAtTime(peak, time + 0.004);
+          g.gain.setTargetAtTime(0.0001, time + 0.004, tau);
+          g.gain.setTargetAtTime(0.0001, time + dur, 0.08);
+          o.connect(g).connect(body);
+          o.start(time);
+          o.stop(stop);
+        }
+        this._release(time, dur + 0.4, VOICE_COST.nylon);
+        return;
+      }
+
+      // Pan flute; see PANFLUTE_LEVEL.
+      case 'panflute': {
+        if (!this._budget(time, soft, VOICE_COST.panflute)) return;
+        const level = vel * PANFLUTE_LEVEL;
+        const o = ctx.createOscillator();
+        o.setPeriodicWave(this.pipe);
+        // The pipe speaks a little flat and rises onto the note.
+        o.frequency.setValueAtTime(f * Math.pow(2, -PANFLUTE_DIP / 1200), time);
+        o.frequency.exponentialRampToValueAtTime(f, time + 0.05);
+        let vib = null;
+        if (dur >= VIBRATO_MIN_DUR) {
+          vib = ctx.createOscillator();
+          vib.frequency.value = 4.8 + Math.random() * 0.8;
+          const vibAmt = ctx.createGain();
+          const onset = Math.min(0.3, dur * 0.3);
+          vibAmt.gain.setValueAtTime(0, time);
+          vibAmt.gain.setValueAtTime(0, time + onset);
+          vibAmt.gain.linearRampToValueAtTime(8, time + onset + 0.3);
+          vib.connect(vibAmt).connect(o.detune);
+        }
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, time);
+        g.gain.linearRampToValueAtTime(level, time + 0.03);
+        g.gain.setTargetAtTime(0.0001, time + dur * 0.85, 0.08);
+        o.connect(g).connect(dest);
+        // Breath riding the note, lower and fuller than the flute's.
+        const air = ctx.createBufferSource();
+        air.buffer = this.noise;
+        air.loop = true;
+        air.playbackRate.value = 0.9 + Math.random() * 0.25;
+        const bp = ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.value = f * 1.5;
+        bp.Q.value = 0.9;
+        // The chiff is the same breath, spiking as the pipe catches and
+        // settling within 30 ms: a puff of air, on the breath's own path
+        // rather than a second noise source for every note.
+        const ag = ctx.createGain();
+        ag.gain.setValueAtTime(0.0001, time);
+        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_CHIFF, time + 0.004);
+        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_BREATH, time + 0.03);
+        ag.gain.setTargetAtTime(0.0001, time + dur * 0.85, 0.08);
+        air.connect(bp).connect(ag).connect(dest);
+        o.start(time);
+        air.start(time);
+        o.stop(time + dur + 0.4);
+        air.stop(time + dur + 0.4);
+        if (vib) { vib.start(time); vib.stop(time + dur + 0.4); }
+        this._release(time, dur + 0.4, VOICE_COST.panflute);
         return;
       }
 
