@@ -5,7 +5,7 @@
 // The actual note times are absolute Web Audio clock times, which are
 // sample-accurate. Standard two-clock pattern.
 
-import { render, drift, LAYERS, characterOf } from './generator.js';
+import { render, drift, LAYERS, characterOf, gracesOf, harmonyOf } from './generator.js';
 import { Rng, randomSeed } from './rng.js';
 import { Clock } from './clock.js';
 
@@ -27,6 +27,14 @@ const TICK_HIDDEN = 250;
 // Applied here and not inside pad(), because voice() also reaches pad()
 // for single notes, already spread.
 const CHORD_SPREAD = 0.8;
+
+// Grace notes, off the grid: each lasts GRACE seconds, and they run
+// straight into the note, so a cut starts 30 ms ahead of it and a turn 60.
+// Lighter than the note they decorate.
+const GRACE = 0.03;
+const GRACE_VEL = 0.6;
+// The harmony line under the tune, a step back from it.
+const HARMONY_VEL = 0.6;
 
 export class Engine {
   constructor(ctx, synth) {
@@ -336,9 +344,22 @@ export class Engine {
       const slip = ensemble();
       for (const e of p.tracks.melody) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel,
-          this.synth.channels.melody.gain,
+        const out = this.synth.channels.melody.gain;
+        this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel, out,
           { glide: e.glide, vowel: e.vowel, detune: e.detune, prev: e.prev });
+        // Asked for after the note, so where the budget is short it is the
+        // decoration that yields, never the tune.
+        const under = harmonyOf(e, p.spec);
+        if (under != null) {
+          this.synth.voice(e.voice, under, t + slip, e.dur * sd, e.vel * HARMONY_VEL, out,
+            { vowel: e.vowel, detune: e.detune });
+        }
+        const graces = gracesOf(e, p.spec);
+        graces.forEach((g, i) => {
+          const at = t + slip - GRACE * (graces.length - i);
+          this.synth.voice(e.voice, g, Math.max(this.ctx.currentTime, at), GRACE, e.vel * GRACE_VEL, out,
+            { vowel: e.vowel, detune: e.detune });
+        });
       }
     }
     if (!mutes.texture) {

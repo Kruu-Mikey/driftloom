@@ -120,4 +120,8 @@ Mikey decides this line:
 
 ## Done
 
-(none yet)
+- #59, fiddle and accordion take two (v44),
+  https://e2c802cd-driftloom.kruu-mikey-thaiculture.workers.dev: a rounder,
+  softer fiddle and accordion with no rasp or buzz; short notes speak at
+  once and joined fiddle notes slur; vibrato only on long fiddle notes; the
+  accordion's shimmer slow and gentle, never dropping out on a held note.

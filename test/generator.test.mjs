@@ -5,7 +5,7 @@
 // voicing or an out-of-range note does not throw, it just sounds wrong,
 // and often only on one seed in a thousand. So we check thousands.
 
-import { newSpec, render, drift, rerollLayer, LAYERS } from '../js/generator.js';
+import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf } from '../js/generator.js';
 import { Rng, randomSeed, seedName } from '../js/rng.js';
 import { patternToMidi } from '../js/midi.js';
 
@@ -131,6 +131,33 @@ check('a drone is struck on every downbeat and held through the bar', drones.len
   return bass.every((e) => e.step % spb === 0 && e.dur === spb - 1)
     && new Set(bass.map((e) => e.step)).size === spec.bars;
 }), `${drones.length} drones`);
+
+// The waltz tune sits on the beats and the eighths between them, and its
+// breaths are whole beats of the waltz, not of 6/8.
+check('a tide waltz tune falls on the eighths', waltzes.every(({ p }) => p.tracks.melody.every((e) => e.step % 2 === 0)));
+check('a tide waltz breathes in waltz beats', waltzes.every(({ p }) => p.gaps.every((g) => g.start % 4 === 0 && [4, 8, 12].includes(g.len))));
+
+// Graces and harmony are marks on the tune, played from the note as it
+// stands; they only ever name a neighbour in the scale, and a real third or
+// sixth below.
+const heard = tides.flatMap(({ spec, p }) => p.tracks.melody.filter((e) => e.vel).map((e) => ({ spec, e })));
+const graced = heard.filter(({ e }) => e.orn);
+check('ornaments decorate some notes, never most', graced.length > 100 && graced.length < heard.length * 0.3, `${graced.length} of ${heard.length}`);
+check('a grace is the scale neighbour of its note', graced.every(({ spec, e }) => {
+  const g = gracesOf(e, spec);
+  return g.length === (e.orn === 'turn' ? 2 : 1) && g[0] > e.midi && g[0] - e.midi <= 4 && (g.length === 1 || (g[1] < e.midi && e.midi - g[1] <= 4));
+}));
+const harmonised = tides.filter(({ p }) => p.tracks.melody.some((e) => e.harm));
+check('a harmony line sits under some loops, never under every note', harmonised.length > 60 && harmonised.every(({ p }) => {
+  const sounding = p.tracks.melody.filter((e) => e.vel);
+  return sounding.filter((e) => e.harm).length < sounding.length;
+}), `${harmonised.length} loops`);
+check('the harmony is a third or a sixth below', heard.filter(({ e }) => e.harm).every(({ spec, e }) => {
+  const h = harmonyOf(e, spec);
+  if (h == null) return true;
+  const gap = e.midi - h;
+  return e.harm === 'third' ? gap === 3 || gap === 4 : gap === 8 || gap === 9;
+}));
 
 // ---------------------------------------------------------------------
 console.log('\nNames');

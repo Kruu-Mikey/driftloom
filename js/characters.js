@@ -425,6 +425,11 @@ export const CHARACTERS = {
     bassStyles: [['held', 3], ['pulse', 3], ['walk', 1.5], ['sparse', 1]],
     // A third of loops hold the tonic and fifth under the changing chords.
     drone: 1 / 3,
+    // Cuts and turns on a quarter of the beat notes long enough to take
+    // one, and a harmony in thirds or sixths on the held notes of 40% of
+    // loops. Both on the sparing side, for Mikey's ears.
+    ornament: 0.25,
+    harmonize: 0.4,
     bassVoices: [['round', 3], ['pluckbass', 3], ['fifths', 1.5]],
     textures: [['bells', 2.5], ['chime', 2], ['swell', 2], ['none', 2]],
     restBar: 0.14,
@@ -579,9 +584,10 @@ export function blendMix(mix) {
   out.polymeter = !!CHARACTERS[lead].polymeter;
   out.microLoop = !!CHARACTERS[lead].microLoop;
   // So are the things a profile brings of its own: how tempo and metre go
-  // together, which kits it plays, its progressions and the drone. A loop
-  // that tide merely colours does not start waltzing.
-  for (const k of ['gaits', 'kits', 'progressions', 'drone']) {
+  // together, which kits it plays, its progressions, the drone, ornaments
+  // and the harmony line. A loop that tide merely colours does not start
+  // waltzing.
+  for (const k of ['gaits', 'kits', 'progressions', 'drone', 'ornament', 'harmonize']) {
     if (CHARACTERS[lead][k] !== undefined) out[k] = CHARACTERS[lead][k];
   }
   return out;
