@@ -149,3 +149,10 @@ Mikey decides this line:
   lighter) and a breathy pan flute among tide's tunes. Listen for a strum
   that sounds played rather than smeared, and a pan flute whose breath is
   air, not hiss.
+- #66, cinder, the fiery 6/8 (v49),
+  https://d7e09d62-driftloom.kruu-mikey-thaiculture.workers.dev: a new
+  profile, fast and Spanish-tinged -- a driving 6/8 on frame drum and zils,
+  a nylon guitar strumming the Andalusian cadence (Am-G-F-E, ending on a
+  major E) with the tune taking G# over that E. Listen for the fall landing
+  bright rather than clashing, and whether the b9 (F) the E chord sometimes
+  takes should go.
