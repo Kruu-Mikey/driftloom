@@ -93,6 +93,14 @@ These are stated decisions, not inferences.
   ear and fixed at the source, never by a limiter or compressor on the mix
   (item 13).
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
+- **Building without Mikey's ears for a while (2026-09-25).** He has no
+  time to listen. The brain wrote `docs/QUEUE.md`: the next items in
+  order, with standing rules (every new sound measured for level, cost
+  and tone; conservative taste calls written down "for Mikey's ears";
+  stop and note rather than guess). Claude Code works down it; the brain
+  verifies from GitHub; Mikey's listening happens later in one combined
+  review album built from the queue's Done list, and anything he dislikes
+  gets tuned or reverted then.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
