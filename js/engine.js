@@ -35,11 +35,11 @@ const GRACE = 0.03;
 const GRACE_VEL = 0.6;
 // The harmony line under the tune, a step back from it.
 const HARMONY_VEL = 0.6;
-// A nylon strum crosses the strings in 15-30 ms, low to high on the
+// A nylon strum crosses the strings in 10-20 ms, low to high on the
 // downstroke (on the beat) and high to low on the upstroke (off it), and
 // the upstroke is the lighter of the two. Every other chord voice keeps the
-// fixed 11 ms spread.
-const STRUM = { min: 0.015, max: 0.03, up: 0.75 };
+// fixed 11 ms spread. It was 15-30 ms, heard as smeared.
+const STRUM = { min: 0.01, max: 0.02, up: 0.75 };
 
 export class Engine {
   constructor(ctx, synth) {
@@ -339,10 +339,12 @@ export class Engine {
             const span = STRUM.min + Math.random() * (STRUM.max - STRUM.min);
             const strings = e.strum === 'down' ? e.notes : e.notes.slice().reverse();
             const weight = e.strum === 'down' ? 1 : STRUM.up;
+            // The hand that strikes the chord stops the last one's strings.
+            this.synth.damp(this.synth.channels.chords.gain, t + slip);
             strings.forEach((n, i) => {
               const at = strings.length > 1 ? span * i / (strings.length - 1) : 0;
               this.synth.voice(e.voice, n, t + slip + at, e.dur * sd, e.vel * spread * weight,
-                this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune });
+                this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune, strum: true });
             });
             continue;
           }

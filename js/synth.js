@@ -155,6 +155,10 @@ const NYLON_LEVEL = 0.1029;
 const NYLON_PLUCK_AT = 0.2;
 const NYLON_BRIGHT = { slope: 1.4, share: 0.6, tau: 0.08 };
 const NYLON_MELLOW = { slope: 2.4, tau: 0.55 };
+// A strum's strings let go as the next strum starts, with the note's own
+// release (the 0.08 s every nylon note ends on), where they were held on
+// under it. A guitarist's strings do not ring on into the next chord.
+const NYLON_DAMP = 0.08;
 
 // Pan flute (pair 2): the Spirit Tracks pipes. A flute's cousin with more
 // breath, a chiff of air as each pipe speaks, a small dip in pitch into the
@@ -303,6 +307,8 @@ export class Synth {
     this.nylonMellow = this._makePluck(NYLON_MELLOW.slope, NYLON_PLUCK_AT);
     this.leads = Object.fromEntries(Object.entries(LEAD_SLOPE).map(([k, slope]) => [k, this._makeWave(slope)]));
     this._bodies = new Map();
+    // The strings of the last strum into each channel, for damp().
+    this._strung = new Map();
     this._build();
   }
 
@@ -390,6 +396,18 @@ export class Synth {
     input = nodes[0];
     byDest.set(dest, input);
     return input;
+  }
+
+  // A new strum into `dest` at `time`: the last strum's strings that are
+  // still held let go now, on the note's own release, rather than ringing
+  // on under the new chord. Their release is only brought forward -- the
+  // note already ends on the same curve -- so nothing is added to the graph
+  // and a string already letting go is left alone.
+  damp(dest, time) {
+    for (const s of this._strung.get(dest) || []) {
+      if (s.until > time) s.gain.setTargetAtTime(0.0001, time, NYLON_DAMP);
+    }
+    this._strung.set(dest, []);
   }
 
   // Slid attacks (roadmap item 9 v2).
@@ -1458,6 +1476,10 @@ export class Synth {
           o.connect(g).connect(body);
           o.start(time);
           o.stop(stop);
+          if (opts.strum) {
+            if (!this._strung.has(dest)) this._strung.set(dest, []);
+            this._strung.get(dest).push({ gain: g.gain, until: time + dur });
+          }
         }
         this._release(time, dur + 0.4, VOICE_COST.nylon);
         return;
