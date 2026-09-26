@@ -445,6 +445,28 @@ at the end. `--note <seconds>` changes how long each note is held (1.6 by
 default); a sustained voice and a plucked one compare differently at the
 length a melody note actually is.
 
+### Note endings
+
+```sh
+node tools/measure.mjs --endings
+```
+
+Plays one note of every voice `characters.js` draws, in each layer that
+draws it, at 0.1, 0.4 and 1.6 s, and every melody voice at 30 ms too: the
+length of a grace. It reads the most sudden fall in each note's level. A
+release falls by about as much in one short window as the next, and a
+bell's beating dips and comes back; a note cut off while still sounding
+drops at once and stays down. Any drop over 12 dB is listed and the run
+exits non-zero.
+
+It exists because a pan flute grace did exactly that. Its attack ran
+longer than the note, the ramps were scheduled after its release began,
+and Web Audio runs a ramp from the event before it -- the release -- so a
+30 ms grace swelled to full, held under the note it led into for 0.4 s,
+and was cut off. Heard as static when pan flute notes overlapped. The
+flute, ocarina and analoglead had the same fault; every ramp now ends by
+the time a note lets go.
+
 ### The balance lock
 
 ```sh
