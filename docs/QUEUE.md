@@ -302,6 +302,41 @@ Do:
 - For Mikey's ears afterwards: the brain builds an album of developing
   long loops beside simple ones.
 
+## 13. Rust engine, step 2: a prototype of three voices (roadmap item 16)
+
+Agreed with Mikey (2026-09-26): the synth moves to Rust sooner, the
+generator later. This is the first real step. Start it only after items
+10 and 11 are merged.
+
+**The gate.** Read item 10's baseline first. If building and tearing down
+the audio graph is a small share of the cost, stop and leave a note here
+saying so, with the numbers: a Rust engine wouldn't pay for itself.
+
+Otherwise:
+- An AudioWorklet engine with its DSP in Rust compiled to WebAssembly,
+  a preallocated pool of voices, and no per-note objects or garbage.
+- Three voices, chosen to span the kinds: `kalimba` (simple and struck),
+  `fiddle` (a shaped wave through fixed filters), and `pad` as a chord
+  voice (the heaviest). Everything else stays on the JavaScript engine,
+  and both engines play together through the same channels, reverb and
+  master chain.
+- Behind a URL flag (for example `?engine=rust`), off by default, so
+  Mikey can play the same loops both ways on his phone.
+- **Proven, not assumed:** each Rust voice against its JavaScript
+  original with `measure.mjs` -- tone probe, level at both note lengths,
+  and `--endings` -- within tight tolerances. Then item 10's harness,
+  both engines, same loops, same throttling: that decides whether this
+  goes further.
+- **The build:** the repo deploys plain files today. Keep that: commit
+  the compiled `.wasm` with a reproducible build script, and add a check
+  that the committed file matches its source.
+- The generator, the voice budget's rules, share codes and every other
+  voice are untouched.
+
+Report the equivalence table, the before/after performance figures, the
+file size added to the app, and anything that made the port harder than
+expected.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want

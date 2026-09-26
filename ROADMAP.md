@@ -749,7 +749,7 @@ Staged, so nothing is a leap of faith:
 4. The generator ported last, so share codes stay deterministic across
    both engines.
 
-**Timing (brain's recommendation, 2026-09-26, pending Mikey):** sooner for
+**Timing (agreed with Mikey, 2026-09-26):** sooner for
 the synth, later for the generator. The voices are close to settled --
 Mikey has approved nearly all of them -- while the composition is about
 to change a lot (queue item 12). So the synth moves to Rust once queue
