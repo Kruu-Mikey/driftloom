@@ -220,7 +220,11 @@ Notes worth knowing if you go digging:
   kicks and claps spoiled its tunes: the kick on 1 and 3, a rim or soft
   snare on 2 and 4 (in 6/8 a kick and a backbeat a bar), the eighths
   light, the same on every kit it draws, with a softer, rounder kick on
-  tape and brush.
+  tape and brush. One plain bar repeated was heard as lifeless, so the
+  bars vary as the catalogue's do: a four-bar phrase with answer bars (a
+  pickup kick, an open hat), ghost notes, colour from the shaker or the
+  hats, a fill or a soft roll at the phrase's end, and a swell across it.
+  `stats.mjs --drums <profile>` measures the variety.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like

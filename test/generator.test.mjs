@@ -272,31 +272,58 @@ check('under a chug the brushes swish every eighth, none open', brushed.length >
   const hats = p.tracks.drums.filter((e) => (e.inst === 'hat' || e.inst === 'ohat') && !e.roll);
   return hats.every((e) => e.inst === 'hat') && everyEighth(spec, hats.map((e) => e.step));
 }), `${brushed.length} loops`);
-// Its own grooves, light and steady (queue item 8): the kick on the first
-// and third beats (in 6/8 on the first of two), a rim, snare or tap on the
-// others, never a clap, never a syncopated kick; every eighth on the hats
-// or the shaker; the soft kick on tape and brush, the frame drum by hand.
+// Its own grooves (queue items 8 and 9): the kick anchored on the first
+// and third beats (in 6/8 the first of two), with only a pickup on the
+// bar's last eighth besides, never a syncopated kick; a rim, snare or tap
+// on the backbeat, as a ghost a sixteenth before a beat, or in a fill on
+// the last beat, never a clap; the soft kick on tape and brush, the frame
+// drum by hand. And bars that differ, on several instruments, with
+// dynamics: the life v53 took out.
 const wayDrummed = wayfares.filter(({ p }) => p.tracks.drums.length);
 const KICKS = new Set(['softkick', 'frame']);
-check('wayfare\'s kick falls on the first and third beats and nowhere else', wayDrummed.length > 200 && wayDrummed.every(({ spec, p }) => {
+check('wayfare\'s kick is anchored on 1 and 3, with a pickup into the bar and nothing else', wayDrummed.length > 200 && wayDrummed.every(({ spec, p }) => {
   const every = spec.stepsPerBar === 12 ? 12 : 8;
   const kicks = p.tracks.drums.filter((e) => KICKS.has(e.inst));
-  return kicks.length === spec.bars * (spec.stepsPerBar / every) && kicks.every((e) => e.step % every === 0);
+  const anchors = kicks.filter((e) => e.step % every === 0);
+  return anchors.length === spec.bars * (spec.stepsPerBar / every)
+    && kicks.every((e) => e.step % every === 0 || e.step % spec.stepsPerBar === spec.stepsPerBar - 2);
 }), `${wayDrummed.length} loops`);
-check('its backbeat is rim, snare or tap, and never a clap', wayDrummed.every(({ spec, p }) => {
-  const beat = spec.stepsPerBar === 12 ? 6 : 4;
-  const backs = p.tracks.drums.filter((e) => ['rim', 'snare', 'tap', 'clap'].includes(e.inst));
-  const last = (spec.bars - 1) * spec.stepsPerBar;
-  return backs.every((e) => e.inst !== 'clap' && (e.step % (2 * beat) === beat || (e.step >= last + spec.stepsPerBar - beat && e.step % 2 === 0)));
+check('its rim, snare or tap plays the backbeat, a ghost or a fill, and never a clap', wayDrummed.every(({ spec, p }) => {
+  const spb = spec.stepsPerBar;
+  const beat = spb === 12 ? 6 : 4;
+  return p.tracks.drums.filter((e) => ['rim', 'snare', 'tap', 'clap'].includes(e.inst)).every((e) => {
+    const s = e.step % spb;
+    return e.inst !== 'clap' && (s % (2 * beat) === beat || (s + 1) % beat === 0 || s > spb - beat);
+  });
 }));
 check('the soft kick on tape and brush, the frame drum on the hand kit, and never the lo-fi kick', wayDrummed.every(({ p }) => {
   const insts = new Set(p.tracks.drums.map((e) => e.inst));
   return !insts.has('kick') && (p.meta.kit === 'hand' ? !insts.has('softkick') : !insts.has('frame'));
 }));
-check('the eighths play every eighth, light, and none open', wayDrummed.every(({ spec, p }) => {
-  const eighths = p.tracks.drums.filter((e) => ['hat', 'ohat', 'shaker', 'jingle', 'ojingle'].includes(e.inst));
-  return eighths.every((e) => e.vel < 0.4 && e.inst !== 'ohat' && e.inst !== 'ojingle') && everyEighth(spec, eighths.map((e) => e.step));
+check('the eighths stay light, and open only on the bar\'s last eighth', wayDrummed.every(({ spec, p }) => {
+  const cymbal = p.tracks.drums.filter((e) => ['hat', 'ohat', 'shaker', 'jingle', 'ojingle'].includes(e.inst));
+  return cymbal.every((e) => e.vel < 0.6 && (!['ohat', 'ojingle'].includes(e.inst) || e.step % spec.stepsPerBar === spec.stepsPerBar - 2));
 }));
+{
+  const variety = wayDrummed.map(({ spec, p }) => {
+    const hits = p.tracks.drums.filter((e) => e.vel > 0);
+    const bars = [];
+    for (let b = 0; b < spec.bars; b++) {
+      bars.push(hits.filter((e) => Math.floor(e.step / spec.stepsPerBar) === b).map((e) => `${e.step % spec.stepsPerBar}:${e.inst}`).sort().join());
+    }
+    let pairs = 0, differ = 0;
+    for (let i = 0; i < bars.length; i++) for (let j = i + 1; j < bars.length; j++) { pairs++; if (bars[i] !== bars[j]) differ++; }
+    const m = hits.reduce((a, e) => a + e.vel, 0) / hits.length;
+    return {
+      differ: pairs ? differ / pairs : 0,
+      insts: new Set(hits.map((e) => e.inst)).size,
+      sd: Math.sqrt(hits.reduce((a, e) => a + (e.vel - m) ** 2, 0) / hits.length),
+    };
+  });
+  const avg = (k) => variety.reduce((a, v) => a + v[k], 0) / variety.length;
+  check('wayfare\'s bars differ, on four or five instruments, with dynamics', avg('differ') > 0.88 && avg('insts') > 4.2 && avg('sd') > 0.165,
+    `differ ${avg('differ').toFixed(2)}, instruments ${avg('insts').toFixed(1)}, sd ${avg('sd').toFixed(3)}`);
+}
 check('a chug leans on the beat and ghosts the eighths between', chugs.every(({ spec, p }) => {
   const beat = spec.stepsPerBar === 12 ? 6 : 4;
   return p.tracks.bass.every((e) => !e.vel || (e.step % beat === 0 ? e.vel >= 0.6 : e.vel <= 0.37));

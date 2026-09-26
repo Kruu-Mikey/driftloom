@@ -1563,24 +1563,41 @@ function genDrums(spec) {
   };
 }
 
-// Wayfare's grooves: travelling music, light and steady. Its loops drew
-// the catalogue's lo-fi patterns before, so a boom-bap kick (0, 6 and 11)
-// and claps came along, and Mikey heard the drums as what spoiled them. So
-// the kick on the first beat and the third (in 6/8, on the first of its
-// two), never off the beat; a rim or a soft snare on the others, never a
-// clap; the eighths light on the hats or the shaker. No ghost notes, no
-// rolls. The same shapes on every kit: the hand kit renames them as ever,
-// and the tape and brush kits take a softer kick (see 'softkick' in the
+// Wayfare's grooves: travelling music, light and moving. Its loops drew
+// the catalogue's lo-fi patterns once, and a boom-bap kick (0, 6 and 11)
+// and claps came along; Mikey heard the drums as what spoiled them. #79
+// gave it one plain bar, played over and over, and that was heard as
+// better but lifeless. So: the kick anchored on the first beat and the
+// third (in 6/8, the first of its two), a rim or a soft snare on the
+// others, never a clap, never a kick off the beat but the pickup into the
+// next bar; the eighths on the hats or the shaker, with the other one
+// colouring an offbeat now and then. Over that, what makes bars differ:
+// a phrase of four bars with an answer bar or two (a pickup kick and an
+// open hat), ghost notes before a backbeat, offbeat eighths left out, a
+// fill or a soft roll at the phrase's end, and the phrase swelling towards
+// it. The same shapes on every kit: the hand kit renames them as ever, and
+// the tape and brush kits take a softer kick (see 'softkick' in the
 // synth), lower and rounder than the lo-fi one.
 //
 // Under a chug the brushes play every eighth with the bass, the beat leaned
-// on and the "a" ghosted well down, chug-a rather than an even rattle.
+// on and the "a" ghosted well down, chug-a rather than an even rattle; the
+// rest of the groove varies over it.
 const TRAVEL = {
   kick: 0.64, // the first beat; the third is a little lighter
   back: 0.42, // rim or snare
-  eighth: [0.3, 0.2], // on the beat, off it
+  eighth: [0.34, 0.15], // on the beat, off it
   chug: [0.28, 0.1], // the brushes under a chug: on the beat, the "a"
+  ghost: 0.08,
+  colour: 0.17,
 };
+// The eighths on the beat lean as the bar does: the one most, the third
+// beat less, the backbeats least, under the rim or snare.
+const EIGHTH_LEAN = [1.2, 1, 0.78];
+// A phrase is four bars, and the groove swells across it towards the fill.
+const TRAVEL_SWELL = [0.78, 0.92, 1.08, 1.22];
+// Which bars of a phrase play the groove (0) and which its answer (1), the
+// bar with a pickup kick and an open hat.
+const TRAVEL_FORMS = [[0, 0, 0, 1], [0, 1, 0, 1], [0, 0, 1, 1], [0, 1, 0, 0], [0, 1, 1, 0]];
 
 function travelGroove(spec, r, kit, total) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
@@ -1589,31 +1606,77 @@ function travelGroove(spec, r, kit, total) {
   const beats = spb / beat;
   const back = r.weighted([['rim', 3], ['snare', 2]]);
   const shaker = r.chance(0.4);
-  const fill = r.chance(0.3);
+  const fills = r.chance(0.7);
   const chug = kit === 'brush' && chugs(spec);
+  const colour = r.chance(0.8);
+  const ghosts = r.chance(0.7);
+  const open = !chug && r.chance(0.75);
+  const pickup = r.chance(0.7);
+  const form = r.pick(TRAVEL_FORMS);
+  // The share of offbeat eighths left out; none under a chug, which is the
+  // wheels and does not skip.
+  const thin = chug ? 0 : r.range(0, 0.25);
+  const eighth = shaker && !chug ? 'shaker' : 'hat';
+  const other = eighth === 'hat' ? 'shaker' : 'hat';
+  // A ghost is the backbeat's other voice, played softly: a snare's ghost
+  // under a rim, a rim's under a snare.
+  const ghost = back === 'rim' ? 'snare' : 'rim';
+  const offbeats = [];
+  for (let s = 2; s < spb; s += 2) if (s % beat) offbeats.push(s);
+  // A ghost comes a sixteenth before a backbeat or the next bar's one.
+  const ghostAt = [];
+  for (let k = 1; k <= beats; k++) if (k % 2 === 1 || k === beats) ghostAt.push(k * beat - 1);
   const events = [];
   for (let bar = 0; bar < spec.bars; bar++) {
     const b = bar * spb;
+    const pos = bar % 4;
+    const swell = TRAVEL_SWELL[Math.min(3, pos + Math.max(0, 4 - spec.bars))];
+    const answer = form[pos] === 1;
+    const fill = fills && (pos === 3 || bar === spec.bars - 1);
+    const lastBeat = spb - beat;
     for (let k = 0; k < beats; k++) {
       const at = b + k * beat;
-      // In 4/4 the kick takes 1 and 3 and the backbeat 2 and 4; in 6/8,
-      // a bar of two beats, the kick takes the first and the backbeat the
-      // second.
+      // In 4/4 the kick takes 1 and 3 and the backbeat 2 and 4, the last
+      // leaned on; in 6/8, a bar of two beats, the kick takes the first and
+      // the backbeat the second.
       if (k % 2 === 0) events.push({ step: at, inst: 'kick', vel: (k === 0 ? TRAVEL.kick : TRAVEL.kick * 0.85) + r.f() * 0.05 });
-      else events.push({ step: at, inst: back, vel: TRAVEL.back + r.f() * 0.08 });
+      else events.push({ step: at, inst: back, vel: (TRAVEL.back + r.f() * 0.08) * (k === beats - 1 ? 1.1 : 1) * swell });
     }
-    // The eighths, every one of them: wheels do not skip.
+    // The answer bar: a kick on the last eighth, into the next bar's one.
+    if (answer && pickup && !fill) events.push({ step: b + spb - 2, inst: 'kick', vel: TRAVEL.kick * 0.62 + r.f() * 0.05 });
     const [on, off] = chug ? TRAVEL.chug : TRAVEL.eighth;
     for (let s = 0; s < spb; s += 2) {
+      // A fill takes the last beat, except from the brushes under a chug.
+      if (fill && !chug && s > lastBeat) continue;
+      if (s % beat && r.chance(thin)) continue;
+      const opens = open && answer && !fill && s === spb - 2;
       events.push({
         step: b + s,
-        inst: shaker && !chug ? 'shaker' : 'hat',
-        vel: (s % beat === 0 ? on : off) + r.f() * 0.05,
+        inst: opens ? (eighth === 'hat' ? 'ohat' : 'shaker') : eighth,
+        vel: ((s % beat ? off : on * EIGHTH_LEAN[(s / beat) % 2 ? 2 : s ? 1 : 0]) + (opens ? 0.1 : 0) + r.f() * 0.05) * swell,
       });
     }
-    // A soft pickup into the top of the loop, on the last beat's eighths.
-    if (fill && bar === spec.bars - 1) {
-      for (let s = spb - beat + 2; s < spb; s += 2) events.push({ step: b + s, inst: back, vel: 0.26 + r.f() * 0.08 });
+    // The other of the hats and the shaker, on an offbeat now and then.
+    if (colour && r.chance(0.5)) {
+      events.push({ step: b + r.pick(offbeats), inst: other, vel: TRAVEL.colour + r.f() * 0.08 });
+    }
+    if (ghosts && r.chance(0.7)) {
+      const at = r.pick(ghostAt);
+      if (!(fill && at > lastBeat)) events.push({ step: b + at, inst: ghost, vel: TRAVEL.ghost + r.f() * 0.06 });
+    }
+    if (fill) {
+      const kind = r.pick(['run', 'roll', 'pickup']);
+      if (kind === 'run') {
+        // Sixteenths up to the bar line, rising.
+        for (let s = spb - 3, k = 0; s < spb; s++, k++) events.push({ step: b + s, inst: back, vel: 0.22 + k * 0.08 + r.f() * 0.05 });
+      } else if (kind === 'roll') {
+        // A soft roll over the last eighth, rising into the one.
+        for (let k = 0; k < 4; k++) {
+          events.push({ step: b + spb - 2 + Math.floor(k / 2), inst: back, vel: 0.16 + k * 0.07 + r.f() * 0.04, roll: true, micro: (k % 2) / 2 });
+        }
+      } else {
+        for (let s = lastBeat + 2; s < spb; s += 2) events.push({ step: b + s, inst: back, vel: 0.26 + r.f() * 0.08 });
+      }
     }
   }
   const played = events.filter((e) => e.step < total);
