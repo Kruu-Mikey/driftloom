@@ -136,6 +136,37 @@ into the next chord), and less ring from the shared body resonance. Take
 the conservative end, write the choices down "for Mikey's ears", and
 re-check tone, level and cost.
 
+## 8. `wayfare`'s drums and chug: playful, not tough
+
+Mikey, review album tracks 16-19 (all `wayfare`): the melodies, chords
+and the minor v are nice, but the drums "kill it" on all four, though
+"not at all terrible". The chug "leans a bit towards that machine gun
+vibe or hip-hop ... too heavy or tough rather than playful". On the
+others: "the kick on the drums is a bit too loud, or not the right sound
+shape or tone -- more tribal sounding? Not sure."
+
+What the brain found: `wayfare` draws the catalogue's lo-fi drum patterns,
+so two of the four tracks played a syncopated boom-bap kick (steps 0, 6
+and 11 in the bar) with claps; one played the tape kit; the hand-kit track
+put the same kind of pattern on the frame drum. The kits aren't the
+problem (tide's hand-kit jig got "love it"); the grooves are.
+
+Do, for `wayfare` only:
+- **Its own drum grooves:** travelling music, light and steady. The kick
+  (or frame drum) on 1 and 3, never syncopated boom-bap; brush, rim or tap
+  on 2 and 4; no claps; hats, shaker or jingles light on the eighths. The
+  same shapes on every kit it draws.
+- **A softer kick in `wayfare`**, lower and rounder. Yardstick: the drums'
+  level over the music (as in #31) should sit near tide's hand-kit jig
+  loops, which Mikey loved, not near the catalogue's lo-fi loops.
+- **A playful chug:** the beat accented and the offbeats ghosted well
+  down ("chug-a" rather than an even rattle), shorter bass notes, and the
+  brush's eighths lighter to match. Keep it a train, not a march.
+- Melody, chords and everything outside `wayfare` untouched; existing
+  non-`wayfare` loops must render identically. The usual level, refusal
+  and balance-lock checks. Take the gentle option where unsure, and say
+  "for Mikey's ears".
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
