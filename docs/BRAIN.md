@@ -179,6 +179,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   every pass, and re-rolls must be instant. Baking lives on as an audio
   export (roadmap 17). He is interested in a compiled audio engine
   (roadmap 16), and in the long run adaptive music for games (18).
+  Agreed 2026-09-26: the synth moves to Rust (WebAssembly in an
+  AudioWorklet) soon after item 11, with voice design frozen during the
+  port; the generator stays in JavaScript until composition depth
+  settles, then follows. The JS engine is the reference throughout. The
+  deliverable is the phone app with a Rust core; a native build and a
+  chill-game integration (Animal Crossing, point-and-click, turn-based --
+  not action) are separate projects. Queue item 13: a gated three-voice
+  prototype.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
