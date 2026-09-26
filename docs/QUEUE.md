@@ -204,3 +204,9 @@ Mikey decides this line:
   let go (pan flute, and the flute, ocarina and analoglead, which had the
   same fault). Listen for clean graces in tide's pan flute and ocarina
   tunes, and a pan flute that otherwise sounds exactly as before.
+- #75, a cleaner nylon strum (v52),
+  https://178f4bb4-driftloom.kruu-mikey-thaiculture.workers.dev: the strum
+  crosses the strings in 10-20 ms (was 15-30), and a strum still held when
+  the next one starts lets go under it rather than ringing on. Listen for
+  each strum landing as one gesture, and a new chord no longer sitting on
+  the old one's strings (clearest in 6/8); the guitar's tone is unchanged.
