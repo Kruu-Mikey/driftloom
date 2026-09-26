@@ -121,6 +121,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   waves, nylon strum, pan flute, drone), cinder (with and without the
   added F, hand kit and nylon), wayfare (chug under pan flute and under
   fiddle, no chug, the minor v). Rated keep / tune / drop, not blind.
+  **Heard, tracks 1-12:** keep on the fiddle, accordion lead and chords
+  ("these chords sound great"), all three softened leads, tide's waltz
+  with graces and harmony, the hand-kit jig ("love it"), waves
+  ("excellent") and the drone. Tune: the nylon strum ("smeared, not bad")
+  and the pan flute, which glitches with a static, clipping-like noise
+  when its notes overlap (the tone itself is good). Fiddle, accordion and
+  drone may want more nuance later. Queue items 6 and 7 written. Tracks
+  13-19 (cinder, wayfare) still to hear.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
