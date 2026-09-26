@@ -450,3 +450,12 @@ Mikey decides this line:
   goes mostly on repainting the whole page every frame; finished voices
   keep the audio thread busy until the garbage collector finds them
   (40-70% of its work); a hidden tab costs the audio thread more, not less.
+- #89, sound polish (item 11, v55),
+  https://8de059b7-driftloom.kruu-mikey-thaiculture.workers.dev: sung notes
+  (vowel, hum, choir) no longer leap out when a note lands on a formant --
+  the loud ones come down, nothing is lifted, the vowels' colour is the
+  same; 5/4 chords fill the bar, felt 3+2, instead of stopping after four
+  beats; keys arpeggios stop with their chord instead of ringing into the
+  next one. Listen for hollow and choir tunes that stay even, thaw's 5/4
+  loops, and arpeggios that no longer smear. The temple bell is unchanged
+  (see Notes).
