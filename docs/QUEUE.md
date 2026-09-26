@@ -197,3 +197,10 @@ Mikey decides this line:
   note on every eighth with the brushes swishing along. Listen for wheels
   on rails rather than a machine gun, and whether I-IV-v-IV's minor v in
   mixolydian and dorian should go.
+- #74, pan flute without the static (v51),
+  https://14260a7b-driftloom.kruu-mikey-thaiculture.workers.dev: the
+  static was tide's grace notes, which held for 0.4 s under the note they
+  led into and were cut off with a click; now they flick into the note and
+  let go (pan flute, and the flute, ocarina and analoglead, which had the
+  same fault). Listen for clean graces in tide's pan flute and ocarina
+  tunes, and a pan flute that otherwise sounds exactly as before.
