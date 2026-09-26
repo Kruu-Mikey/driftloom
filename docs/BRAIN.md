@@ -153,6 +153,12 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   review" afterwards; Mikey's merge policy stands and covers it. The queue
   has no item 9. Wayfare tracks 16-19 sent again, old (v52, 178f4bb4) and
   new (v53, d90d26df), labelled.
+  **Heard:** the drums sound better on v53, but less dynamic and
+  interesting than v52. Measured: bars that differ fell 0.95 -> 0.32,
+  instruments per loop 4.8 -> 3.0, velocity spread 0.177 -> 0.150; tide
+  (loved) sits at 0.99 / 4.7 / 0.193. The item 8 brief's "steady, same
+  shapes on every kit" was taken literally. Queue item 9 gives the
+  variety back with those numbers as yardsticks.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.

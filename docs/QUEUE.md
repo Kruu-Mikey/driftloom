@@ -167,6 +167,43 @@ Do, for `wayfare` only:
   and balance-lock checks. Take the gentle option where unsure, and say
   "for Mikey's ears".
 
+## 9. `wayfare`'s drums: bring the life back
+
+Mikey, before/after on the four wayfare tracks: "the drums sound better
+in v53, but ... the composition is less dynamic and interesting than it
+was in v52 for the drums." Keep what #79 fixed (no boom-bap, no claps,
+the soft round kick, the lighter chug); give back the variety it took.
+
+Measured by the brain, 150 wayfare-led loops each (tide-led for the
+yardstick, which Mikey loved):
+
+| | wayfare v52 | wayfare v53 | tide v53 |
+|---|---|---|---|
+| bars that differ from each other (share) | 0.95 | **0.32** | 0.99 |
+| instruments per loop | 4.8 | **3.0** | 4.7 |
+| velocity spread (sd) | 0.177 | **0.150** | 0.193 |
+| hits per bar | 11.4 | 11.1 | 7.3 |
+
+So v53 plays nearly the same bar over and over, on fewer instruments, with
+flatter dynamics. The item 8 brief asked for grooves that were "steady"
+with "the same shapes on every kit", and took it too literally.
+
+Do, for `wayfare` only:
+- Several groove variants per loop, not one, with bars that vary as the
+  catalogue's do: the kick stays anchored on 1 and 3, but pickups, an
+  occasional extra kick into a beat, ghost notes, open hats or shaker
+  accents, and a fill or roll at phrase ends are all welcome. Still never
+  boom-bap and never claps.
+- Back to about 4-5 instruments per loop (percussion colour: rim, shaker,
+  jingles, taps, whatever each kit has).
+- Dynamics: accents and ghosts, and swells across the phrase, so the
+  velocity spread returns to v52's or tide's.
+- Yardsticks, reported in the table above's form: bars that differ at or
+  above 0.9, instruments near 4.5, velocity spread at or above 0.17, and
+  drums over the music still near tide's hand-kit jigs.
+- The chug stays as #79 made it unless the variation needs it to breathe.
+- Everything outside `wayfare` untouched. The usual checks.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
