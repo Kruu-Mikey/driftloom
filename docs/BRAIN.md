@@ -129,6 +129,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   when its notes overlap (the tone itself is good). Fiddle, accordion and
   drone may want more nuance later. Queue items 6 and 7 written. Tracks
   13-19 (cinder, wayfare) still to hear.
+  **Items 6 and 7 merged (#74 v51, #75 v52), checked on main.** The pan
+  flute static was none of the brief's suspects: tide's 30 ms grace notes
+  were shorter than the attack, so each grace swelled, sat under the next
+  note for 0.4 s and cut off with a click. Flute, ocarina and analoglead
+  had it too; all fixed, normal notes unchanged, and `measure.mjs
+  --endings` now flags any cut-off note. Nylon: strum 10-20 ms, and held
+  strings let go when the next strum starts. Tracks 10 and 11 of the
+  review album replay on the live site for a re-listen.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
