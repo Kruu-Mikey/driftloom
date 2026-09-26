@@ -518,6 +518,28 @@ moved on purpose -- in which case `--write-baseline` rewrites
 `test/stats-baseline.json`, and the pull request says so. The file is
 deterministic, so rewriting it on unchanged code changes nothing.
 
+### Live performance
+
+```sh
+node tools/perf.mjs                          # the whole baseline, about 100 minutes
+node tools/perf.mjs --quick                  # a smoke run, one loop, a few minutes
+node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
+node tools/perf.mjs --query engine=rust      # the same, with a flag on the page
+```
+
+`measure.mjs` renders offline, faster than real time; this plays the real
+page live in headless Chromium, the way a listener does, under CPU
+throttling (1x, 4x, 6x), full and lite, visible and with the tab hidden,
+with "Let the loop wander" on. It reports the engine's late ticks (read off
+the Diagnostics panel), the browser's own glitch counter, the audio
+thread's render time, the main thread's script, layout and paint time,
+Web Audio nodes created a second, memory over a long run, the time from a
+tap on Play to the first sound, and the page's weight on a first visit.
+It drives the page only from outside and instruments the Web Audio API
+rather than the app, so a replacement engine is measured by the same tool.
+The fixed set of loops, how they were chosen and what the first baseline
+found are in [`docs/perf-baseline.md`](docs/perf-baseline.md).
+
 ## Track length
 
 Off by default: a loop machine should loop until you say stop. Set it and a
