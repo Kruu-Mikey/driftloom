@@ -107,6 +107,40 @@ The travelling music: steady, bright, moving.
   accordion, nylon, harp. Drums in about 85% of loops: brush, tape, hand.
 - `level` solved by measurement; appended to the end of `PROFILE_IDS`.
 
+## 6. Pan flute: static when notes overlap (a bug)
+
+Mikey, review album track 11 (a tide loop, pan flute leading): "some sort
+of glitch ... almost sounds like it's clipping; there's this static noise
+that happens when the pan flute notes overlap. The pan flute itself
+sounds good." So the tone stays; the glitch goes.
+
+Find the cause by rendering, not guessing: overlapping pan flute notes
+through the real Synth, looking for clipping at any node, sample-to-sample
+jumps (clicks), and noise that builds as notes stack. Suspects, unproven:
+the chiff spike (a 4 ms exponential ramp up to `PANFLUTE_CHIFF`), every
+note's breath starting the same shared noise buffer at offset 0 (so
+overlapping notes play the same noise a few milliseconds apart, which
+combs), or the breath's bandpass stacking. Fix whatever it is, keep the
+tone probe and level where they are, and add a check to the tests or
+`measure.mjs` that would have caught it. Other voices that share the
+noise buffer the same way should be checked for the same fault and named
+in the PR, fixed only if they have it.
+
+## 7. Nylon: a cleaner strum
+
+Mikey, track 10 (tide, nylon strumming): "sounds smeared, not bad sounding
+though either." Keep the sound; tighten it. Likely levers: a narrower
+spread across the strings than 15-30 ms, the previous strum's strings
+damped when the next chord starts (a guitarist's strings don't ring on
+into the next chord), and less ring from the shared body resonance. Take
+the conservative end, write the choices down "for Mikey's ears", and
+re-check tone, level and cost.
+
+## Later, not queued
+
+Mikey liked the fiddle, accordion and drone as they are, and may want
+more nuance in them later. Not now.
+
 ## Merge policy
 
 Mikey decides this line:
