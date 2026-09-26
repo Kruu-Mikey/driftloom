@@ -159,6 +159,12 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   (loved) sits at 0.99 / 4.7 / 0.193. The item 8 brief's "steady, same
   shapes on every kit" was taken literally. Queue item 9 gives the
   variety back with those numbers as yardsticks.
+  **Item 9 merged (#82, v54), checked on main** with the brain's own
+  metric: bars that differ 0.909, instruments 4.54, velocity sd 0.173
+  (v52 0.953 / 4.82 / 0.177). Tests and `--check` pass; every loop without
+  wayfare in its mix renders as on v53. Same four tracks sent again on
+  v54 (edcf8d59), with v52 and v53 for reference. Open for the ears:
+  whether the fills or pickup kick tip it back towards "tough".
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
