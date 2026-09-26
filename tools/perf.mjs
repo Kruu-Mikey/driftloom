@@ -100,6 +100,9 @@ driftloom live performance harness
   --hidden-throttle <list>  throttles for the hidden runs (default 1,6)
   --hidden-seconds <n>      window for the hidden runs   (default --seconds)
   --memory-minutes <n>      length of each memory run    (default 5)
+  --gc-every <s>      force a garbage collection every s seconds while
+                      measuring (a diagnostic: do finished voices that are
+                      waiting to be collected still cost audio render?)
   --js-profile        profile JS in the matrix runs too (default: only in
                       the split part)
   --url <url>         measure a deployed page instead of this folder
@@ -149,7 +152,7 @@ function parseArgs(argv) {
   const o = {
     loops: 'all', code: null, quality: ['full', 'lite'], throttle: [1, 4, 6],
     seconds: 60, warmup: 8, parts: ['load', 'idle', 'matrix', 'hidden', 'muted', 'split', 'memory'],
-    hiddenThrottle: [1, 6], hiddenSeconds: null, memoryMinutes: 5, jsProfile: false,
+    hiddenThrottle: [1, 6], hiddenSeconds: null, gcEvery: 0, memoryMinutes: 5, jsProfile: false,
     url: null, query: '', port: 8741, chrome: null, quick: false, json: null, md: null, pick: false,
   };
   const list = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
@@ -169,6 +172,7 @@ function parseArgs(argv) {
       case '--parts': o.parts = list(next()); break;
       case '--hidden-throttle': o.hiddenThrottle = list(next()).map(Number); break;
       case '--hidden-seconds': o.hiddenSeconds = Number(next()); break;
+      case '--gc-every': o.gcEvery = Number(next()); break;
       case '--memory-minutes': o.memoryMinutes = Number(next()); break;
       case '--js-profile': o.jsProfile = true; break;
       case '--url': o.url = next(); break;
@@ -627,7 +631,7 @@ function readTrace(events, seconds) {
     if (e.name === 'RealtimeAudioDestinationHandler::Render') pids.set(e.pid, (pids.get(e.pid) || 0) + 1);
   }
   const pid = [...pids.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const out = { renderCalls: 0, renderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {} };
+  const out = { renderCalls: 0, renderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {}, paintRects: {} };
   const callbackDurs = [];
   for (const e of events) {
     if (e.pid !== pid || e.ph !== 'X') continue;
@@ -644,6 +648,16 @@ function readTrace(events, seconds) {
       if (dur > out.worstCallbackMs) out.worstCallbackMs = dur;
     } else if (thread === 'CrRendererMain') {
       out.mainTop[e.name] = (out.mainTop[e.name] || 0) + dur;
+      if (e.name === 'Paint') {
+        // The clip is a quad; its bounding box says how much was repainted.
+        const q = e.args && e.args.data && e.args.data.clip;
+        if (q && q.length === 8) {
+          const w = Math.max(q[0], q[2], q[4], q[6]) - Math.min(q[0], q[2], q[4], q[6]);
+          const h = Math.max(q[1], q[3], q[5], q[7]) - Math.min(q[1], q[3], q[5], q[7]);
+          const k = `${Math.round(w)}x${Math.round(h)}`;
+          out.paintRects[k] = (out.paintRects[k] || 0) + 1;
+        }
+      }
       if (PAINT.has(e.name)) {
         out.paintMs += dur;
         out.mainPaint[e.name] = (out.mainPaint[e.name] || 0) + dur;
@@ -791,7 +805,16 @@ async function run(opts, chromePath, cfg) {
     const m0 = await tab.metrics();
     const s0 = await tab.snap();
     const stop = await traceStart(b);
-    await sleep(cfg.seconds * 1000);
+    if (opts.gcEvery > 0) {
+      await tab.send('HeapProfiler.enable');
+      const until = Date.now() + cfg.seconds * 1000;
+      while (Date.now() < until) {
+        await sleep(Math.min(opts.gcEvery * 1000, until - Date.now()));
+        await tab.send('HeapProfiler.collectGarbage');
+      }
+    } else {
+      await sleep(cfg.seconds * 1000);
+    }
     const m1 = await tab.metrics();
     const s1 = await tab.snap();
     const trace = readTrace(await stop(), cfg.seconds);
@@ -833,6 +856,8 @@ function perSecond(m0, m1, s0, s1, trace, seconds) {
     renderMs: trace.renderMs / seconds,
     renderThreads: trace.renderThreads,
     mainPaint: trace.mainPaint,
+    paintRects: trace.paintRects,
+    paintsPerSec: Object.values(trace.paintRects).reduce((a, n) => a + n, 0) / seconds,
     mainTop: Object.fromEntries(Object.entries(trace.mainTop).sort((a, b) => b[1] - a[1]).slice(0, 25).map(([k, v]) => [k, +(v / seconds).toFixed(3)])),
     callbacks: trace.callbacks / seconds,
     callbackMs: trace.callbacks ? trace.callbackMs / trace.callbacks : 0,
