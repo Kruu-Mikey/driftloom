@@ -302,7 +302,17 @@ Do:
 - For Mikey's ears afterwards: the brain builds an album of developing
   long loops beside simple ones.
 
-## 13. Rust engine, step 2: a prototype of three voices (roadmap item 16)
+## 13. Rust engine, step 2 -- stopped at its gate (brain, 2026-09-26)
+
+Item 10's baseline answers the gate: building the graph costs 1.2-4.2 ms
+a second on the main thread, 2-5% of it. The big costs are elsewhere and
+fixable in plain JavaScript and CSS (item 14). Don't build the prototype.
+The Rust port stays on the roadmap (item 16) as a portability project --
+the phone app's core, a native build, games -- to be taken up after
+composition depth settles, not as the performance fix. The original
+brief follows for the record.
+
+### (original brief, not to be built now)
 
 Agreed with Mikey (2026-09-26): the synth moves to Rust sooner, the
 generator later. This is the first real step. Start it only after items
@@ -337,6 +347,49 @@ Report the equivalence table, the before/after performance figures, the
 file size added to the app, and anything that made the port harder than
 expected.
 
+## 14. The performance wins the baseline found
+
+From `docs/perf-baseline.md` (item 10). Re-measure every change with
+`tools/perf.mjs` against that baseline, same loops, same settings, and
+report before and after. None of these should change how anything sounds;
+prove it with `measure.mjs --voice all`, `--endings` and the corpus
+loudness where the audio path is touched.
+
+1. **Paint, the main thread's biggest cost** (57-67 ms/s of 71-84 at 1x,
+   90% at 6x). The whole 765 x 3555 page repaints about 116 times a
+   second because it is one paint layer and the cursor, the playhead
+   lights (a 90 ms colour transition and a glowing `box-shadow`) and the
+   grid cells change on it every step. Put what moves on its own
+   compositor layers, animate only `transform` and `opacity`, drop the
+   glow's `box-shadow` transition for something that doesn't repaint,
+   and touch only the cells that change. Keep the look. Target: paint
+   under 10 ms/s at 1x.
+2. **Disconnect every voice when it ends.** Finished voices keep
+   rendering until garbage collection finds them: 40-45% of the audio
+   thread at 1x, about 70% when the main thread is slow. Disconnect each
+   voice's nodes on its end. Expected: the audio thread from 54-95 to
+   about 49-53 ms/s on the baseline loops.
+3. **The hidden-tab excess.** Hidden, the audio thread costs 20-100% more,
+   likely because voices are built and wired up to 3 s before they
+   sound. Prove the cause, then build or connect voices closer to their
+   start without risking dropouts when timers throttle.
+4. **The graph that always runs** (reverb combs, delays, the bus: 28-37
+   ms/s, even with every layer muted). Find what costs what; look for
+   savings that leave the sound identical, and propose (don't make) any
+   that would change it.
+5. **Page weight.** The service worker precaches both `keepalive.flac` and
+   `keepalive.wav` (334 KB of 458 KB gzipped) though only one plays, and
+   every script is fetched twice on a first visit. Precache what's used.
+
+One PR per part, in this order, each merged under the policy.
+
+## 15. The temple bell as a chord voice: lift it
+
+Item 11's note: at 0.4 s notes the chord temple bell already sits above
+the chords median, at 1.6 s it sits 1.9 LU under, and the bell rings 6.5 s
+whatever the note length. Mikey heard it as buried, so the long-note
+reading decides: lift the chord use about 1.9 LU, melody use unchanged.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
@@ -354,7 +407,7 @@ Mikey decides this line:
 ## Notes from Claude Code
 
 - **Item 11, the temple bell as a chord voice: needs a decision, left as it
-  is (2026-09-26).** The brief's yardstick is the chords layer's median at
+  is (2026-09-26).** Decided by the brain from Mikey's ear: item 15. The brief's yardstick is the chords layer's median at
   0.4 s notes, and there the chord templebell is already *above* it:
   -1.8 LU against a median of -2.6 (`measure.mjs --voice all --note 0.4`,
   LU against kalimba). Meeting the yardstick would mean turning it *down*,

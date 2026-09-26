@@ -749,6 +749,15 @@ Staged, so nothing is a leap of faith:
 4. The generator ported last, so share codes stay deterministic across
    both engines.
 
+**What the baseline found (2026-09-26, queue item 10):** building the
+graph is 2-5% of the main thread. The main thread is mostly paint (a UI
+problem), and most of the audio thread is finished voices never
+disconnected plus the always-running effects -- both fixable in
+JavaScript (queue item 14). So a compiled engine is not the performance
+fix; its case is portability: the phone app's core, a native build,
+games. Taken up after composition depth settles (brain's
+recommendation, pending Mikey).
+
 **Timing (agreed with Mikey, 2026-09-26):** sooner for
 the synth, later for the generator. The voices are close to settled --
 Mikey has approved nearly all of them -- while the composition is about

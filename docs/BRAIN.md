@@ -187,6 +187,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   chill-game integration (Animal Crossing, point-and-click, turn-based --
   not action) are separate projects. Queue item 13: a gated three-voice
   prototype.
+  **Baseline in (#88), item 11 in (#89, v55), both checked.** The
+  baseline changed the picture: main thread 75-85% paint; audio thread
+  40-70% finished voices never disconnected, 25-45% the always-running
+  effects, the notes themselves 12-16 ms/s; graph building 2-5% of the
+  main thread. Item 13 stopped at its gate; queue item 14 takes the five
+  wins (paint, disconnect, hidden-tab lookahead, effects, page weight).
+  Rust reframed as portability, after composition depth (pending
+  Mikey). Temple bell chord lift decided from his ear: queue item 15.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
