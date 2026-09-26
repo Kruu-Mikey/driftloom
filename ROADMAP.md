@@ -729,6 +729,52 @@ notes than the catalogue (mean 2.9% and 3.5% against 1.5%), the same on
 the old code. The fixes above are the likely remedy; re-measure both
 profiles when this item is done.
 
+## 16. A compiled audio engine — **L** — *after the performance baseline*
+
+Mikey wants the app light and fast even at full quality ("DHH-wow" smooth
+with a hundred other apps open), and is open to an overhaul. Today every
+note builds its own little Web Audio graph (oscillators, filters, gains),
+hundreds a second, plus the garbage they leave. The candidate: one
+engine running inside an AudioWorklet, written in a compiled language
+(Rust to WebAssembly, say) with a preallocated pool of voices, no
+per-note objects and no garbage.
+
+Staged, so nothing is a leap of faith:
+1. The baseline (queue item 10) says how much of the cost is the graph
+   and how much is JavaScript. If the graph isn't the problem, stop.
+2. A prototype of a few voices in the worklet, measured against the same
+   voices today with the same harness, and heard side by side.
+3. Voice-by-voice migration behind a flag, each voice proven equivalent
+   with the existing `--voice` tone and level probes and `--endings`.
+4. The generator ported last, so share codes stay deterministic across
+   both engines.
+
+It is also the road to item 18: the same compiled core can build for the
+web and for a game engine.
+
+## 17. Export a loop as audio — **M**
+
+Rendering a loop offline was considered for playback and rejected
+(2026-09-26): "Let the loop wander" is on by default and changes the loop
+every pass, and re-rolling a layer must be instant. As an export it's
+right. Download a loop as an audio file, including a wandering loop
+rendered for as many passes as the user asks ("bake a track that wanders
+for 100 loops"). Offline rendering has no deadline, so the export has no
+refusals even on a slow phone. MIDI export already exists beside it.
+
+## 18. Adaptive music for games — **vision**
+
+Mikey: could the engine go into a videogame, where "the player's stats and
+which room they're in and what is going on or significant events could
+change what kind of music is generated"? The generator is already
+parameterised in the right way: a profile blend, feel (energy, lift,
+warmth), mood, layer mutes and drift. A game would map its state onto
+those, with changes landing on bar or phrase boundaries so the music
+turns rather than jumps, and short stingers for events. It needs the
+compiled core (item 16) to run outside a browser, and an API: set the
+parameters, get bar and phrase callbacks, trigger stingers. Not planned;
+recorded so item 16 is designed with it in mind.
+
 ---
 
 ## Decided against

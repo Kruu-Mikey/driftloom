@@ -174,6 +174,11 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   hundred other apps open, overhauls welcome. "Twenty in a row" not
   needed yet: nothing has come across too loud or too quiet lately.
   Queue items 10-12 written.
+  Baking loops for playback: rejected by Mikey (2026-09-26), rightly --
+  "Let the loop wander" (drift) is on by default and changes the loop
+  every pass, and re-rolls must be instant. Baking lives on as an audio
+  export (roadmap 17). He is interested in a compiled audio engine
+  (roadmap 16), and in the long run adaptive music for games (18).
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
