@@ -749,6 +749,21 @@ Staged, so nothing is a leap of faith:
 4. The generator ported last, so share codes stay deterministic across
    both engines.
 
+**Timing (brain's recommendation, 2026-09-26, pending Mikey):** sooner for
+the synth, later for the generator. The voices are close to settled --
+Mikey has approved nearly all of them -- while the composition is about
+to change a lot (queue item 12). So the synth moves to Rust once queue
+item 11's polish lands, and voice design freezes during the port (any
+voice change made meanwhile is made in the Rust version). The generator
+stays in JavaScript while composition depth settles, then follows. The
+JavaScript engine is the reference throughout: every ported voice is
+proven against it with the probes before it replaces it.
+
+**The deliverable** is the phone app, with a Rust core compiled to
+WebAssembly inside the current web app: the same deploy, the same UI,
+the audio and (later) the generator in Rust. A native app-store build and
+game integration are separate projects the same core makes possible.
+
 It is also the road to item 18: the same compiled core can build for the
 web and for a game engine.
 
@@ -766,7 +781,10 @@ refusals even on a slow phone. MIDI export already exists beside it.
 
 Mikey: could the engine go into a videogame, where "the player's stats and
 which room they're in and what is going on or significant events could
-change what kind of music is generated"? The generator is already
+change what kind of music is generated"? The games he has in mind are chill ones --
+Animal Crossing, a point-and-click adventure, something turn-based -- not
+action: music that follows the time of day, the weather, the place, the
+season, the turn, rather than combat. The generator is already
 parameterised in the right way: a profile blend, feel (energy, lift,
 warmth), mood, layer mutes and drift. A game would map its state onto
 those, with changes landing on bar or phrase boundaries so the music
