@@ -228,6 +228,18 @@ Use a fixed set of loops that includes the heaviest profiles and long
 loops. Commit a baseline report (for example `docs/perf-baseline.md`) and
 say where the time goes. Do not optimise anything yet.
 
+Two more asks, because this baseline is what a future compiled audio
+engine (roadmap item 16) has to beat:
+- Keep the harness engine-agnostic: it drives the app from outside and
+  reads its figures from the page, so the same tool can measure a
+  replacement engine later.
+- Split the cost as far as the browser lets you: note scheduling and
+  generation in JavaScript, audio-graph construction (node creation and
+  connection), audio rendering, and the UI. The point is to know how
+  much a compiled engine could actually save, and where.
+Play with "Let the loop wander" on, the default, since that's how most
+people will listen.
+
 ## 11. Sound polish: measured fixes
 
 Each is small and measurable; they change how existing loops sound, which
