@@ -144,6 +144,15 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   machine gun / hip-hop, "too tough rather than playful". Cause found:
   wayfare draws the catalogue's lo-fi grooves (boom-bap kicks, claps).
   Queue item 8 written.
+  **Item 8 merged (#79, v53), checked on main:** tests and `--check` pass;
+  every loop without wayfare in its mix renders as on v52. Wayfare got its
+  own grooves (kick on 1 and 3, backbeat on 2 and 4, light eighths, no
+  claps or boom-bap), a soft round kick, a lighter chug; its level
+  re-solved 0.71 -> 0.84. For the ears: the chug's bass is 4.4 LU lighter.
+  Claude Code's session classifier flagged the merge as "merge without
+  review" afterwards; Mikey's merge policy stands and covers it. The queue
+  has no item 9. Wayfare tracks 16-19 sent again, old (v52, 178f4bb4) and
+  new (v53, d90d26df), labelled.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
