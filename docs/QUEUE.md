@@ -433,3 +433,10 @@ Mikey decides this line:
   offbeats. Listen for drums that move and breathe across the phrase
   again, as in v52, while still sounding like v53's gentle kit; and
   whether the fills or the pickup kick ever tip it back towards tough.
+- #88, the performance harness and baseline (item 10; `js/` untouched,
+  still v54), https://15986051-driftloom.kruu-mikey-thaiculture.workers.dev:
+  nothing to listen for, it measures and changes no sound. What it found
+  is in `docs/perf-baseline.md`: no dropouts in any run; the main thread
+  goes mostly on repainting the whole page every frame; finished voices
+  keep the audio thread busy until the garbage collector finds them
+  (40-70% of its work); a hidden tab costs the audio thread more, not less.
