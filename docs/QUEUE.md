@@ -204,10 +204,98 @@ Do, for `wayfare` only:
 - The chug stays as #79 made it unless the variation needs it to breathe.
 - Everything outside `wayfare` untouched. The usual checks.
 
+## 10. A performance harness and baseline (measure only)
+
+Mikey, 2026-09-25: even at full quality the app should be very light and
+fast -- "something that would make even DHH go 'wow, I can't believe how
+smooth this is even while I have a hundred other apps open'". Overhauls
+are on the table, but numbers come first. This item changes nothing in
+`js/`.
+
+Build `tools/perf.mjs`: the real app in headless Chromium, playing loops
+live (not offline), under CPU throttling through the DevTools protocol (at
+least 1x, 4x and 6x), full and lite. Per run, report:
+- audio health: the engine's late ticks, and any glitch signal the browser
+  exposes;
+- main-thread cost: script, layout and paint time per second of playback
+  (`Performance.getMetrics`), and long tasks;
+- audio-graph churn: Web Audio nodes created per second (instrument the
+  context in the harness, not the app);
+- memory: JS heap over a few minutes of playback, and whether it climbs;
+- time from pressing play to first sound; page weight on first load;
+- the same with the tab hidden, which should cost next to nothing.
+Use a fixed set of loops that includes the heaviest profiles and long
+loops. Commit a baseline report (for example `docs/perf-baseline.md`) and
+say where the time goes. Do not optimise anything yet.
+
+## 11. Sound polish: measured fixes
+
+Each is small and measurable; they change how existing loops sound, which
+is the point.
+- **Sung notes that jump out.** In `vowel`, `choir` and `hum`, a note whose
+  fundamental lands on a formant peak comes out 10-15 LU louder than its
+  neighbours (#24's probe: note-to-note spreads of 16-21 LU against about
+  1-2 for most voices). Tame the jumps without flattening the voices'
+  character; report the per-note spread before and after.
+- **Temple bell as a chord voice** is still about 2.5 LU under the chords
+  layer, and Mikey heard it as buried. Bring the chord use to the layer
+  median at 0.4 s notes; the melody use stays.
+- **5/4 chords.** 5/4 still uses the 4/4 chord table, so its fifth beat is
+  always empty. Give 5/4 its own table, in the spirit of the 6/8 rules
+  (#34, #38): chords move on the beats and hold.
+- **Arpeggios run past the bar**, because each note keeps the full length.
+  Clip them to their slot.
+
+## 12. Composition depth, first pass
+
+Mikey: "wider melodies and just wider compositions in general would be
+really nice. It can sometimes feel like the app will stick with
+compositions that are too elementary even when there are many bars to
+fill." Also: "it should still be completely possible for the very simple
+melodies and compositions to fill a 24-bar song. ... I really like the
+music the app already makes, we only need some compositions to explore
+adding more depth. We can play with what that balance should be."
+
+Measured by the brain (3000 loops, main at v54):
+
+| loop length | loops | distinct melody bars | bars with melody | distinct chord bars | melodic span |
+|---|---|---|---|---|---|
+| 4 bars | 36% | 2.9 | 3.6 | 3.5 | 8.8 |
+| 8 bars | 28% | 4.2 | 5.7 | 4.9 | 10.3 |
+| 16 bars | 16% | 6.0 | 9.9 | 6.5 | 11.4 |
+| 24 bars | 2% | 7.9 | 13.7 | 7.4 | 15.8 |
+| 32 bars | 1% | 5.1 | 10.8 | 5.3 | 7.8 |
+
+A 32-bar loop carries five distinct melody bars and a narrower tune than
+an 8-bar one. Long loops mostly repeat a short idea.
+
+Do:
+- **Development in some loops, not all.** A share of loops, weighted
+  towards the long ones, develop: a contrasting section (a B phrase that
+  answers the A, derived from its motif, often in a different register or
+  rhythm), a return that varies rather than repeats (A'), chord movement
+  that spans the form rather than cycling one short progression, and a
+  shape across the whole loop.
+- **Range as a spread.** Some tunes stay narrow, some roam: widen the
+  distribution, not every tune.
+- **One knob for the balance**, easy to turn later (for example a global
+  `DEPTH` share with per-profile weights), so Mikey can "play with what
+  that balance should be". Start conservative, around a third of loops of
+  8 bars or more.
+- **Simple loops survive.** Loops that don't develop must stay exactly as
+  simple as today, and any length can still be filled by a simple idea.
+- Yardsticks, in the table above's form, reported separately for loops
+  that develop and loops that don't. The balance lock will move; that is
+  the point. Report every figure that moves and re-baseline deliberately.
+- For Mikey's ears afterwards: the brain builds an album of developing
+  long loops beside simple ones.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
-more nuance in them later. Not now.
+more nuance in them later. Not now. No new sound profiles or instruments
+for now (2026-09-25): the base is solid; the focus is optimisation and
+bettering what the app already makes.
 
 ## Merge policy
 

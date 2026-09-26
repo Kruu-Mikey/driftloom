@@ -165,6 +165,15 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   wayfare in its mix renders as on v53. Same four tracks sent again on
   v54 (edcf8d59), with v52 and v53 for reference. Open for the ears:
   whether the fills or pickup kick tip it back towards "tough".
+- **Direction from here (2026-09-25).** No new sound profiles or
+  instruments for now: the base is solid. Focus on (1) composition depth --
+  wider melodies and compositions, some loops developing across long
+  forms while simple ones stay, the balance a knob to tune by ear; (2)
+  polishing the sounds the app already makes; (3) performance
+  excellence: light and fast even at full quality, "DHH-wow" smooth with a
+  hundred other apps open, overhauls welcome. "Twenty in a row" not
+  needed yet: nothing has come across too loud or too quiet lately.
+  Queue items 10-12 written.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
