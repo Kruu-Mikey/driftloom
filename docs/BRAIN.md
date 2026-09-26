@@ -137,6 +137,13 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   --endings` now flags any cut-off note. Nylon: strum 10-20 ms, and held
   strings let go when the next strum starts. Tracks 10 and 11 of the
   review album replay on the live site for a re-listen.
+  **Heard, the rest:** tracks 10 and 11 "okay now". Cinder all keep
+  (13 and 14 both "great", so the added F over the E stays; 15 "I dig
+  it"). Wayfare: the tunes, chords and the minor v are nice (the minor v
+  stays), but the drums spoil all four tracks and the chug reads as
+  machine gun / hip-hop, "too tough rather than playful". Cause found:
+  wayfare draws the catalogue's lo-fi grooves (boom-bap kicks, claps).
+  Queue item 8 written.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
