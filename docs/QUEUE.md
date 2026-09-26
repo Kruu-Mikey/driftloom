@@ -353,7 +353,17 @@ Mikey decides this line:
 
 ## Notes from Claude Code
 
-(none yet)
+- **Item 11, the temple bell as a chord voice: needs a decision, left as it
+  is (2026-09-26).** The brief's yardstick is the chords layer's median at
+  0.4 s notes, and there the chord templebell is already *above* it:
+  -1.8 LU against a median of -2.6 (`measure.mjs --voice all --note 0.4`,
+  LU against kalimba). Meeting the yardstick would mean turning it *down*,
+  the opposite of "buried". At 1.6 s notes it is under: -5.3 against -3.4,
+  1.9 LU. The bell rings 6.5 s whatever the note length, so a short-note
+  probe flatters it against voices that stop, and a long one does not. So
+  which length decides for a bell is a taste call: lift it about 1.9 LU to
+  the 1.6 s median, or leave it and re-listen. The other three parts of
+  item 11 went ahead without it.
 
 ## Done
 
@@ -440,3 +450,12 @@ Mikey decides this line:
   goes mostly on repainting the whole page every frame; finished voices
   keep the audio thread busy until the garbage collector finds them
   (40-70% of its work); a hidden tab costs the audio thread more, not less.
+- #89, sound polish (item 11, v55),
+  https://8de059b7-driftloom.kruu-mikey-thaiculture.workers.dev: sung notes
+  (vowel, hum, choir) no longer leap out when a note lands on a formant --
+  the loud ones come down, nothing is lifted, the vowels' colour is the
+  same; 5/4 chords fill the bar, felt 3+2, instead of stopping after four
+  beats; keys arpeggios stop with their chord instead of ringing into the
+  next one. Listen for hollow and choir tunes that stay even, thaw's 5/4
+  loops, and arpeggios that no longer smear. The temple bell is unchanged
+  (see Notes).

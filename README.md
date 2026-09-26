@@ -252,6 +252,13 @@ Notes worth knowing if you go digging:
   it across the note, the way a singer's jaw gives on a long one. Both the
   chance of moving and how far it travels follow the note's length in
   seconds, so short notes keep their shape and only sustains change.
+- **No sung note jumps out.** A note whose fundamental lands on a formant
+  peak used to come out 10-15 LU louder than its neighbours. Each note is
+  now trimmed by how much energy the vowel's own filters hand its
+  harmonics, against the voice's usual note on that vowel: loud notes come
+  down, nothing is lifted, and the filters -- the vowel's colour -- are
+  untouched. Worked out from the filter formulas, so it costs no nodes and
+  draws no random numbers.
 - **The wind voices slide into notes.** `ocarina`, `flute` and `whistle`
   reach a pitch rather than beginning on it: from the previous note when
   the two are joined and the interval is small, and from a tone and a half

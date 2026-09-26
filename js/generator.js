@@ -523,6 +523,27 @@ const CHORD_RHYTHMS = {
     // A quick catch after the second beat, then the third.
     stutter: [[4, 2], [6, 2], [8, 3]],
   },
+  // Five beats at 0, 4, 8, 12 and 16, felt as 3+2 like the drums (the
+  // second group starts on the fourth beat, step 12). Until this table 5/4
+  // played the 4/4 one cut at the bar line, which never reached past step
+  // 16: the fifth beat was always empty. In the spirit of 6/8's: chords
+  // move on the beats and hold, and none rings into the next bar.
+  '5/4': {
+    // Holds the whole bar, all five beats.
+    pad: [[0, 20]],
+    // Each group struck and held: three beats, then two.
+    breathe: [[0, 12], [12, 8]],
+    // One stab after each group's downbeat, on the second and fifth beats.
+    twoAndFour: [[4, 3], [16, 3]],
+    // Struck on the first, third and fourth beats and held to the next.
+    pushed: [[0, 8], [8, 4], [12, 8]],
+    // The eighth after every beat.
+    offbeat: [[2, 2], [6, 2], [10, 2], [14, 2], [18, 2]],
+    // Comes in with the second group and holds to the bar line.
+    lateBloom: [[12, 8]],
+    // The same catch at the top, then the second group's downbeat.
+    stutter: [[0, 2], [3, 2], [12, 3]],
+  },
 };
 
 function genHarmony(spec) {
@@ -664,10 +685,20 @@ function genHarmony(spec) {
       if (r.chance(0.08)) continue;
 
       if (arpeggiate) {
+        // Each note stops where its chord does. They used to keep the
+        // hit's whole length from their own later start, so a four-note
+        // arpeggio rang six steps into the next chord. A note that already
+        // starts under the next chord (a late hit's tail) is kept, as a
+        // passing note two steps long -- the arpeggio's own spacing --
+        // rather than dropped, which would have taken a sixth of all
+        // arpeggio notes out.
+        const slotEnd = startStep + slotLen;
         notes.forEach((n, i) => {
+          const at = step + i * 2;
+          const full = Math.max(2, dur);
           events.push({
-            step: (step + i * 2) % (spec.bars * spb),
-            dur: Math.max(2, dur),
+            step: at % (spec.bars * spb),
+            dur: at < slotEnd ? Math.min(full, slotEnd - at) : Math.min(full, 2),
             notes: [n],
             vel: 0.45 + r.f() * 0.2,
             voice: choir ? choir.voice : 'keys',
