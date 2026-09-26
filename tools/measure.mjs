@@ -72,6 +72,7 @@ driftloom offline audio measurement
                     probes every voice characters.js draws, by layer
   --note <seconds>  how long each probed note is held       (default 1.6)
   --refusals [code] count voice-budget refusals per layer
+  --endings         check that every note of every voice fades out
   --profile <id>    keep only loops that profile leads, drawing from the
                     same corpus until --n of them are in
   --selftest        check the loudness meter against reference signals
@@ -114,6 +115,16 @@ driftloom offline audio measurement
   against kalimba as a melody at the same velocity. With 'all', each voice
   is also set against the rest of its layer and the outliers are listed.
 
+  --endings plays one note of every voice characters.js draws, in each
+  layer that draws it, at 0.1, 0.4 and 1.6 s, and a melody voice at 30 ms
+  as well, the length of a grace. It reads the most sudden fall in each
+  note's level: a release, however fast, falls about as much from one
+  short window to the next as from the one before, and a note cut off
+  while still sounding falls all at once. Any over 12 dB is listed, and
+  the run exits non-zero. It was written for a
+  pan flute grace that swelled to full, held and was cut off 0.4 s later
+  -- heard as static under the note it led into -- and it catches it.
+
   Needs Playwright and Chromium, which are a dependency of this tool and
   not of the app:  npm install -g playwright && npx playwright install chromium
 `;
@@ -130,7 +141,7 @@ function parseArgs(argv) {
   const opts = {
     n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
     jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
-    profile: null,
+    profile: null, endings: false,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -163,6 +174,7 @@ function parseArgs(argv) {
       case '--no-chain': opts.chain = false; break;
       case '--json': opts.json = value(); break;
       case '--selftest': opts.selftest = true; break;
+      case '--endings': opts.endings = true; break;
       case '--note': opts.note = Math.max(0.05, number()); break;
       case '--voice':
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
@@ -715,7 +727,7 @@ const STEP = 0.1; // seconds a step, at the 150bpm the one-note pattern runs at
 // put one voice's tail inside another voice's reading.
 function renderNote(job, midi, vel, rep, o) {
   Math.random = mulberry32(seedFor([job.layer, job.voice, midi, vel.toFixed(2), rep].join('|')));
-  const ctx = new OfflineAudioContext(1, Math.ceil((o.dur + 2.2) * o.rate), o.rate);
+  const ctx = new OfflineAudioContext(1, Math.ceil((o.dur + (o.tail ?? 2.2)) * o.rate), o.rate);
   const synth = new Synth(ctx, 'full');
   // The budget is a runtime guard and would only refuse notes here.
   synth._budget = () => true;
@@ -789,6 +801,65 @@ window.probeVoice = async (o) => {
   const gains = {};
   for (const [name, c] of Object.entries(probe.channels)) gains[name] = c.base.gain;
   return { rows: out, gains };
+};
+
+// Whether a note was cut off: the most sudden fall in its level anywhere.
+//
+// At every point the level just before is set against the level just
+// after, in windows of two periods of the note, so a low note's own
+// waveform does not read as a fall. A cut is a fall that happens at once
+// and then stops: the note is gone, or down to its breath, and stays
+// there. A decay keeps on falling -- a stab loses 15 dB a window, window
+// after window -- and a bell's beating dips and comes straight back. So a
+// fall scores what is left of it after the fall in the next window and
+// anything it climbs back within 30 ms: a cut scores the whole drop, a
+// decay or a beat next to nothing. Only points within 30 dB of the peak
+// count. Whether the note is still ringing when the render ends is
+// reported too.
+function endingOf(d, rate, midi) {
+  const hz = 440 * Math.pow(2, (midi - 69) / 12);
+  const w = Math.max(Math.round(0.002 * rate), Math.round((2 * rate) / hz));
+  const back = Math.round(0.03 * rate);
+  const sq = new Float64Array(d.length + 1);
+  for (let i = 0; i < d.length; i++) sq[i + 1] = sq[i] + d[i] * d[i];
+  const rms = (a, b) => Math.sqrt(Math.max(0, sq[b] - sq[a]) / (b - a));
+  let peak = 0;
+  for (let i = 0; i + w <= d.length; i += w) peak = Math.max(peak, rms(i, i + w));
+  if (!peak) return { silent: true };
+  const floor = peak * 1e-6;
+  const db = (x, y) => 20 * Math.log10(Math.max(x, floor) / Math.max(y, floor));
+  let sudden = 0;
+  let at = 0;
+  const hop = Math.max(1, w >> 2);
+  for (let n = w; n + 2 * w + back <= d.length; n += hop) {
+    const before = rms(n - w, n);
+    if (before < peak * 0.0316) continue;
+    const after = rms(n, n + w);
+    const fall = db(before, after);
+    if (fall <= 0) continue;
+    const onward = Math.max(0, db(after, rms(n + w, n + 2 * w)));
+    let high = 0;
+    for (let k = n + w; k + w <= n + back; k += hop) high = Math.max(high, rms(k, k + w));
+    const climb = Math.max(0, db(high, after));
+    const score = fall - onward - climb;
+    if (score > sudden) { sudden = score; at = n / rate; }
+  }
+  let last = d.length - 1;
+  while (last > 0 && Math.abs(d[last]) < peak * 1e-3) last--;
+  return { sudden, at, ringing: last >= d.length - 2 };
+}
+
+window.probeEndings = async (o) => {
+  const tasks = [];
+  for (const job of o.jobs) {
+    for (const dur of job.lengths) {
+      tasks.push(async () => {
+        const d = (await renderNote(job, job.midi, o.vel, 0, { ...o, dur, tail: o.tail })).getChannelData(0);
+        return { layer: job.layer, voice: job.voice, dur, ...endingOf(d, o.rate, job.midi) };
+      });
+    }
+  }
+  return inParallel(tasks, o.width);
 };
 `;
 
@@ -1219,6 +1290,46 @@ function probeJobs(names, layers) {
   return { jobs, all };
 }
 
+// --endings: which note each layer plays, how long, and what counts as cut.
+// The lengths are a grace (the engine's GRACE), a short step, the median
+// note and a held one. Graces only reach the melody, and nothing else plays
+// shorter than a step (0.08 s at the fastest tempo), so the grace length is
+// the melody's alone. Six seconds of tail lets the bells ring out.
+const ENDING_MIDI = { melody: 67, chords: 55, bass: 40 };
+const ENDING_LENGTHS = [0.03, 0.1, 0.4, 1.6];
+const endingLengths = (layer) => (layer === 'melody' ? ENDING_LENGTHS : ENDING_LENGTHS.slice(1));
+const ENDING_TAIL = 6;
+const ENDING_LIMIT = 12;
+const endsBadly = (r) => !r.silent && (r.ringing || r.sudden > ENDING_LIMIT);
+
+function reportEndings(rows) {
+  const out = [''];
+  out.push('driftloom note endings');
+  out.push(`  one note per voice and layer at ${ENDING_LENGTHS.map((d) => `${d}s`).join(', ')} (the grace, melody only), dry, velocity 0.7;`);
+  out.push(`  the most sudden fall in each note's level: dB from one window of two periods to the next,`);
+  out.push(`  beyond the falls either side, within 30 dB of its peak. Over ${ENDING_LIMIT} dB, the note was cut off.`);
+  out.push('');
+  out.push(`    ${'layer'.padEnd(8)} ${'voice'.padEnd(12)} ${ENDING_LENGTHS.map((d) => `${d}s`.padStart(9)).join('')}`);
+  const keys = [...new Set(rows.map((r) => `${r.layer}|${r.voice}`))];
+  for (const key of keys) {
+    const [layer, voice] = key.split('|');
+    const cells = ENDING_LENGTHS.map((d) => {
+      const r = rows.find((x) => x.layer === layer && x.voice === voice && x.dur === d);
+      if (!r) return '-  '.padStart(9);
+      const text = r.silent ? 'silent' : r.ringing ? 'ringing' : `${r.sudden.toFixed(1)}`;
+      return `${text}${endsBadly(r) ? ' !' : '  '}`.padStart(9);
+    });
+    out.push(`    ${layer.padEnd(8)} ${voice.padEnd(12)} ${cells.join('')}`);
+  }
+  out.push('');
+  const bad = rows.filter(endsBadly);
+  out.push(bad.length
+    ? `  ${bad.length} note(s) cut off: ${bad.map((r) => `${r.voice} (${r.layer}) at ${r.dur}s`).join(', ')}`
+    : `  every note of every voice fades out`);
+  out.push('');
+  return out.join('\n');
+}
+
 const noteName = (midi) => `${['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][midi % 12]}${Math.floor(midi / 12) - 1}`;
 
 // Punch: how loud the loudest moments are, not the average. Integrated
@@ -1508,7 +1619,7 @@ try {
 const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-const probing = !!opts.voices;
+const probing = !!opts.voices || opts.endings;
 const counting = !!opts.refusals;
 const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
 await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
@@ -1540,6 +1651,27 @@ if (counting) {
   }
   console.log(corpus ? reportRefusalsCorpus(data, opts) : reportRefusalsOne(data, opts));
   process.exit(0);
+}
+
+if (opts.endings) {
+  const jobs = [];
+  for (const [layer, voices] of Object.entries(drawnLayers())) {
+    if (!ENDING_MIDI[layer]) continue;
+    for (const voice of voices) {
+      jobs.push({ layer, voice, midi: ENDING_MIDI[layer], low: ENDING_MIDI[layer], lengths: endingLengths(layer) });
+    }
+  }
+  const rows = await page.evaluate((o) => window.probeEndings(o), {
+    jobs, vel: 0.7, rate: opts.rate, tail: ENDING_TAIL, width: opts.jobs,
+  });
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  writeJson({ lengths: ENDING_LENGTHS, limit: ENDING_LIMIT, rows });
+  console.log(reportEndings(rows));
+  process.exit(rows.some(endsBadly) ? 1 : 0);
 }
 
 if (probing) {

@@ -1333,10 +1333,13 @@ export class Synth {
         vibAmt.gain.setValueAtTime(0, time);
         vibAmt.gain.linearRampToValueAtTime(breathy ? 9 : 6, time + Math.min(0.5, dur));
         vib.connect(vibAmt).connect(o.detune);
+        // A grace lets go before this attack ends; see the pan flute. Every
+        // ramp ends by then, and a note of 75 ms and up is untouched.
+        const letGo = time + dur * 0.8;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(vel * level, time + 0.05);
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
+        g.gain.linearRampToValueAtTime(vel * level, Math.min(time + 0.05, letGo));
+        g.gain.setTargetAtTime(0.0001, letGo, 0.09);
         o.connect(g).connect(dest);
         // The shared noise buffer is two seconds long; a held note can be
         // longer than that, and the breath used to stop partway through it.
@@ -1352,8 +1355,8 @@ export class Synth {
         bp.Q.value = 1.2;
         const ag = ctx.createGain();
         ag.gain.setValueAtTime(0.0001, time);
-        ag.gain.linearRampToValueAtTime(vel * level * (breathy ? 1 / 3 : 0.15), time + 0.06);
-        ag.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.09);
+        ag.gain.linearRampToValueAtTime(vel * level * (breathy ? 1 / 3 : 0.15), Math.min(time + 0.06, letGo));
+        ag.gain.setTargetAtTime(0.0001, letGo, 0.09);
         air.connect(bp).connect(ag).connect(dest);
         o.start(time); vib.start(time);
         o.stop(time + dur + 0.4); vib.stop(time + dur + 0.4);
@@ -1480,10 +1483,19 @@ export class Synth {
           vibAmt.gain.linearRampToValueAtTime(8, time + onset + 0.3);
           vib.connect(vibAmt).connect(o.detune);
         }
+        // A grace is 30 ms, shorter than this attack, so it lets go before
+        // the attack ends. Scheduled as written, the ramps landed after the
+        // release had begun -- Web Audio runs a ramp from the event before
+        // it, the release -- so a grace swelled to full, held under the
+        // note it led into until its oscillator stopped 0.4 s later, and
+        // was cut off with a click: the static when pan flute notes
+        // overlapped. Every ramp now ends by the time the note lets go. A
+        // note long enough for its attack, 36 ms and up, is untouched.
+        const letGo = time + dur * 0.85;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.linearRampToValueAtTime(level, time + 0.03);
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.85, 0.08);
+        g.gain.linearRampToValueAtTime(level, Math.min(time + 0.03, letGo));
+        g.gain.setTargetAtTime(0.0001, letGo, 0.08);
         o.connect(g).connect(dest);
         // Breath riding the note, lower and fuller than the flute's.
         const air = ctx.createBufferSource();
@@ -1499,9 +1511,9 @@ export class Synth {
         // rather than a second noise source for every note.
         const ag = ctx.createGain();
         ag.gain.setValueAtTime(0.0001, time);
-        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_CHIFF, time + 0.004);
-        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_BREATH, time + 0.03);
-        ag.gain.setTargetAtTime(0.0001, time + dur * 0.85, 0.08);
+        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_CHIFF, Math.min(time + 0.004, letGo));
+        ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_BREATH, Math.min(time + 0.03, letGo));
+        ag.gain.setTargetAtTime(0.0001, letGo, 0.08);
         air.connect(bp).connect(ag).connect(dest);
         o.start(time);
         air.start(time);
@@ -1570,8 +1582,11 @@ export class Synth {
         // Was 0.16: 3.6 LU over the melody layer's median at 0.4s notes.
         // Trimmed to it, then the soft sources came out 1.8 LU over again
         // and gave that back (0.1057 -> 0.0861).
-        g.gain.exponentialRampToValueAtTime(vel * 0.0861, time + 0.03);
-        g.gain.setTargetAtTime(0.0001, time + dur * 0.7, 0.18);
+        // A grace lets go before this attack ends; see the pan flute. The
+        // ramp ends by then, and a note of 43 ms and up is untouched.
+        const letGo = time + dur * 0.7;
+        g.gain.exponentialRampToValueAtTime(vel * 0.0861, Math.min(time + 0.03, letGo));
+        g.gain.setTargetAtTime(0.0001, letGo, 0.18);
         for (const cents of [-7, 6]) {
           const o = ctx.createOscillator();
           o.setPeriodicWave(this.leads.analoglead);
