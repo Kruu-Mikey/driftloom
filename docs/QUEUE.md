@@ -288,3 +288,13 @@ Mikey decides this line:
   beat under the same tunes, a kick that thumps rather than punches, and a
   chug that bounces ("chug-a") like wheels on rails rather than a machine
   gun -- and whether the chug's bass, 4.4 LU lighter, is now too faint.
+- #82, wayfare's drums with their life back (v54),
+  https://edcf8d59-driftloom.kruu-mikey-thaiculture.workers.dev: the same
+  soft wayfare kit as #79 -- kick on 1 and 3, a rim or soft snare on 2 and
+  4, no boom-bap, no claps, the chug as it was -- but no longer one bar
+  over and over: four-bar phrases that swell towards a fill or a soft
+  roll, an answer bar every so often with a pickup kick and an open hat,
+  ghost notes before the backbeat, and a shaker or hat colouring the
+  offbeats. Listen for drums that move and breathe across the phrase
+  again, as in v52, while still sounding like v53's gentle kit; and
+  whether the fills or the pickup kick ever tip it back towards tough.

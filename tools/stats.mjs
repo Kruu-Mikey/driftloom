@@ -56,6 +56,8 @@ driftloom generation statistics
   --lift-high [value] lower bound of the high-lift bucket (default 0.78)
   --choir-quiz [file] print a listening test instead of the report
   --voice-codes <v>   print share codes whose melody draws voice <v>
+  --drums <profiles>  drum variety for the loops each profile leads
+                      (comma-separated; --n of each, default 150)
   --write-baseline [file]  write the balance lock      (default ${BASELINE_DEFAULT})
   --check [file]      rerun the locked corpus against it; non-zero exit on a miss
   --help              this
@@ -79,6 +81,13 @@ driftloom generation statistics
   rolling the dice in the app until one turns up is a poor use of an
   evening. Give it a voice name and it prints codes to paste straight in.
 
+  --drums reports how varied a profile's drums are, over --n loops it
+  leads that have drums (150 unless --n is given), counting sounding hits
+  only: the share of bar pairs whose hits (step and instrument) differ,
+  the instruments a loop plays, the spread (sd) of its hit velocities,
+  and hits per bar. Written for wayfare, whose one-bar groove played the
+  same bar over and over.
+
   --write-baseline and --check are the balance lock. The baseline records
   the melodic character of a corpus -- how often a loop has a melody,
   what the line does, how its motifs survive, how rare the choir is, how
@@ -100,7 +109,7 @@ const LIFT_HIGH_DEFAULT = 0.78;
 function parseArgs(argv) {
   const opts = {
     n: 2000, seed: 1, liftLow: null, liftHigh: null, bucketed: false, quiz: null, voiceCodes: null,
-    writeBaseline: null, check: null,
+    writeBaseline: null, check: null, drums: null, nGiven: false,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -139,6 +148,7 @@ function parseArgs(argv) {
     switch (arg) {
       case '--n': case '-n':
         opts.n = Math.max(1, Math.round(value(false)));
+        opts.nGiven = true;
         break;
       case '--seed':
         opts.seed = value(false) >>> 0;
@@ -157,6 +167,10 @@ function parseArgs(argv) {
       case '--voice-codes':
         opts.voiceCodes = text(null);
         if (!opts.voiceCodes) fail('--voice-codes needs a voice name');
+        break;
+      case '--drums':
+        opts.drums = text(null);
+        if (!opts.drums) fail('--drums needs a profile name');
         break;
       case '--write-baseline':
         opts.writeBaseline = text(BASELINE_DEFAULT);
@@ -935,6 +949,53 @@ function voiceCodes(opts) {
   return out.join('\n');
 }
 
+// ------------------------------------------------------------ --drums
+
+const average = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+function drumVariety(opts) {
+  const n = opts.nGiven ? opts.n : 150;
+  const out = [''];
+  out.push(`driftloom drum variety, ${n} loops each profile leads, with drums, corpus seed ${opts.seed}`);
+  out.push('');
+  out.push(`  ${'profile'.padEnd(12)} ${'bars differ'.padStart(12)} ${'instruments'.padStart(12)} ${'velocity sd'.padStart(12)} ${'hits a bar'.padStart(11)}`);
+  for (const profile of opts.drums.split(',').map((x) => x.trim()).filter(Boolean)) {
+    const master = new Rng(opts.seed || 1);
+    const rows = [];
+    for (let tries = 0; rows.length < n && tries < n * 2000; tries++) {
+      const spec = newSpec(master.seed32());
+      const lead = Object.entries(spec.mix).sort((a, b) => b[1] - a[1])[0][0];
+      if (lead !== profile) continue;
+      const pattern = render(spec);
+      const hits = pattern.tracks.drums.filter((e) => e.vel > 0);
+      if (!hits.length) continue;
+      const spb = pattern.stepsPerBar;
+      const bars = [];
+      for (let b = 0; b < spec.bars; b++) {
+        bars.push(hits.filter((e) => Math.floor(e.step / spb) === b).map((e) => `${e.step % spb}:${e.inst}`).sort().join());
+      }
+      let pairs = 0;
+      let differ = 0;
+      for (let i = 0; i < bars.length; i++) {
+        for (let j = i + 1; j < bars.length; j++) { pairs++; if (bars[i] !== bars[j]) differ++; }
+      }
+      const vels = hits.map((e) => e.vel);
+      const m = average(vels);
+      rows.push({
+        differ: pairs ? differ / pairs : 0,
+        insts: new Set(hits.map((e) => e.inst)).size,
+        sd: Math.sqrt(average(vels.map((v) => (v - m) ** 2))),
+        perBar: hits.length / spec.bars,
+      });
+    }
+    if (!rows.length) { out.push(`  ${profile.padEnd(12)} no loops with drums`); continue; }
+    const col = (k, d) => average(rows.map((r) => r[k])).toFixed(d);
+    out.push(`  ${profile.padEnd(12)} ${col('differ', 2).padStart(12)} ${col('insts', 1).padStart(12)} ${col('sd', 3).padStart(12)} ${col('perBar', 1).padStart(11)}   (${rows.length} loops)`);
+  }
+  out.push('');
+  return out.join('\n');
+}
+
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
@@ -946,6 +1007,11 @@ if (opts.quiz) {
 
 if (opts.voiceCodes) {
   console.log(voiceCodes(opts));
+  process.exit(0);
+}
+
+if (opts.drums) {
+  console.log(drumVariety(opts));
   process.exit(0);
 }
 
