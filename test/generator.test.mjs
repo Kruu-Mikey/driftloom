@@ -5,7 +5,7 @@
 // voicing or an out-of-range note does not throw, it just sounds wrong,
 // and often only on one seed in a thousand. So we check thousands.
 
-import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf } from '../js/generator.js';
+import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf, developmentOf, DEPTH } from '../js/generator.js';
 import { Rng, randomSeed, seedName } from '../js/rng.js';
 import { patternToMidi } from '../js/midi.js';
 import { SCALES } from '../js/theory.js';
@@ -208,12 +208,27 @@ const third = (slot) => {
   const [minor, major] = [pcs.has(pcOf(r + 3)), pcs.has(pcOf(r + 4))];
   return major && !minor ? 'M' : minor && !major ? 'm' : '-';
 };
-// A two-bar loop has room for the first two chords of it.
+// A two-bar loop has room for the first two chords of it. A loop that
+// develops can play it in its departure rather than from the top, so the
+// four chords are read from the start of the section it is in.
+const cadenceStart = ({ spec, p }) => {
+  const dev = developmentOf(spec);
+  if (!dev) return 0;
+  const first = p.harmony.slots.find((s) => s.steps).startStep;
+  let at = 0;
+  let from = 0;
+  for (const sec of dev.sections) {
+    if (first >= at * p.stepsPerBar) from = at * p.stepsPerBar;
+    at += sec.bars;
+  }
+  return p.harmony.slots.findIndex((s) => s.startStep === from);
+};
+const cadenceOf = (x) => x.p.harmony.slots.slice(cadenceStart(x), cadenceStart(x) + 4);
 const cadences = cinders.filter(({ p }) => p.harmony.slots.some((s) => s.steps));
-const whole = cadences.filter(({ p }) => p.harmony.slots.length >= 4);
-const spelt = whole.map(({ p }) => p.harmony.slots.slice(0, 4).map(third).join(''));
-check('the Andalusian cadence falls a tone, a tone, a semitone, to a major chord', whole.length > 30 && whole.every(({ p }) => {
-  const four = p.harmony.slots.slice(0, 4);
+const whole = cadences.filter((x) => cadenceOf(x).length >= 4);
+const spelt = whole.map((x) => cadenceOf(x).map(third).join(''));
+check('the Andalusian cadence falls a tone, a tone, a semitone, to a major chord', whole.length > 30 && whole.every((x) => {
+  const four = cadenceOf(x);
   return four.slice(1).map((s, i) => pcOf(four[i].rootMidi - s.rootMidi)).join() === '2,2,1';
 }) && spelt.every((q) => /^[m-][M-][M-][M-]$/.test(q)) && spelt.filter((q) => q === 'mMMM').length > whole.length * 0.8,
 `${spelt.filter((q) => q === 'mMMM').length} of ${whole.length} loops spell every chord in full`);
@@ -386,6 +401,50 @@ check('every chord event ends inside the chord it starts under', (() => {
   check('5/4 loops found', loops >= 50, `(${loops})`);
   check('5/4 chords reach the fifth beat', fifth / bars > 0.3, `(${(fifth / bars).toFixed(2)} of bars)`);
   check('no 5/4 chord rings past its bar', past === 0, `(${past})`);
+}
+
+console.log('\nComposition depth');
+
+// A share of the loops of 8 bars or more develop: a statement, a departure
+// over its own progression, a return. Everything else is the loop it was.
+{
+  let long = 0;
+  let developing = 0;
+  let wrongly = 0;
+  let departs = 0;
+  let answers = 0;
+  let checked = 0;
+  for (let i = 0; i < 3000; i++) {
+    const spec = newSpec(i * 104729 + 7);
+    const dev = developmentOf(spec);
+    if (dev && (spec.bars < 8 || spec.cycles)) wrongly++;
+    if (spec.bars >= 8) long++;
+    if (!dev) continue;
+    developing++;
+    const p = render(spec);
+    if (!p.meta.depth) { wrongly++; continue; }
+    const spb = p.stepsPerBar;
+    let at = 0;
+    for (const sec of dev.sections) { sec.at = at; at += sec.bars; }
+    const [a, b] = dev.sections;
+    // B's chords are not A's.
+    const chordsIn = (sec) => p.tracks.chords.filter((e) => e.vel && e.step >= sec.at * spb && e.step < (sec.at + sec.bars) * spb)
+      .map((e) => `${(e.step - sec.at * spb)}:${e.notes.join('.')}`).join();
+    if (chordsIn(a) !== chordsIn(b)) departs++;
+    // B's tune is not A's.
+    const melIn = (sec, len) => p.tracks.melody.filter((e) => e.vel && e.step >= sec.at * spb && e.step < (sec.at + len) * spb)
+      .map((e) => `${(e.step - sec.at * spb)}:${e.midi}`).join();
+    if (p.tracks.melody.some((e) => e.vel)) {
+      checked++;
+      if (melIn(a, b.bars) !== melIn(b, b.bars)) answers++;
+    }
+  }
+  const share = developing / long;
+  check('the depth knob is where it was set', DEPTH === 1);
+  check('about a third of the loops of 8 bars or more develop', share > 0.25 && share < 0.42, `(${share.toFixed(3)})`);
+  check('only loops of 8 bars or more without their own layer cycles develop', wrongly === 0, `(${wrongly})`);
+  check('a departure moves to other chords', departs / developing > 0.9, `(${departs} of ${developing})`);
+  check('a departure plays another tune', answers / checked > 0.95, `(${answers} of ${checked})`);
 }
 
 console.log('\nNames');

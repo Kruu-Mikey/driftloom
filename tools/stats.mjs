@@ -57,6 +57,8 @@ driftloom generation statistics
   --choir-quiz [file] print a listening test instead of the report
   --voice-codes <v>   print share codes whose melody draws voice <v>
   --drums <profiles>  drum variety for the loops each profile leads
+  --depth             composition depth by loop length, for loops that
+                      develop and loops that do not (default --n 3000)
                       (comma-separated; --n of each, default 150)
   --write-baseline [file]  write the balance lock      (default ${BASELINE_DEFAULT})
   --check [file]      rerun the locked corpus against it; non-zero exit on a miss
@@ -171,6 +173,9 @@ function parseArgs(argv) {
       case '--drums':
         opts.drums = text(null);
         if (!opts.drums) fail('--drums needs a profile name');
+        break;
+      case '--depth':
+        opts.depth = true;
         break;
       case '--write-baseline':
         opts.writeBaseline = text(BASELINE_DEFAULT);
@@ -996,6 +1001,69 @@ function drumVariety(opts) {
   return out.join('\n');
 }
 
+// ------------------------------------------------------------ --depth
+
+// Queue item 12's yardstick, by loop length: how many of a loop's bars
+// carry a melody, how many of those bars differ from each other, the same
+// for the chords, and the melody's span in semitones. Read off what plays:
+// after the entry schedules and gaps, and with every layer's own cycle
+// unrolled across the loop, since a melody two bars long in a 32-bar loop
+// is heard sixteen times.
+function depthTable(opts) {
+  const n = opts.nGiven ? opts.n : 3000;
+  const master = new Rng(opts.seed || 1);
+  const rows = [];
+  for (let i = 0; i < n; i++) {
+    const spec = newSpec(master.seed32());
+    const p = render(spec);
+    const spb = p.stepsPerBar;
+    const barsOf = (layer) => {
+      const cycle = p.cycles[layer];
+      const sounding = p.tracks[layer].filter((e) => e.vel > 0);
+      const out = [];
+      for (let b = 0; b < spec.bars; b++) {
+        const from = (b * spb) % cycle;
+        const here = sounding.filter((e) => e.step >= from && e.step < from + spb);
+        out.push(here.map((e) => `${e.step - from}:${e.dur}:${e.midi ?? e.notes.join('.')}`).sort().join());
+      }
+      return out;
+    };
+    const mel = barsOf('melody').filter(Boolean);
+    const chords = barsOf('chords').filter(Boolean);
+    const pitches = p.tracks.melody.filter((e) => e.vel > 0).map((e) => e.midi);
+    rows.push({
+      bars: spec.bars,
+      develops: !!p.meta.depth,
+      melBars: mel.length,
+      melDistinct: new Set(mel).size,
+      chordDistinct: new Set(chords).size,
+      span: pitches.length ? Math.max(...pitches) - Math.min(...pitches) : null,
+    });
+  }
+  const lengths = [...new Set(rows.map((r) => r.bars))].sort((a, b) => a - b);
+  const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+  const f1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : '-');
+  const out = [''];
+  out.push(`driftloom composition depth, ${n} loops, corpus seed ${opts.seed || 1}`);
+  for (const [label, keep] of [['all loops', () => true], ['loops that develop', (r) => r.develops], ['loops that do not', (r) => !r.develops]]) {
+    out.push('');
+    out.push(`  ${label}`);
+    out.push('  | loop length | loops | distinct melody bars | bars with melody | distinct chord bars | melodic span |');
+    out.push('  |---|---|---|---|---|---|');
+    for (const len of lengths) {
+      const here = rows.filter((r) => r.bars === len && keep(r));
+      if (!here.length) continue;
+      const withMel = here.filter((r) => r.melBars > 0);
+      out.push(`  | ${len} bars | ${here.length} (${((100 * here.length) / rows.length).toFixed(1)}%) | ${f1(avg(withMel.map((r) => r.melDistinct)))} | ${f1(avg(here.map((r) => r.melBars)))} | ${f1(avg(here.map((r) => r.chordDistinct)))} | ${f1(avg(here.filter((r) => r.span != null).map((r) => r.span)))} |`);
+    }
+  }
+  const long = rows.filter((r) => r.bars >= 8);
+  out.push('');
+  out.push(`  ${long.filter((r) => r.develops).length} of the ${long.length} loops of 8 bars or more develop (${((100 * long.filter((r) => r.develops).length) / long.length).toFixed(1)}%).`);
+  out.push('');
+  return out.join('\n');
+}
+
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
@@ -1012,6 +1080,11 @@ if (opts.voiceCodes) {
 
 if (opts.drums) {
   console.log(drumVariety(opts));
+  process.exit(0);
+}
+
+if (opts.depth) {
+  console.log(depthTable(opts));
   process.exit(0);
 }
 

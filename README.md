@@ -247,6 +247,18 @@ Notes worth knowing if you go digging:
   even and a quickened one breathes. The rhythmic cell's own accent stays
   underneath: the accent says which note of the figure is leaned on, the arc
   says where in the phrase the leaning happens.
+- **Some long loops develop.** About a third of the loops of 8 bars or
+  more (fewer at 8, more at 16 and up; never vapor or undertow, whose point
+  is an idea that changes without changing) are a statement, a departure
+  and a return. The departure (B) answers the statement (A) with its own
+  motif turned -- on a new rhythm, upside down, or slowed -- usually in
+  another register and over its own progression, played a touch firmer.
+  The return restates A's motif through a different phrase plan. Every
+  other loop is exactly as simple as it was: the choice and everything
+  about it come from salted streams of their own. `DEPTH` in
+  `js/generator.js` is the knob (0 turns it off), with `DEPTH_SHARE` by
+  length and `DEPTH_WEIGHTS` by profile beside it; `node tools/stats.mjs
+  --depth` measures what it does.
 - **A held vowel moves.** The three formant voices take their vowel from the
   composer -- one per phrase, shared across a chord -- and then open or close
   it across the note, the way a singer's jaw gives on a long one. Both the

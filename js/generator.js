@@ -1065,7 +1065,11 @@ function drawCell(r, spb, metre, energy, lift) {
   ]));
 }
 
-function genMelody(spec, harmony) {
+// `dev`, when given, is a section of a developing loop (see `develop`): the
+// figure, voice and register are handed in rather than drawn, so the
+// section states or answers another section's motif. Every draw below is
+// still made either way; without `dev` nothing here changes.
+function genMelody(spec, harmony, dev = null) {
   const r = new Rng(spec.layerSeeds.melody);
   const c = characterOf(spec);
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
@@ -1073,13 +1077,13 @@ function genMelody(spec, harmony) {
   const total = spec.bars * spb;
   const drawnVoice = r.weighted(c.melodyVoices);
   const choir = choirOf(spec);
-  const voice = choir ? choir.voice : drawnVoice;
+  const voice = dev ? dev.voice : choir ? choir.voice : drawnVoice;
   const lf = feelForLayer(spec, 'melody');
   const mood = lf.lift;
   // Drawn either way, so the stream does not move; a choir loop simply
   // never takes the rest. A doubling with nothing to double is not one.
   const silent = r.chance(0.08);
-  if (!forced(spec, 'melody') && !choir && silent) return { events: [], voice, motif: [], cell: null };
+  if (!dev && !forced(spec, 'melody') && !choir && silent) return { events: [], voice, motif: [], cell: null };
 
   // --- the motif ------------------------------------------------------
   //
@@ -1160,7 +1164,8 @@ function genMelody(spec, harmony) {
   // figure, and the figure is the same figure every time it is played.
   const omit = Math.max(0, 0.2 - lf.energy * 0.15);
   const kept = motif.filter(() => !r.chance(omit));
-  const figure = kept.length >= Math.min(2, motif.length) ? kept : motif;
+  const figure = dev ? dev.figure.map((x) => ({ ...x }))
+    : kept.length >= Math.min(2, motif.length) ? kept : motif;
 
   // --- how the motif is developed --------------------------------------
   //
@@ -1329,7 +1334,8 @@ function genMelody(spec, harmony) {
       // phrase enters on a chord tone, a phrase ends on one, and the loop
       // closes on the tonic; where a one-bar phrase wants two of those,
       // the closing one wins.
-      const closing = lastBarOfPhrase && ph === phraseCount - 1;
+      // A section that hands on to another ends on the chord, not home.
+      const closing = lastBarOfPhrase && ph === phraseCount - 1 && !(dev && dev.openEnd);
       let anchorAt = null;
       let landOn = null;
       if (closing) {
@@ -1382,7 +1388,7 @@ function genMelody(spec, harmony) {
           // The cell's own accent stays underneath this: the accent says
           // which note of the figure is leaned on, the arc says where in
           // the phrase the leaning happens. Two layers of one thing.
-          vel: Math.min(1, m.vel * (1 + arc * breath) * (ph === 0 ? 1 : 0.94)),
+          vel: Math.min(1, m.vel * (1 + arc * breath) * (ph === 0 ? 1 : 0.94) * (dev ? dev.vel : 1)),
           voice,
           // The figure's own scale degree, carried through for measurement.
           // Semitone intervals cannot tell whether a motif is being quoted,
@@ -1408,6 +1414,7 @@ function genMelody(spec, harmony) {
   // to keep the keys out of the melody's way, rather than a second idea of
   // register invented here. Choosing per bar without that target scatters
   // the bars and the span goes further still.
+  let lineCentre = null;
   if (events.length) {
     const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 
@@ -1420,9 +1427,10 @@ function genMelody(spec, harmony) {
     // the unison a unison rather than an approximate one.
     let centre = unison
       ? chordPitches.reduce((a, b) => a + b, 0) / chordPitches.length
-      : mean(events.map((e) => e.midi));
+      : dev && dev.centre != null ? dev.centre : mean(events.map((e) => e.midi));
     while (centre < 55) centre += 12;
     while (centre > 95) centre -= 12;
+    lineCentre = centre;
 
     const bars = new Map();
     events.forEach((e, i) => {
@@ -1448,7 +1456,7 @@ function genMelody(spec, harmony) {
     }
   }
 
-  return { events, voice, motif: figure, cell: rhythm.id };
+  return { events, voice, motif: figure, cell: rhythm.id, centre: lineCentre };
 }
 
 // -------------------------------------------------------------- drums
@@ -2027,11 +2035,187 @@ export function harmonyOf(e, spec) {
 
 // --------------------------------------------------------------- render
 
+// ------------------------------------------------------ development
+//
+// Composition depth, first pass (queue item 12). Most loops state one idea
+// and keep turning it, and that is right: a simple idea can fill any
+// length, and much of what the app makes is meant to be exactly that. But a
+// long loop that only ever repeats a short idea sounds elementary, so a
+// share of loops, weighted towards the long ones, develop: a contrasting
+// section (B) that answers the first (A) with its own motif turned --
+// re-rhythmed, inverted or slowed -- usually in another register and over
+// its own progression, and a return (A') that restates the motif through a
+// different phrase plan rather than repeating it.
+//
+// The balance is one knob. DEPTH scales the share of eligible loops that
+// develop; DEPTH_SHARE is how that share rises with length; DEPTH_WEIGHTS
+// leans it per leading profile. At DEPTH 1 about a third of the loops of 8
+// bars or more develop. Turn DEPTH to taste: 0 is the app as it was.
+//
+// Whether a loop develops, and every choice about how, comes from streams
+// of their own (the loop's seed, the chords' and melody's seeds, each
+// salted), so a loop that does not develop draws exactly what it always
+// drew and renders exactly as it did.
+export const DEPTH = 1;
+const DEPTH_SHARE = { 8: 0.3, 16: 0.5, 24: 0.65, 32: 0.65 };
+// Profiles whose point is a small idea that changes without changing.
+const DEPTH_WEIGHTS = { vapor: 0, undertow: 0 };
+const DEPTH_SALT = 0x44455054;
+const B_SALT = 0x42534543;
+const RETURN_SALT = 0x52455455;
+
+// Sections by loop length, in bars: a statement, a departure and a return.
+// The statement is half the loop where it can be, and is one section with
+// its own phrase plan rather than a short one played twice, so it varies
+// as a simple loop of that length would.
+const DEPTH_FORMS = {
+  8: [['A', 4], ['B', 2], ['R', 2]],
+  16: [['A', 8], ['B', 4], ['R', 4]],
+  24: [['A', 8], ['B', 8], ['R', 8]],
+  32: [['A', 16], ['B', 8], ['R', 8]],
+};
+
+function leadKey(spec) {
+  const top = Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0];
+  return resolveKey(top ? top[0] : spec.character || 'dust');
+}
+
+// Whether this loop develops, and its sections. Null for the rest.
+export function developmentOf(spec) {
+  const share = DEPTH_SHARE[spec.bars];
+  if (!share || spec.cycles || choirOf(spec)) return null;
+  const weight = DEPTH_WEIGHTS[leadKey(spec)] ?? 1;
+  const r = new Rng((spec.seed ^ DEPTH_SALT) >>> 0);
+  if (!(r.f() < share * DEPTH * weight)) return null;
+  return { sections: DEPTH_FORMS[spec.bars].map(([role, bars]) => ({ role, bars })) };
+}
+
+// The part of a harmony that falls in its first `bars` bars, moved to
+// start at bar `at`.
+function placeHarmony(h, bars, at, spb) {
+  const end = bars * spb;
+  const shift = at * spb;
+  return {
+    slots: h.slots.filter((sl) => sl.startStep < end)
+      .map((sl) => ({ ...sl, startStep: sl.startStep + shift, lengthSteps: Math.min(sl.lengthSteps, end - sl.startStep) })),
+    events: h.events.filter((e) => e.step < end)
+      .map((e) => ({ ...e, step: e.step + shift, dur: Math.min(e.dur, end - e.step), notes: e.notes.slice() })),
+  };
+}
+
+function sectionSpec(spec, bars, seeds = {}) {
+  return { ...spec, bars, layerSeeds: { ...spec.layerSeeds, ...seeds } };
+}
+
+// Chords for a developing loop: A's progression for every A and the
+// return, B's own for B, one harmony across the whole form.
+function developHarmony(spec, dev) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const aBars = dev.sections.find((x) => x.role === 'A').bars;
+  const bBars = dev.sections.find((x) => x.role === 'B').bars;
+  const a = genHarmony(sectionSpec(spec, aBars));
+  // B wants a progression that is not A's. Redrawn, from the next salt,
+  // while it opens on A's chord or plays A's shape; four tries at most.
+  let b = null;
+  for (let k = 0; k < 4; k++) {
+    b = genHarmony(sectionSpec(spec, bBars, { chords: (spec.layerSeeds.chords ^ (B_SALT + k)) >>> 0 }));
+    const same = b.shape.join() === a.shape.join();
+    if (!same && b.slots[0].degree !== a.slots[0].degree) break;
+  }
+  // The same instrument all the way through: B departs in harmony, not in
+  // what plays it.
+  const aVoices = a.events.map((e) => e.voice);
+  const aVoice = aVoices.sort((x, y) => aVoices.filter((v) => v === y).length - aVoices.filter((v) => v === x).length)[0];
+  if (aVoice) b = { ...b, events: b.events.map((e) => ({ ...e, voice: aVoice })) };
+  const slots = [];
+  const events = [];
+  let at = 0;
+  for (const sec of dev.sections) {
+    const placed = placeHarmony(sec.role === 'B' ? b : a, sec.bars, at, spb);
+    slots.push(...placed.slots);
+    events.push(...placed.events);
+    sec.at = at;
+    at += sec.bars;
+  }
+  return {
+    slots, events, shape: a.shape, cycleSteps: spec.bars * spb,
+    sectionHarmony: { A: a, B: b },
+  };
+}
+
+// B's figure, from A's: the same notes on a new rhythm, the contour
+// upside down, both, or the figure slowed to half its notes at twice the
+// length. What makes it an answer rather than a new tune is that it is A's
+// motif, turned.
+function answerFigure(figure, r, spec) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const lf = feelForLayer(spec, 'melody');
+  const how = r.weighted([['rhythm', 3], ['invert', 2], ['both', 2], ['slow', 1]]);
+  let out = figure.map((x) => ({ ...x }));
+  if (how === 'invert' || how === 'both') {
+    const base = out[0].degree;
+    out = out.map((x) => ({ ...x, degree: base - (x.degree - base) }));
+  }
+  if (how === 'rhythm' || how === 'both') {
+    const cell = drawCell(r, spb, metreOf(spec), lf.energy, lf.lift);
+    out = cell.pat.map(([at, dur, accent], i) => ({
+      offset: at, dur,
+      degree: out[i % out.length].degree,
+      vel: 0.36 + r.f() * 0.26 + (accent ? 0.16 : 0),
+    }));
+  }
+  if (how === 'slow' && out.length >= 2) {
+    out = out.filter((_, i) => i % 2 === 0).map((x) => ({ ...x, dur: Math.min(x.dur * 2, spb - x.offset) }));
+  }
+  return { figure: out, how };
+}
+
+// The melody for a developing loop, section by section, over the harmony
+// developHarmony built.
+function developMelody(spec, harmony, dev) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const { A: ha, B: hb } = harmony.sectionHarmony;
+  const aBars = dev.sections.find((x) => x.role === 'A').bars;
+  const a = genMelody(sectionSpec(spec, aBars), ha);
+  if (!a.events.length) return a;
+  const r = new Rng((spec.layerSeeds.melody ^ B_SALT) >>> 0);
+  const answer = answerFigure(a.motif, r, spec);
+  // How far B moves from A's register. Mostly up, sometimes not at all,
+  // now and then a long way: some tunes stay narrow and some roam.
+  const shift = r.weighted([[0, 2], [3, 2], [5, 3], [7, 2], [-5, 1], [9, 1]]);
+  const bBars = dev.sections.find((x) => x.role === 'B').bars;
+  const b = genMelody(sectionSpec(spec, bBars, { melody: (spec.layerSeeds.melody ^ B_SALT) >>> 0 }), hb, {
+    figure: answer.figure, voice: a.voice, centre: a.centre + shift, openEnd: true, vel: 1.06,
+  });
+  const rBars = dev.sections.find((x) => x.role === 'R').bars;
+  const back = genMelody(sectionSpec(spec, rBars, { melody: (spec.layerSeeds.melody ^ RETURN_SALT) >>> 0 }),
+    { ...ha, slots: ha.slots.filter((sl) => sl.startStep < rBars * spb), cycleSteps: rBars * spb }, {
+      figure: a.motif, voice: a.voice, centre: a.centre, openEnd: false, vel: 1,
+    });
+  const events = [];
+  let phrases = 0;
+  for (const sec of dev.sections) {
+    const part = sec.role === 'A' ? a : sec.role === 'B' ? b : back;
+    const end = sec.bars * spb;
+    let top = 0;
+    for (const e of part.events) {
+      if (e.step >= end) continue;
+      events.push({ ...e, step: e.step + sec.at * spb, phrase: e.phrase + phrases });
+      top = Math.max(top, e.phrase + 1);
+    }
+    phrases += top;
+  }
+  dev.answer = answer.how;
+  dev.shift = shift;
+  return { events, voice: a.voice, motif: a.motif, cell: a.cell, centre: a.centre };
+}
+
 export function render(spec) {
   const choir = choirOf(spec);
-  const harmony = genHarmony(layerSpec(spec, 'chords'));
+  const dev = developmentOf(spec);
+  const harmony = dev ? developHarmony(spec, dev) : genHarmony(layerSpec(spec, 'chords'));
   const bass = genBass(layerSpec(spec, 'bass'), harmony);
-  const melody = genMelody(layerSpec(spec, 'melody'), harmony);
+  const melody = dev ? developMelody(spec, harmony, dev) : genMelody(layerSpec(spec, 'melody'), harmony);
   const drums = genDrums(layerSpec(spec, 'drums'));
   const texture = genTexture(layerSpec(spec, 'texture'), harmony);
 
@@ -2082,6 +2266,10 @@ export function render(spec) {
   if (harmony.slots.some((sl) => sl.steps)) {
     spellOver(tracks.melody, harmony, spec);
     spellOver(tracks.bass, harmony, spec);
+    // A spelling moves a note by a semitone, which can take a line that
+    // cleared the keys by a hair back under five semitones. Checked again
+    // on what is now played; a loop that still clears is left alone.
+    separateRegisters(harmony, tracks, choir);
   }
 
   // After the register work, so the pitch written down is the pitch played.
@@ -2143,7 +2331,9 @@ export function render(spec) {
       // Only present when there is one, so a loop that is not a choir
       // carries a meta object identical to the one it carried before this
       // existed.
-      ...(choir ? { choir } : {}) },
+      ...(choir ? { choir } : {}),
+      // Likewise only on a loop that develops.
+      ...(dev ? { depth: { form: dev.sections.map((x) => x.role).join(''), answer: dev.answer || null, shift: dev.shift ?? null } } : {}) },
   };
 }
 
