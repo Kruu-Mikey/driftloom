@@ -249,6 +249,74 @@ const SLIDE_MIN_DUR = 0.18;
 // no nodes are added at all. See "Vowel movement" in the README.
 const VOWEL_DRIFT_COST = 5;
 
+// Sung notes that jump out.
+//
+// A sung note's fundamental is most of its energy, and the formants are
+// narrow peaking filters -- the vowel a's first is +16 dB, 80 Hz wide. A
+// note whose fundamental lands on that peak comes out 10-15 LU louder than
+// the note beside it, which is not how a singer sounds: the probe measured
+// note-to-note spreads of 16-21 LU in vowel, choir and hum, against 1-2
+// for most voices. So each note is trimmed by how much energy the tract
+// hands its harmonics compared with the voice's usual note on that vowel.
+//
+// The filters are not touched, so every vowel keeps its colour; only the
+// note's level moves. The figure is worked out from the same filters'
+// response (the RBJ biquad formulas Web Audio uses) at each harmonic of the
+// source, K-weighted roughly as the loudness meter weights them, so it
+// draws no random numbers and costs no nodes. It is cached per vowel and
+// note.
+//
+// FORMANT_TAME is how much of the excess comes off: 1 would bring every
+// loud note down to the median exactly. Short of that on purpose -- some
+// rise and fall across the range is part of a voice. The trim only ever
+// cuts: notes that fall between the formants keep the level they had, so
+// the voice's usual note sounds as it did and only the jumps come down.
+const FORMANT_TAME = 0.85;
+const FORMANT_TRIM_RANGE = [0.25, 1];
+
+function biquadPower(type, f, fc, q, gainDb, fs) {
+  const w0 = (2 * Math.PI * fc) / fs;
+  const cw = Math.cos(w0);
+  let b0; let b1; let b2; let a0; let a1; let a2;
+  if (type === 'peaking') {
+    const A = Math.pow(10, gainDb / 40);
+    const alpha = Math.sin(w0) / (2 * q);
+    b0 = 1 + alpha * A; b1 = -2 * cw; b2 = 1 - alpha * A;
+    a0 = 1 + alpha / A; a1 = -2 * cw; a2 = 1 - alpha / A;
+  } else {
+    // Web Audio's lowpass takes its Q in dB.
+    const alpha = Math.sin(w0) / (2 * Math.pow(10, q / 20));
+    b0 = (1 - cw) / 2; b1 = 1 - cw; b2 = (1 - cw) / 2;
+    a0 = 1 + alpha; a1 = -2 * cw; a2 = 1 - alpha;
+  }
+  const w = (2 * Math.PI * f) / fs;
+  const c1 = Math.cos(w); const s1 = Math.sin(w);
+  const c2 = Math.cos(2 * w); const s2 = Math.sin(2 * w);
+  const nr = b0 + b1 * c1 + b2 * c2; const ni = -(b1 * s1 + b2 * s2);
+  const dr = a0 + a1 * c1 + a2 * c2; const di = -(a1 * s1 + a2 * s2);
+  return (nr * nr + ni * ni) / (dr * dr + di * di);
+}
+
+// The energy a note of fundamental f0 comes out with: every harmonic of
+// the source below 6 kHz, through the formants and the corner, with the
+// loudness meter's high shelf (+4 dB above about 1.7 kHz).
+function formantEnergy(f0, formants, corner, humming, fs) {
+  let e = 0;
+  for (let h = 1; h * f0 < 6000; h++) {
+    // A hum is a triangle (odd harmonics, 1/n^2); the others the glottal
+    // wave (every harmonic, 1/n^2.5).
+    if (humming && h % 2 === 0) continue;
+    const amp = humming ? 1 / (h * h) : 1 / Math.pow(h, 2.5);
+    const f = h * f0;
+    let p = amp * amp * biquadPower('lowpass', f, corner, 0.7, 0, fs);
+    for (const [hz, bw, gainDb] of formants) p *= biquadPower('peaking', f, hz, hz / bw, gainDb, fs);
+    const x = (f / 1681) ** 2;
+    e += p * (1 + 2.51 * x) / (1 + x);
+  }
+  return e;
+}
+
+
 // Total budget, in the same units. Calibrated so a genuinely dense passage
 // (a four-note analogpad chord plus a busy kit plus a melody note: roughly
 // 4*32 + 6*1 + 15 = 149) fits comfortably, while a wall of the heaviest
@@ -1335,6 +1403,28 @@ export class Synth {
 
   // One entry point for every tuned sound. Characters name a voice and this
   // decides what that means in oscillators.
+  // The trim for a sung note: the voice's median energy on this vowel
+  // over MIDI 43-91 (everything the layers draw it for) against this
+  // note's, to the power of FORMANT_TAME. Cached by vowel and note.
+  _formantTrim(key, formants, corner, humming, midi) {
+    const cache = this._formantTrims || (this._formantTrims = new Map());
+    const id = `${key}|${midi}`;
+    if (cache.has(id)) return cache.get(id);
+    const fs = this.ctx.sampleRate;
+    const refId = `${key}|ref`;
+    if (!cache.has(refId)) {
+      const all = [];
+      for (let m = 43; m <= 91; m++) all.push(formantEnergy(midiToFreq(m), formants, corner, humming, fs));
+      all.sort((a, b) => a - b);
+      cache.set(refId, all[Math.floor(all.length / 2)]);
+    }
+    const e = formantEnergy(midiToFreq(midi), formants, corner, humming, fs);
+    const [lo, hi] = FORMANT_TRIM_RANGE;
+    const trim = Math.min(hi, Math.max(lo, Math.pow(cache.get(refId) / e, FORMANT_TAME / 2)));
+    cache.set(id, trim);
+    return trim;
+  }
+
   voice(name, midi, time, dur, vel, out, opts = {}) {
     const ctx = this.ctx;
     const dest = out || this.channels.melody.gain;
@@ -1854,7 +1944,25 @@ export class Synth {
         // no louder, in the mix" means is what a listener hears, and
         // changing the top of a spectrum moves the two by different
         // amounts.
-        amp.gain.linearRampToValueAtTime(vel * (choral ? 0.112 : humming ? 0.085 : 0.174),
+        //
+        // Times the note's own trim (see FORMANT_TAME): a note whose
+        // fundamental sits on a formant peak comes down toward the voice's
+        // median. A note whose vowel moves is trimmed for where it starts
+        // and where it lands, half each.
+        const corner = humming ? 1700 : 2600;
+        const vowelId = humming ? 'hum' : (VOWELS[vowelKey] ? vowelKey : 'a');
+        let trim = this._formantTrim(vowelId, formants, corner, humming, midi);
+        if (target) {
+          const landed = formants.map(([hz, bw, g], i) => {
+            const [thz, tbw, tg] = target[i];
+            return [hz + (thz - hz) * depth, bw + (tbw - bw) * depth, g + (tg - g) * depth];
+          });
+          const e0 = formantEnergy(f, formants, corner, humming, ctx.sampleRate);
+          const e1 = formantEnergy(f, landed, corner, humming, ctx.sampleRate);
+          // Where it lands, against the same median as where it starts.
+          trim = (trim + trim * Math.min(FORMANT_TRIM_RANGE[1], Math.max(FORMANT_TRIM_RANGE[0], Math.pow(e0 / e1, FORMANT_TAME / 2)))) / 2;
+        }
+        amp.gain.linearRampToValueAtTime(vel * trim * (choral ? 0.112 : humming ? 0.085 : 0.174),
           time + Math.min(0.3, dur * 0.25));
         this._release2(amp.gain, time + dur * 0.72, stopAt);
         amp.connect(dest);
@@ -1932,7 +2040,7 @@ export class Synth {
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 0.7;
-        lp.frequency.value = humming ? 1700 : 2600;
+        lp.frequency.value = corner;
         tail.connect(lp).connect(amp);
 
         // A choir is several of these sharing one tract: the filters are the

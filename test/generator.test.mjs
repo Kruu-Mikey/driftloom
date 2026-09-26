@@ -340,6 +340,54 @@ check('wayfare plays I-bVII-IV-I and I-IV-V-IV where the mode has them', ways.le
   .map((s) => pcOf(s.rootMidi - spec.root)).join() === '0,5,7,5'), `${ways.length} loops`);
 
 // ---------------------------------------------------------------------
+console.log('\nChords stay in their slot, and 5/4 has its own');
+
+// Every chord event, arpeggio notes included, ends by the end of the chord
+// it starts under. Arpeggio notes used to keep the hit's whole length from
+// their own later start and ran on into the next chord.
+check('every chord event ends inside the chord it starts under', (() => {
+  let arps = 0;
+  for (let i = 0; i < 3000; i++) {
+    const p = render(newSpec(i * 7919 + 13));
+    const { slots } = p.harmony;
+    for (const e of p.tracks.chords) {
+      if (!e.vel) continue;
+      let slot = slots[0];
+      for (const sl of slots) if (sl.startStep <= e.step) slot = sl;
+      if (e.step + e.dur > slot.startStep + slot.lengthSteps) return false;
+      if (e.notes.length === 1) arps++;
+    }
+  }
+  return arps > 0;
+})());
+
+// 5/4 used the 4/4 table cut at the bar line, so nothing ever sounded on
+// its fifth beat. Now some chords reach it, and none rings past the bar.
+{
+  let loops = 0;
+  let bars = 0;
+  let fifth = 0;
+  let past = 0;
+  for (let s = 1; loops < 200 && s < 400000; s++) {
+    const spec = newSpec(s);
+    if ((spec.stepsPerBar || 16) !== 20) continue;
+    loops++;
+    const p = render(spec);
+    const total = spec.bars * 20;
+    const covered = new Set();
+    for (const e of p.tracks.chords) {
+      if (!e.vel) continue;
+      if ((e.step % 20) + e.dur > 20) past++;
+      for (let t = e.step; t < e.step + e.dur; t++) if (t % 20 >= 16) covered.add(Math.floor((t % total) / 20));
+    }
+    bars += spec.bars;
+    fifth += covered.size;
+  }
+  check('5/4 loops found', loops >= 50, `(${loops})`);
+  check('5/4 chords reach the fifth beat', fifth / bars > 0.3, `(${(fifth / bars).toFixed(2)} of bars)`);
+  check('no 5/4 chord rings past its bar', past === 0, `(${past})`);
+}
+
 console.log('\nNames');
 
 const names = new Set();

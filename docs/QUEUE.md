@@ -353,7 +353,17 @@ Mikey decides this line:
 
 ## Notes from Claude Code
 
-(none yet)
+- **Item 11, the temple bell as a chord voice: needs a decision, left as it
+  is (2026-09-26).** The brief's yardstick is the chords layer's median at
+  0.4 s notes, and there the chord templebell is already *above* it:
+  -1.8 LU against a median of -2.6 (`measure.mjs --voice all --note 0.4`,
+  LU against kalimba). Meeting the yardstick would mean turning it *down*,
+  the opposite of "buried". At 1.6 s notes it is under: -5.3 against -3.4,
+  1.9 LU. The bell rings 6.5 s whatever the note length, so a short-note
+  probe flatters it against voices that stop, and a long one does not. So
+  which length decides for a bell is a taste call: lift it about 1.9 LU to
+  the 1.6 s median, or leave it and re-listen. The other three parts of
+  item 11 went ahead without it.
 
 ## Done
 
