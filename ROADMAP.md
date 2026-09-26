@@ -724,6 +724,11 @@ bass notes would free room for the tune everywhere, lite especially. It
 changes how existing loops sound (fewer refusals), so it gets a refusal
 run on full and lite before and after.
 
+Also measured (#74, #75): on lite, tide and cinder loops lose more melody
+notes than the catalogue (mean 2.9% and 3.5% against 1.5%), the same on
+the old code. The fixes above are the likely remedy; re-measure both
+profiles when this item is done.
+
 ---
 
 ## Decided against
