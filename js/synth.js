@@ -71,6 +71,11 @@ const VOICE_COST = {
   // of a hat, the long jingle 3.0 and 3.3 of an open hat. The zils are
   // five partials where a hat is one noise burst.
   frame: 1.4, tap: 1.8, jingle: 3.2, ojingle: 3.2,
+  // Wayfare's soft kick, one sine and a gain, the kick without its click:
+  // priced as the hand kit is, against the kick it replaces, by the same
+  // render timing -- 0.31 and 0.29 of a kick in two passes (a hat reads
+  // 0.66 and 0.62, as 4.6 against 7.5 above).
+  softkick: 0.3,
   // Waves, through the tonal voices like the other textures (wind's 12
   // reads 18 by the same method): 15.9 and 14.3 for a 1 s event.
   waves: 15,
@@ -181,6 +186,13 @@ const SLUR_ATTACK = 0.012;
 // settled, and never twice the same: rate and depth are drawn per note and
 // drift across it, widening as it holds, as a player's does.
 const VIBRATO_MIN_DUR = 0.5;
+
+// Wayfare's soft kick; see 'softkick' in `drum`. Solved, with the groove's
+// kick velocity, so that wayfare's drums sit over its music about as tide's
+// hand-kit jigs do (measure.mjs --profile wayfare, "the drums over the
+// music"): 6.4 LU against the jigs' 6.7, on the gentle side. The drums
+// there are mostly the kick, so this moves that figure dB for dB.
+const SOFTKICK_LEVEL = 1.15;
 
 // The hand kit's levels, per instrument, against the one each replaces on
 // the same pattern; see "the hand kit" in `drum`.
@@ -853,6 +865,26 @@ export class Synth {
       return;
     }
 
+    if (inst === 'softkick') {
+      // Wayfare's kick, lower and rounder than the one above, which Mikey
+      // heard as too loud or the wrong shape under a travelling tune: it
+      // starts lower and falls further, more slowly, swells in over a few
+      // ms instead of snapping on, and has no click. A thump, not a punch.
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      const g = ctx.createGain();
+      osc.frequency.setValueAtTime(96, time);
+      osc.frequency.exponentialRampToValueAtTime(46, time + 0.14);
+      g.gain.setValueAtTime(0, time);
+      g.gain.linearRampToValueAtTime(v * SOFTKICK_LEVEL, time + 0.009);
+      g.gain.exponentialRampToValueAtTime(0.0001, time + 0.34);
+      osc.connect(g).connect(out);
+      osc.start(time);
+      osc.stop(time + 0.36);
+      this._release(time, 0.36, cost);
+      return;
+    }
+
     if (inst === 'snare' || inst === 'clap') {
       const dur = inst === 'clap' ? 0.2 : 0.16;
       const src = this._noiseSource(time, dur);
@@ -1011,6 +1043,10 @@ export class Synth {
     const TRIM = { sub: 0.55, fifths: 0.55, round: 0.75, pluckbass: 0.72, rhodesbass: 0.8, moogbass: 1 };
     vel *= TRIM[voice] ?? 1;
 
+    // A chug note lets go in under half the time, so each one is a short
+    // bounce and not a note that rings into the next. Only wayfare chugs.
+    const letGo = (release) => (chug ? release * 0.45 : release);
+
     const env = (peak, sustain, release) => {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
@@ -1040,7 +1076,7 @@ export class Synth {
       lp.Q.value = 0.9;
       lp.frequency.setValueAtTime(Math.min(2200, f * 6), time);
       lp.frequency.exponentialRampToValueAtTime(Math.max(140, f * 2.4), time + Math.min(0.5, dur));
-      const g = env(vel * 0.34, vel * 0.22, 0.08);
+      const g = env(vel * 0.34, vel * 0.22, letGo(0.08));
       o.connect(lp).connect(g).connect(out);
       o.start(time); o.stop(stop);
     } else if (voice === 'fifths') {
@@ -1079,7 +1115,7 @@ export class Synth {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(vel * 0.42, time + 0.006);
-      g.gain.setTargetAtTime(0.0001, time + Math.min(dur, 0.3), 0.1);
+      g.gain.setTargetAtTime(0.0001, time + Math.min(dur, 0.3), letGo(0.1));
       o.connect(lp).connect(g).connect(out);
       o.start(time); o.stop(stop);
       const click = this._noiseSource(time, 0.02);
@@ -1099,7 +1135,7 @@ export class Synth {
       lp.Q.value = 9;
       lp.frequency.setValueAtTime(Math.min(3600, f * 11), time);
       lp.frequency.exponentialRampToValueAtTime(Math.max(150, f * 2.2), time + Math.min(0.35, dur));
-      const g = env(vel * 0.26, vel * 0.15, 0.07);
+      const g = env(vel * 0.26, vel * 0.15, letGo(0.07));
       o.connect(lp).connect(g).connect(out);
       o.start(time); o.stop(stop);
     } else {
@@ -1114,7 +1150,7 @@ export class Synth {
       lp.Q.value = 3;
       lp.frequency.setValueAtTime(Math.min(4200, f * 10), time);
       lp.frequency.exponentialRampToValueAtTime(Math.max(120, f * 2.2), time + Math.min(0.4, dur));
-      const g = env(vel * 0.17, vel * 0.11, 0.06);
+      const g = env(vel * 0.17, vel * 0.11, letGo(0.06));
       o.connect(lp).connect(g).connect(out);
       o.start(time); o.stop(stop);
 
@@ -1124,7 +1160,7 @@ export class Synth {
       const sg = ctx.createGain();
       sg.gain.setValueAtTime(0.0001, time);
       sg.gain.exponentialRampToValueAtTime(vel * 0.13, time + 0.015);
-      sg.gain.setTargetAtTime(0.0001, time + dur, 0.08);
+      sg.gain.setTargetAtTime(0.0001, time + dur, letGo(0.08));
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
     }

@@ -307,7 +307,7 @@ export class Engine {
         const micro = e.micro ? e.micro * sd : 0;
         const jitter = e.roll ? 0 : (Math.random() - 0.5) * 0.008;
         this.synth.drum(e.inst, t + micro + jitter, e.vel);
-        if (pump && e.inst === 'kick') this.synth.duck(t + micro, pump * e.vel);
+        if (pump && (e.inst === 'kick' || e.inst === 'softkick')) this.synth.duck(t + micro, pump * e.vel);
       }
     }
     if (!mutes.bass) {

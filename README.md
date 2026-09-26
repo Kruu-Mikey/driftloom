@@ -81,7 +81,7 @@ density, metre, form -- that move together.
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 | **Tide** | sea and island folk. Fiddle, whistle and pan flute over harp, accordion and a strummed nylon guitar; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone. A frame drum and tambourine in place of the kit, and the slow swell of waves |
 | **Cinder** | island and volcano: fast, rhythmic, Spanish-tinged. A driving 6/8 at 120-150 bpm, some 4/4, drums in nine loops in ten with the hand kit leading; a strummed nylon guitar on the Andalusian cadence, fiddle, whistle, marimba, accordion and pan flute on top |
-| **Wayfare** | the travelling music: steady, bright, moving. A walking 4/4 at 104-138 bpm, some 6/8; pan flute, fiddle, whistle and ocarina over accordion, nylon guitar and harp, and in half its loops a chug -- eighth notes on the bass, and on the brushes when brushes play -- like wheels on rails |
+| **Wayfare** | the travelling music: steady, bright, moving. A walking 4/4 at 104-138 bpm, some 6/8; pan flute, fiddle, whistle and ocarina over accordion, nylon guitar and harp, and in half its loops a chug -- eighth notes on the bass, and on the brushes when brushes play -- like wheels on rails. Its own light, steady drum grooves |
 
 These are not ten boxes. Every loop draws a **weight across several of
 them** -- an exponential draw per profile, normalised, which is a Dirichlet
@@ -209,11 +209,18 @@ Notes worth knowing if you go digging:
   note on every eighth on the chord's bass, is not in any pool: the
   profile asks for it (in half its loops), and the answer is drawn once
   for the loop from its seed, so the drums hear it too -- under a chug a
-  brush kit swishes on every eighth rather than drawing its hats. A loop
+  brush kit swishes on every eighth, the beat leaned on and the eighths
+  between ghosted, as the bass's are: chug-a, not an even rattle. A loop
   wayfare does not lead never chugs, and every other loop draws what it
   drew before. A chug note holds the voice budget only as long as it
   sounds (0.4 s past its end rather than the bass's usual 0.8): charged
   the old way, eight short notes a bar took room the tune needed on lite.
+- **Drum grooves can belong to one profile too.** Wayfare plays grooves
+  of its own rather than the catalogue's lo-fi patterns, whose boom-bap
+  kicks and claps spoiled its tunes: the kick on 1 and 3, a rim or soft
+  snare on 2 and 4 (in 6/8 a kick and a backbeat a bar), the eighths
+  light, the same on every kit it draws, with a softer, rounder kick on
+  tape and brush.
 - **The figure is fixed before it is played.** Which notes a motif leaves
   out is decided once, when the motif is built, so every restatement is
   missing the same notes. Rolling the omission per bar instead looked like
@@ -356,7 +363,9 @@ the loudest momentary (400 ms) and short-term (3 s) loudness, as EBU R128's
 M and S, the 95th percentile of momentary loudness because a single maximum
 is one block, and PSR, the sample peak against the loudest short-term
 loudness, beside the existing crest. `--selftest` holds them to EBU Tech
-3341's constancy signals.
+3341's constancy signals. Beside them, the drums over the music: the drums
+layer's integrated loudness less that of every other layer summed, per loop
+and by kit and metre (`--json` carries each loop's kit and metre too).
 
 Each loop is also rendered a second time with the master compressor and
 ceiling routed around -- inside the tool only -- so the report can say what
