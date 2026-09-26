@@ -241,3 +241,13 @@ Mikey decides this line:
   the next one starts lets go under it rather than ringing on. Listen for
   each strum landing as one gesture, and a new chord no longer sitting on
   the old one's strings (clearest in 6/8); the guitar's tone is unchanged.
+- #79, wayfare's drums and chug (v53),
+  https://d90d26df-driftloom.kruu-mikey-thaiculture.workers.dev: wayfare
+  plays grooves of its own -- the kick on 1 and 3, a rim or soft snare on 2
+  and 4, light eighths, no boom-bap and no claps -- with a softer, rounder
+  kick on tape and brush, the drums a little under where tide's jigs sit;
+  and the chug leans on the beat with the eighths between ghosted, short
+  notes, the brushes lighter with it. Listen for a light, steady travelling
+  beat under the same tunes, a kick that thumps rather than punches, and a
+  chug that bounces ("chug-a") like wheels on rails rather than a machine
+  gun -- and whether the chug's bass, 4.4 LU lighter, is now too faint.

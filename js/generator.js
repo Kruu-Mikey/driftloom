@@ -451,7 +451,7 @@ function gaitFor(seed, c) {
 // How a bar is counted. The step count alone cannot say: twelve steps are
 // 6/8, unless the loop's gait reads them as 3/4, the waltz: three beats at
 // 0, 4 and 8. Each reading has its own name and its own tables.
-function metreOf(spec) {
+export function metreOf(spec) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   if (spb === 12) {
     const gait = gaitFor(spec.seed, characterOf(spec));
@@ -756,6 +756,8 @@ const DRONE_SALT = 0x0d7011e5;
 // from its seed and a salt of its own: the bass and the drums read the same
 // answer, re-rolling either keeps it, and no other loop's streams move.
 const CHUG_SALT = 0x0c4a6e11;
+// Half a step: a chug note is a short one (the synth lets it go quickly too).
+const CHUG_DUR = 0.5;
 function chugs(spec) {
   const c = characterOf(spec);
   return !!c.chug && new Rng(((spec.seed ^ CHUG_SALT) >>> 0) || 1).chance(c.chug);
@@ -801,13 +803,15 @@ function genBass(spec, harmony) {
   }
 
   if (style === 'chug') {
-    // Every eighth, on the chord's bass note, short, the beats leaned on.
-    // Never a slot left out: wheels do not stop for a bar.
+    // Every eighth, on the chord's bass note, short, the beat leaned on and
+    // the eighths between ghosted well down: chug-a, chug-a, where an even
+    // 0.62 against 0.46 read as a machine gun. Never a slot left out:
+    // wheels do not stop for a bar.
     const beat = metre === '6/8' ? 6 : 4;
     for (const slot of harmony.slots) {
       const base = (slot.bassMidi != null ? slot.bassMidi : slot.rootMidi) - 24;
       for (let s = 0; s < slot.lengthSteps; s += 2) {
-        place(slot.startStep + s, 1, base, (s % beat === 0 ? 0.62 : 0.46) + r.f() * 0.06);
+        place(slot.startStep + s, CHUG_DUR, base, ((slot.startStep + s) % beat === 0 ? 0.62 : 0.3) + r.f() * 0.06);
         // Marked, so the synth holds its budget only as long as it sounds.
         events[events.length - 1].chug = true;
       }
@@ -1457,6 +1461,10 @@ function genDrums(spec) {
   if (!forced(spec, 'drums') && !r.chance(c.drums)) return { events, kit: 'none', hatDensity: 0 };
   // A profile may name its kits; the draw is the same one either way.
   const kit = r.weighted(c.kits || [['tape', 4], ['brush', 2], ['machine', 3]]);
+  // A profile may play grooves of its own (wayfare's, for travelling). The
+  // draws above are the same either way, so it keeps the same kit and the
+  // same share of loops with drums; every other loop goes on as before.
+  if (c.groove === 'travel') return travelGroove(spec, r, kit, total);
 
   // A bar of 6/8 is not a bar of 4/4 with four steps missing; it needs its
   // own patterns or the backbeat lands in the wrong place.
@@ -1474,9 +1482,6 @@ function genDrums(spec) {
     r.range(c.hatDensity[0], c.hatDensity[1]) * (0.55 + feel.energy * 0.9));
   const hatGrid = r.chance(0.55) ? 2 : 1; // eighths or sixteenths
   const useShaker = r.chance(0.4);
-  // Under a chug the brushes go with the bass: a swish on every eighth,
-  // leaned on the beat, none of them open.
-  const chug = kit === 'brush' && chugs(spec);
 
   for (let bar = 0; bar < spec.bars; bar++) {
     const b = bar * spb;
@@ -1492,17 +1497,15 @@ function genDrums(spec) {
     // Ghost notes give the groove its lean.
     if (r.chance(0.4)) events.push({ step: b + r.int(1, spb - 1), inst: 'rim', vel: 0.22 });
 
-    for (let s = 0; s < spb; s += chug ? 2 : hatGrid) {
+    for (let s = 0; s < spb; s += hatGrid) {
       // Offbeat hats against a steady kick, which is where the lift comes
       // from in this music.
-      if (!chug) {
-        if (fourFloor && s % 4 !== 2) { if (!r.chance(hatDensity * 0.25)) continue; }
-        else if (!r.chance(hatDensity)) continue;
-      }
+      if (fourFloor && s % 4 !== 2) { if (!r.chance(hatDensity * 0.25)) continue; }
+      else if (!r.chance(hatDensity)) continue;
       const open = r.chance(0.08);
       events.push({
         step: b + s,
-        inst: open && !chug ? 'ohat' : 'hat',
+        inst: open ? 'ohat' : 'hat',
         vel: (s % beat === 0 ? 0.5 : 0.3) + r.f() * 0.2,
       });
     }
@@ -1557,6 +1560,70 @@ function genDrums(spec) {
     events: kit === 'hand' ? played.map((e) => ({ ...e, inst: HAND_KIT[e.inst] || e.inst })) : played,
     kit,
     hatDensity,
+  };
+}
+
+// Wayfare's grooves: travelling music, light and steady. Its loops drew
+// the catalogue's lo-fi patterns before, so a boom-bap kick (0, 6 and 11)
+// and claps came along, and Mikey heard the drums as what spoiled them. So
+// the kick on the first beat and the third (in 6/8, on the first of its
+// two), never off the beat; a rim or a soft snare on the others, never a
+// clap; the eighths light on the hats or the shaker. No ghost notes, no
+// rolls. The same shapes on every kit: the hand kit renames them as ever,
+// and the tape and brush kits take a softer kick (see 'softkick' in the
+// synth), lower and rounder than the lo-fi one.
+//
+// Under a chug the brushes play every eighth with the bass, the beat leaned
+// on and the "a" ghosted well down, chug-a rather than an even rattle.
+const TRAVEL = {
+  kick: 0.64, // the first beat; the third is a little lighter
+  back: 0.42, // rim or snare
+  eighth: [0.3, 0.2], // on the beat, off it
+  chug: [0.28, 0.1], // the brushes under a chug: on the beat, the "a"
+};
+
+function travelGroove(spec, r, kit, total) {
+  const spb = spec.stepsPerBar || STEPS_PER_BAR;
+  const metre = metreOf(spec);
+  const beat = metre === '6/8' ? 6 : 4;
+  const beats = spb / beat;
+  const back = r.weighted([['rim', 3], ['snare', 2]]);
+  const shaker = r.chance(0.4);
+  const fill = r.chance(0.3);
+  const chug = kit === 'brush' && chugs(spec);
+  const events = [];
+  for (let bar = 0; bar < spec.bars; bar++) {
+    const b = bar * spb;
+    for (let k = 0; k < beats; k++) {
+      const at = b + k * beat;
+      // In 4/4 the kick takes 1 and 3 and the backbeat 2 and 4; in 6/8,
+      // a bar of two beats, the kick takes the first and the backbeat the
+      // second.
+      if (k % 2 === 0) events.push({ step: at, inst: 'kick', vel: (k === 0 ? TRAVEL.kick : TRAVEL.kick * 0.85) + r.f() * 0.05 });
+      else events.push({ step: at, inst: back, vel: TRAVEL.back + r.f() * 0.08 });
+    }
+    // The eighths, every one of them: wheels do not skip.
+    const [on, off] = chug ? TRAVEL.chug : TRAVEL.eighth;
+    for (let s = 0; s < spb; s += 2) {
+      events.push({
+        step: b + s,
+        inst: shaker && !chug ? 'shaker' : 'hat',
+        vel: (s % beat === 0 ? on : off) + r.f() * 0.05,
+      });
+    }
+    // A soft pickup into the top of the loop, on the last beat's eighths.
+    if (fill && bar === spec.bars - 1) {
+      for (let s = spb - beat + 2; s < spb; s += 2) events.push({ step: b + s, inst: back, vel: 0.26 + r.f() * 0.08 });
+    }
+  }
+  const played = events.filter((e) => e.step < total);
+  return {
+    events: played.map((e) => ({
+      ...e,
+      inst: kit === 'hand' ? HAND_KIT[e.inst] || e.inst : e.inst === 'kick' ? 'softkick' : e.inst,
+    })),
+    kit,
+    hatDensity: shaker && !chug ? 0 : 1,
   };
 }
 
@@ -2246,7 +2313,7 @@ export function drift(pattern, rng, amount) {
   }
   // Occasionally the kick sits one out.
   if (rng.chance(0.18 * a)) {
-    const kicks = p.tracks.drums.filter((e) => e.inst === 'kick' && e.step > 0);
+    const kicks = p.tracks.drums.filter((e) => (e.inst === 'kick' || e.inst === 'softkick') && e.step > 0);
     if (kicks.length) kicks[rng.int(0, kicks.length - 1)].vel = 0;
   }
   // A melody note steps to a neighbour, or jumps an octave.

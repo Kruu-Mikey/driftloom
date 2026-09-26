@@ -84,10 +84,11 @@ driftloom offline audio measurement
   it is mono. Crest is sample peak minus integrated loudness. Beside them,
   the punch figures, for the mix and the drums layer alone: the loudest
   momentary (400ms) and short-term (3s) loudness, the 95th percentile of
-  momentary, and PSR, sample peak minus the loudest short-term. Each loop is
-  rendered a second time with the master compressor and ceiling routed
-  around -- in this harness only -- and the difference is what the chain
-  does to that loop. Same --seed, same numbers, whatever --jobs is.
+  momentary, and PSR, sample peak minus the loudest short-term; and the
+  drums over the music, the drums layer less every other layer summed, by
+  kit and metre. Each loop is rendered a second time with the master
+  compressor and ceiling routed around -- in this harness only -- and the
+  difference is what the chain does to that loop. Same --seed, same numbers, whatever --jobs is.
 
   --refusals reports what the voice budget turned away, layer by layer,
   through the real Engine and Synth. Given a share code it reports that
@@ -425,7 +426,7 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>measure</title>
 <script type="module">
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { newSpec, characterOf } from '/js/generator.js';
+import { newSpec, characterOf, render, metreOf } from '/js/generator.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ${JSON.stringify(LAYERS)};
@@ -548,6 +549,16 @@ window.measure = async (opts) => {
         sMax: ld.shortTermMax,
       };
     });
+    // The music under the drums: every other layer's dry tap, summed, and
+    // measured as one. The drums over the music, as the drums-heard notes
+    // take it, is the drums layer's loudness less this.
+    const music = new Float32Array(buf.length);
+    LAYERS.forEach((name, n) => {
+      if (name === 'drums') return;
+      const d = buf.getChannelData(n + 2);
+      for (let s = 0; s < d.length; s++) music[s] += d[s];
+    });
+    const musicLufs = loudnessOf(music, opts.rate).integrated;
     // The meter reads channel 0 alone because the bus is mono; this is the
     // check that it still is.
     let stereo = 0;
@@ -564,9 +575,12 @@ window.measure = async (opts) => {
     }
 
     const character = characterOf(spec);
+    const meta = render(spec).meta;
     return {
       seed: spec.seed,
       name: spec.name,
+      kit: meta.kit,
+      metre: metreOf(spec),
       profile: Object.entries(spec.mix || {}).sort((a, b) => b[1] - a[1])[0]?.[0] || '?',
       level: character.level ?? 1,
       bpm: spec.bpm,
@@ -582,6 +596,7 @@ window.measure = async (opts) => {
       sMax: loud.shortTermMax,
       stereo,
       layers,
+      musicLufs,
       bypass,
     };
   });
@@ -1380,6 +1395,20 @@ function reportPunch(rows) {
     line('drums momentary p95', drummed.map((r) => r.layers.drums.mP95), 'LU');
     line('drums max short-term', drummed.map((r) => r.layers.drums.sMax), 'LU');
     line('drums PSR, dB', drummed.map((r) => psr(r.layers.drums.peak, r.layers.drums.sMax)), 'dB', false);
+    // The drums over the music: the drums layer's integrated loudness less
+    // that of every other layer summed. The drums-heard notes found the
+    // drums a near-fixed level over music of any loudness, so this gap is
+    // what a loop's drums sound like against what they play under.
+    const over = drummed.filter((r) => Number.isFinite(r.musicLufs) && Number.isFinite(r.layers.drums.lufs));
+    if (over.length) {
+      out.push('');
+      out.push('  the drums over the music: the drums layer less every other layer summed, by kit and metre');
+      out.push('');
+      line('drums over the music', over.map((r) => r.layers.drums.lufs - r.musicLufs), 'LU');
+      const groups = {};
+      for (const r of over) (groups[`${r.kit}, ${r.metre}`] ||= []).push(r.layers.drums.lufs - r.musicLufs);
+      for (const [k, xs] of Object.entries(groups).sort()) line(`  ${k} (${xs.length})`, xs, 'LU');
+    }
   }
   return out;
 }

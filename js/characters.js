@@ -529,10 +529,11 @@ export const CHARACTERS = {
   wayfare: {
     label: 'Wayfare',
     weight: 1.4,
-    // Measured, not guessed: at 0.8 the loops wayfare leads came out 0.8 LU
-    // over the catalogue median (measure.mjs --profile wayfare --n 60
-    // against --n 100); this is the level that puts their mean on it.
-    level: 0.71,
+    // Measured, not guessed: the level that puts the mean of the loops
+    // wayfare leads on the catalogue median (measure.mjs --profile wayfare
+    // --n 150 against --n 100). It was 0.71 until its own grooves and the
+    // lighter chug took them 1.5 LU down; at 0.83 they were 0.13 LU under.
+    level: 0.84,
     bpm: [104, 138],
     stepsPerBar: [[16, 8], [12, 2]],
     gaits: [
@@ -555,6 +556,9 @@ export const CHARACTERS = {
     bassStyles: [['pulse', 3], ['walk', 2.5], ['held', 1]],
     // Half its loops chug; the rest draw from bassStyles as ever.
     chug: 0.5,
+    // Its own drum grooves, light and steady, on every kit it draws: the
+    // catalogue's lo-fi patterns it played before spoiled its tunes.
+    groove: 'travel',
     bassVoices: [['pluckbass', 3], ['round', 2.5]],
     textures: [['none', 4], ['swell', 1.5], ['chime', 1]],
     restBar: 0.12,
@@ -710,9 +714,9 @@ export function blendMix(mix) {
   out.microLoop = !!CHARACTERS[lead].microLoop;
   // So are the things a profile brings of its own: how tempo and metre go
   // together, which kits it plays, its progressions, the drone, ornaments
-  // and the harmony line. A loop that tide merely colours does not start
-  // waltzing.
-  for (const k of ['gaits', 'kits', 'progressions', 'drone', 'ornament', 'harmonize', 'chug']) {
+  // and the harmony line, the chug and the grooves. A loop that tide merely
+  // colours does not start waltzing.
+  for (const k of ['gaits', 'kits', 'progressions', 'drone', 'ornament', 'harmonize', 'chug', 'groove']) {
     if (CHARACTERS[lead][k] !== undefined) out[k] = CHARACTERS[lead][k];
   }
   return out;

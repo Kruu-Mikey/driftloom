@@ -37,6 +37,7 @@ function chunk(id, data) {
 // in more or less any sampler.
 const GM_DRUMS = {
   kick: 36,
+  softkick: 35,
   snare: 38,
   rim: 37,
   clap: 39,

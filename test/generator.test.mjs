@@ -263,7 +263,7 @@ const everyEighth = (spec, steps) => {
 check('a chug is a short bass note on every eighth, on the chord\'s bass', chugs.every(({ spec, p }) => everyEighth(spec, p.tracks.bass.map((e) => e.step))
   && p.tracks.bass.every((e) => {
     const slot = p.harmony.slots.filter((sl) => sl.startStep <= e.step).pop();
-    return e.dur === 1 && e.chug === true && pcOf(e.midi - slot.bassMidi) === 0;
+    return e.dur === 0.5 && e.chug === true && pcOf(e.midi - slot.bassMidi) === 0;
   })));
 check('only a chug note is marked as one', wayfares.every(({ p }) => p.meta.bassStyle === 'chug'
   || p.tracks.bass.every((e) => e.chug === undefined)));
@@ -272,6 +272,36 @@ check('under a chug the brushes swish every eighth, none open', brushed.length >
   const hats = p.tracks.drums.filter((e) => (e.inst === 'hat' || e.inst === 'ohat') && !e.roll);
   return hats.every((e) => e.inst === 'hat') && everyEighth(spec, hats.map((e) => e.step));
 }), `${brushed.length} loops`);
+// Its own grooves, light and steady (queue item 8): the kick on the first
+// and third beats (in 6/8 on the first of two), a rim, snare or tap on the
+// others, never a clap, never a syncopated kick; every eighth on the hats
+// or the shaker; the soft kick on tape and brush, the frame drum by hand.
+const wayDrummed = wayfares.filter(({ p }) => p.tracks.drums.length);
+const KICKS = new Set(['softkick', 'frame']);
+check('wayfare\'s kick falls on the first and third beats and nowhere else', wayDrummed.length > 200 && wayDrummed.every(({ spec, p }) => {
+  const every = spec.stepsPerBar === 12 ? 12 : 8;
+  const kicks = p.tracks.drums.filter((e) => KICKS.has(e.inst));
+  return kicks.length === spec.bars * (spec.stepsPerBar / every) && kicks.every((e) => e.step % every === 0);
+}), `${wayDrummed.length} loops`);
+check('its backbeat is rim, snare or tap, and never a clap', wayDrummed.every(({ spec, p }) => {
+  const beat = spec.stepsPerBar === 12 ? 6 : 4;
+  const backs = p.tracks.drums.filter((e) => ['rim', 'snare', 'tap', 'clap'].includes(e.inst));
+  const last = (spec.bars - 1) * spec.stepsPerBar;
+  return backs.every((e) => e.inst !== 'clap' && (e.step % (2 * beat) === beat || (e.step >= last + spec.stepsPerBar - beat && e.step % 2 === 0)));
+}));
+check('the soft kick on tape and brush, the frame drum on the hand kit, and never the lo-fi kick', wayDrummed.every(({ p }) => {
+  const insts = new Set(p.tracks.drums.map((e) => e.inst));
+  return !insts.has('kick') && (p.meta.kit === 'hand' ? !insts.has('softkick') : !insts.has('frame'));
+}));
+check('the eighths play every eighth, light, and none open', wayDrummed.every(({ spec, p }) => {
+  const eighths = p.tracks.drums.filter((e) => ['hat', 'ohat', 'shaker', 'jingle', 'ojingle'].includes(e.inst));
+  return eighths.every((e) => e.vel < 0.4 && e.inst !== 'ohat' && e.inst !== 'ojingle') && everyEighth(spec, eighths.map((e) => e.step));
+}));
+check('a chug leans on the beat and ghosts the eighths between', chugs.every(({ spec, p }) => {
+  const beat = spec.stepsPerBar === 12 ? 6 : 4;
+  return p.tracks.bass.every((e) => !e.vel || (e.step % beat === 0 ? e.vel >= 0.6 : e.vel <= 0.37));
+}));
+check('no loop wayfare does not lead plays its soft kick', [...tides, ...cinders].every(({ p }) => p.tracks.drums.every((e) => e.inst !== 'softkick')));
 check('no loop wayfare does not lead chugs', [...tides, ...cinders].every(({ p }) => p.meta.bassStyle !== 'chug'));
 // Its progressions, filtered per mode: I-bVII-IV-I and I-IV-V-IV, each
 // played only where every chord of it is a plain triad.
