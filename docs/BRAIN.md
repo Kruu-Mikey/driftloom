@@ -215,6 +215,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   24-bar haven loop. Nothing "too busy". Least favourite: a developing
   16-bar shrine loop and a simple 16-bar tide loop. Queue item 17:
   stronger 16-bar development, two thirds of 24/32-bar loops develop.
+  **2026-09-27:** #96 (paint, v57) merged; Mikey chose to drop the
+  playhead fade for speed (queue 14.6). The mood vocabulary is open: he
+  wants to work it out with test albums and may want *more* mood words,
+  so item 16 now steers the music but leaves the labels, and makes the
+  vocabulary data. Brain's plan for the naming: albums where Mikey
+  describes tracks in his own words, and the words come from him. Note
+  the current eight include near-twins (joyful/happy/enthusiastic,
+  soothing/peaceful/comforting).
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
