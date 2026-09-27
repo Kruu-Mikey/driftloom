@@ -89,6 +89,7 @@ export function buildLayers(handlers, steps = STEPS_PER_BAR) {
   const host = el('layerList');
   host.innerHTML = '';
   const cells = {};
+  cursors = [];
 
   for (const layer of LAYERS) {
     const row = document.createElement('div');
@@ -102,6 +103,7 @@ export function buildLayers(handlers, steps = STEPS_PER_BAR) {
     const grid = document.createElement('div');
     grid.className = 'grid';
     grid.style.gridTemplateColumns = `repeat(${steps}, 1fr)`;
+    grid.style.setProperty('--steps', steps);
     const boxes = [];
     for (let i = 0; i < steps; i++) {
       const b = document.createElement('b');
@@ -109,6 +111,13 @@ export function buildLayers(handlers, steps = STEPS_PER_BAR) {
       boxes.push(b);
     }
     cells[layer] = boxes;
+    // The cursor is one box laid over the row and slid along it, rather
+    // than an outline switched on and off cell by cell. Sliding it is a
+    // transform, which the compositor does without repainting anything.
+    const cursor = document.createElement('i');
+    cursor.className = 'cursor';
+    grid.appendChild(cursor);
+    cursors.push(cursor);
 
     const reroll = document.createElement('button');
     reroll.className = 'icon';
@@ -150,7 +159,10 @@ export function renderGrids(cells, pattern, bar, mutes) {
     const boxes = cells[layer];
     for (let i = 0; i < boxes.length; i++) {
       const v = vels[i];
-      boxes[i].className = v ? (v > 0.55 ? 'hit strong' : 'hit') : '';
+      const want = v ? (v > 0.55 ? 'hit strong' : 'hit') : '';
+      // Only the cells that change. Writing a class, even the same one,
+      // marks the cell for style and paint.
+      if (boxes[i].className !== want) boxes[i].className = want;
     }
     const row = document.querySelector(`.layer[data-layer="${layer}"]`);
     row.classList.toggle('muted', !!mutes[layer]);
@@ -159,6 +171,7 @@ export function renderGrids(cells, pattern, bar, mutes) {
 }
 
 let lastCursor = -1;
+let cursors = [];
 
 export function resetCursor() {
   lastCursor = -1;
@@ -169,18 +182,24 @@ export function resetCursor() {
 // hundred class writes several times a second, each one forcing a style
 // recalculation, which is enough to make the playhead visibly drag on a
 // phone.
+//
+// Nothing here repaints. A light's lit colour and glow are its own
+// pseudo-element fading by opacity, and the layer cursors slide by
+// transform; both run on the compositor. The old background-colour fade
+// repainted the whole page on every frame it ran, and at a sixteenth's
+// pace it was always running.
 export function moveCursor(lights, cells, index) {
   if (index === lastCursor) return;
-  const paint = (i, on) => {
-    if (i < 0) return;
-    if (lights[i]) lights[i].classList.toggle('on', on);
-    for (const layer of Object.keys(cells)) {
-      const box = cells[layer][i];
-      if (box) box.classList.toggle('cursor', on);
+  if (lastCursor >= 0 && lights[lastCursor]) lights[lastCursor].classList.remove('on');
+  if (index >= 0 && lights[index]) lights[index].classList.add('on');
+  for (const c of cursors) {
+    if (index < 0) {
+      c.style.opacity = '0';
+    } else {
+      c.style.transform = `translateX(calc(${index} * (100% + 2px)))`;
+      c.style.opacity = '1';
     }
-  };
-  paint(lastCursor, false);
-  paint(index, true);
+  }
   lastCursor = index;
 }
 
