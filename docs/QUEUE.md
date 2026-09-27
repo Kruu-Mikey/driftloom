@@ -547,3 +547,12 @@ Mikey decides this line:
   next one. Listen for hollow and choir tunes that stay even, thaw's 5/4
   loops, and arpeggios that no longer smear. The temple bell is unchanged
   (see Notes).
+- #92, composition depth, first pass (item 12, v56),
+  https://b8b54753-driftloom.kruu-mikey-thaiculture.workers.dev: about a
+  third of the loops of 8 bars or more develop -- a statement, a departure
+  that answers it with its own motif turned (new rhythm, upside down, or
+  slowed), usually higher, over its own chords, and a return that
+  restates the motif another way. Every other loop plays exactly as
+  before. Listen for long loops that go somewhere and come home, a middle
+  that sounds like an answer rather than a new tune, and whether a third
+  is too many or too few (`DEPTH` in `js/generator.js` is the knob).
