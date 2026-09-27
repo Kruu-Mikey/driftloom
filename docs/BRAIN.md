@@ -195,6 +195,14 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   wins (paint, disconnect, hidden-tab lookahead, effects, page weight).
   Rust reframed as portability, after composition depth (pending
   Mikey). Temple bell chord lift decided from his ear: queue item 15.
+  Rust after composition depth is agreed; Mikey will start a fresh brain
+  chat for the Rust port. The core must be host-agnostic (web worklet,
+  native, game engines; roadmap 16).
+  **Moods:** "100% happy" loops often don't sound happy. Found: 42% of
+  loops labelled 90%+ happy are in minor-ish modes, because the scale
+  comes from the profile pool and the mood barely steers it, and "100%"
+  reads as intensity. Queue item 16. Constraint unchanged: never negative
+  or depressing.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.

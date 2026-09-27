@@ -755,8 +755,20 @@ problem), and most of the audio thread is finished voices never
 disconnected plus the always-running effects -- both fixable in
 JavaScript (queue item 14). So a compiled engine is not the performance
 fix; its case is portability: the phone app's core, a native build,
-games. Taken up after composition depth settles (brain's
-recommendation, pending Mikey).
+games. Taken up after composition depth settles (agreed with Mikey,
+2026-09-26), in a fresh brain chat.
+
+**Design requirement: a host-agnostic core.** The Rust core generates
+samples and knows nothing about browsers: `process(buffer)` plus the
+parameters. Thin hosts wrap it -- an AudioWorklet for the web app, a
+native audio backend (such as `cpal`) for a desktop or mobile build, and
+a game engine's audio for a game (Bevy natively or in the browser via
+WebAssembly, Godot through its Rust bindings, Unity through a C plugin).
+Browser support is broad: WebAssembly and AudioWorklet run in current
+Chrome, Edge, Firefox and Safari, including iOS Safari 14.5 and later.
+Avoid anything needing special headers (threads, SharedArrayBuffer),
+keep the JavaScript engine as the fallback until the Rust one has been
+heard on real phones, and test on Mikey's own phone early.
 
 **Timing (agreed with Mikey, 2026-09-26):** sooner for
 the synth, later for the generator. The voices are close to settled --
