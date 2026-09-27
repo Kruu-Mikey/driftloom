@@ -8,7 +8,7 @@
 // change, together with BUILD in js/main.js, so you can tell at a glance
 // which deploy you are listening to. Bumping it also evicts files that
 // have been deleted from FILES, which the network-first path cannot do.
-const CACHE = 'driftloom-v59';
+const CACHE = 'driftloom-v60';
 // './index.html' is deliberately absent. Cloudflare redirects it to './'
 // with a 307, and the Cache API will not store a redirected response --
 // addAll is atomic, so that one entry failing takes the whole install with
@@ -24,8 +24,11 @@ const FILES = [
   './js/media.js',
   './js/share.js',
   './js/cover.js',
+  // Only the FLAC: it is the one every current browser plays, so it is the
+  // one the media element picks, and precaching the WAV beside it cost 240
+  // KB of a first visit for a file that never played. The WAV stays in the
+  // element as a fallback, from the network.
   './audio/keepalive.flac',
-  './audio/keepalive.wav',
   './js/engine.js',
   './js/synth.js',
   './js/generator.js',
