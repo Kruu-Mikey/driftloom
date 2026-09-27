@@ -618,3 +618,10 @@ Mikey decides this line:
   audio thread does about 31% less work there. Listen for music that
   carries on with the phone locked exactly as before -- no gaps, no late
   notes -- including after a long time in the background.
+- #103, the graph that always runs (item 14.4; `js/` untouched),
+  https://6ddfb7ef-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear. What the always-on reverb, dynamics, tape wobble and channels
+  cost, part by part (in `docs/perf-baseline.md`); no saving leaves the
+  sound identical. Four that would change it are proposed for Mikey's
+  ears: four reverb combs instead of six, no saturator oversampling on
+  full, one dynamics stage instead of two, a coarser wobble.
