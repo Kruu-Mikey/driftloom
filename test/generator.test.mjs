@@ -8,7 +8,9 @@
 import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf, developmentOf, DEPTH } from '../js/generator.js';
 import { Rng, randomSeed, seedName } from '../js/rng.js';
 import { patternToMidi } from '../js/midi.js';
-import { SCALES } from '../js/theory.js';
+import { SCALES, SCALE_BRIGHTNESS } from '../js/theory.js';
+import { MOODS, moodForCode, codeForMood, moodWord, pointWord } from '../js/moods.js';
+import { encodeSong, decodeSong } from '../js/share.js';
 
 // Node ships a real Blob, but it only hands its bytes back asynchronously.
 // Override it so the export can be inspected byte for byte.
@@ -450,6 +452,58 @@ console.log('\nComposition depth');
   check('only loops of 8 bars or more without their own layer cycles develop', wrongly === 0, `(${wrongly})`);
   check('a departure moves to other chords', departs / developing > 0.9, `(${departs} of ${developing})`);
   check('a departure plays another tune', answers / checked > 0.95, `(${answers} of ${checked})`);
+}
+
+console.log('\nMoods steer the mode');
+{
+  // Queue item 16. The mood picks the mode a loop is made in: loops whose
+  // largest share is a bright mood come out mostly in bright modes, the
+  // reflective ones mostly in the middle of the axis, and the middle moods
+  // as they were. Before, every mood drew bright modes 38-60% of the time.
+  const master = new Rng(16);
+  const tally = {};
+  for (let i = 0; i < 4000; i++) {
+    const spec = newSpec(master.seed32());
+    const [mood] = Object.entries(spec.feelMix).sort((a, b) => b[1] - a[1])[0];
+    const b = SCALE_BRIGHTNESS[spec.scale];
+    const t = tally[mood] ||= { n: 0, bright: 0, darkest: 0 };
+    t.n++;
+    if (b >= 0.6) t.bright++;
+    if (b < 0.24) t.darkest++;
+  }
+  const share = (moods, key) => {
+    const n = moods.reduce((a, m) => a + tally[m].n, 0);
+    return moods.reduce((a, m) => a + tally[m][key], 0) / n;
+  };
+  const glad = share(['joyful', 'happy', 'enthusiastic'], 'bright');
+  const middle = share(['soothing', 'peaceful', 'comforting'], 'bright');
+  const inward = share(['reflective'], 'bright');
+  check('the bright moods are mostly in bright modes', glad > 0.7, `(${glad.toFixed(3)})`);
+  check('the middle moods are left where they were', middle > 0.4 && middle < 0.58, `(${middle.toFixed(3)})`);
+  check('reflective leans inward', inward < 0.25, `(${inward.toFixed(3)})`);
+  check('reflective is rarely in the darkest modes', share(['reflective'], 'darkest') < 0.06,
+    `(${share(['reflective'], 'darkest').toFixed(3)})`);
+
+  // The vocabulary is data: every mood has its own share-code number, the
+  // numbers are the ones codes have always used, and a code still reads.
+  const codes = Object.values(MOODS).map((m) => m.code);
+  check('every mood has its own code', new Set(codes).size === codes.length);
+  const WRITTEN = ['joyful', 'happy', 'enthusiastic', 'refreshing', 'soothing', 'peaceful', 'comforting', 'reflective'];
+  check('mood codes are the ones already written down', WRITTEN.every((k, i) => codeForMood(k) === i && moodForCode(i) === k));
+  check('an unknown mood code reads as peaceful', moodForCode(200) === 'peaceful');
+  check('every mood has a word', Object.keys(MOODS).every((k) => typeof moodWord(k) === 'string' && moodWord(k).length));
+  const spec = newSpec(12345);
+  check('a share code keeps its moods', JSON.stringify(decodeSong(encodeSong(spec)).feelMix) === JSON.stringify(spec.feelMix));
+  const old = (lift, energy) => {
+    const high = lift > 0.66;
+    const mid = lift > 0.38;
+    if (energy > 0.68) return high ? 'enthusiastic' : mid ? 'refreshing' : 'restless';
+    if (energy > 0.36) return high ? 'happy' : mid ? 'comforting' : 'reflective';
+    return high ? 'joyful' : mid ? 'peaceful' : 'reflective';
+  };
+  let same = true;
+  for (let l = 0; l <= 1.0001; l += 0.02) for (let e = 0; e <= 1.0001; e += 0.02) if (pointWord({ lift: l, energy: e }) !== old(l, e)) same = false;
+  check('an old save shows the word it always did', same);
 }
 
 console.log('\nNames');

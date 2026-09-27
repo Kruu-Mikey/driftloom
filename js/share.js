@@ -18,7 +18,7 @@
 
 import { SCALES } from './theory.js';
 import { CHARACTERS, resolveKey } from './characters.js';
-import { MOODS } from './generator.js';
+import { codeForMood, moodForCode } from './moods.js';
 import { seedName } from './rng.js';
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -45,10 +45,7 @@ const PROFILE_IDS = [
   'halcyon', 'clockwork', 'shatter', 'undertow',
   'grove', 'hollow', 'shrine', 'tide', 'cinder', 'wayfare',
 ];
-const MOOD_IDS = [
-  'joyful', 'happy', 'enthusiastic', 'refreshing',
-  'soothing', 'peaceful', 'comforting', 'reflective',
-];
+// Moods are numbered in moods.js, beside the rest of their vocabulary.
 const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 
 // ------------------------------------------------------------- bit plumbing
@@ -119,10 +116,10 @@ function writeSpec(w, spec) {
   }
 
   const feelMix = spec.feelMix || {};
-  const moodKeys = Object.keys(feelMix).filter((k) => MOOD_IDS.indexOf(k) >= 0);
+  const moodKeys = Object.keys(feelMix).filter((k) => codeForMood(k) >= 0);
   w.u8(moodKeys.length);
   for (const k of moodKeys) {
-    w.u8(MOOD_IDS.indexOf(k));
+    w.u8(codeForMood(k));
     w.unit(feelMix[k]);
   }
 
@@ -179,7 +176,7 @@ function readSpec(r, version = FORMAT) {
   spec.feelMix = {};
   const moodCount = r.u8();
   for (let i = 0; i < moodCount; i++) {
-    const key = MOOD_IDS[r.u8()] || 'peaceful';
+    const key = moodForCode(r.u8());
     spec.feelMix[key] = r.unit();
   }
 

@@ -117,9 +117,40 @@ export const SCALE_BRIGHTNESS = {
 
 // Reweight a scale pool so modes matching the mood are likelier. Nothing is
 // ever excluded, so a bright loop can still reach for something wistful.
+//
+// The gentle preference below (a mode as bright as the loop's lift weighs
+// up to twice one at the far end) was all there was, and it was too gentle
+// to make a label honest (queue item 16): of the loops labelled 90%+ happy,
+// 38% came out in modes with a minor third, and every mood from joyful to
+// reflective drew bright modes between 38% and 60% of the time. So two
+// tilts sit on top of it, one at each end, and the middle is left alone.
+//
+// Above GLAD_FROM, a tilt toward the bright modes that grows with the lift:
+// at a happy lift of 0.82 it weighs a mode at 0.92 (ionian) about 9 times
+// one at 0.24 (aeolian), on top of the old preference's 2, and at a joyful
+// 0.92 about 34 times. Below INWARD_FROM, a pull toward the middle of the axis
+// (dorian, kumoi, the minor pentatonic, insen), away from both the bright
+// modes and the darkest ones: low lift leans inward, never sad. Between
+// the two, where most soothing, peaceful and comforting loops sit, nothing
+// changes.
+//
+// This is the only place the mood picks a mode, and it runs once, when a
+// loop is made. A share code writes its mode down, so a loop that already
+// exists keeps the mode it has.
+const GLAD_FROM = 0.66;
+const GLAD_TILT = 20;
+const INWARD_FROM = 0.5;
+const INWARD_PULL = 20;
+const INWARD_CENTRE = 0.4;
+
 export function moodWeighted(pool, mood) {
+  const glad = Math.max(0, mood - GLAD_FROM);
+  const inward = Math.max(0, INWARD_FROM - mood);
   return pool.map(([key, w]) => {
     const bright = SCALE_BRIGHTNESS[key] ?? 0.5;
-    return [key, w * (0.2 + 2.1 * (1 - Math.abs(bright - mood)))];
+    const near = 0.2 + 2.1 * (1 - Math.abs(bright - mood));
+    const tilt = Math.exp(GLAD_TILT * glad * (bright - 0.5)
+      - INWARD_PULL * inward * ((bright - INWARD_CENTRE) / 0.3) ** 2);
+    return [key, w * near * tilt];
   });
 }

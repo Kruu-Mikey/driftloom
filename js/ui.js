@@ -1,6 +1,7 @@
 import { LAYERS, LAYER_LABELS, STEPS_PER_BAR } from './generator.js';
 import { CHARACTERS, resolveKey } from './characters.js';
 import { NOTE_NAMES, SCALES } from './theory.js';
+import { moodWord, pointWord } from './moods.js';
 
 export const el = (id) => document.getElementById(id);
 
@@ -35,16 +36,6 @@ function asMix(weights, nameOf, max = 3) {
     .join(' · ');
 }
 
-// Fallback for saves made before feeling became a mixture.
-function feelWord(feel) {
-  const { lift, energy } = feel;
-  const high = lift > 0.66;
-  const mid = lift > 0.38;
-  if (energy > 0.68) return high ? 'enthusiastic' : mid ? 'refreshing' : 'restless';
-  if (energy > 0.36) return high ? 'happy' : mid ? 'comforting' : 'reflective';
-  return high ? 'joyful' : mid ? 'peaceful' : 'reflective';
-}
-
 function mixLabel(spec) {
   if (!spec.mix) {
     const c = CHARACTERS[resolveKey(spec.character || 'dust')];
@@ -60,9 +51,10 @@ function mixLabel(spec) {
 
 function feelLabel(spec) {
   if (spec.feelMix && Object.keys(spec.feelMix).length) {
-    return asMix(spec.feelMix, (k) => k);
+    return asMix(spec.feelMix, moodWord);
   }
-  return feelWord(spec.feel || { lift: spec.mood ?? 0.5, energy: 0.5, warmth: 0.6 });
+  // Saves from before feeling became a mixture.
+  return pointWord(spec.feel || { lift: spec.mood ?? 0.5, energy: 0.5, warmth: 0.6 });
 }
 
 export function renderReadout(spec, pattern) {
