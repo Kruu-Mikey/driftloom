@@ -145,14 +145,26 @@ body {
 }
 
 .playhead i {
+  position: relative;
   background: var(--line-soft);
   border-radius: 1px;
-  transition: background 90ms linear;
 }
 .playhead i.beat { background: #2f5158; }
-.playhead i.on {
+/* The lit light, laid over the unlit one and faded by opacity alone, on
+   its own compositor layer, so lighting and dimming never repaint. */
+.playhead i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 1px;
   background: var(--amber);
   box-shadow: 0 0 8px rgba(228, 162, 78, 0.6);
+  opacity: 0;
+  transition: opacity 90ms linear;
+  will-change: opacity;
+}
+.playhead i.on::after {
+  opacity: 1;
   transition: none;
 }
 
@@ -287,6 +299,7 @@ button:disabled:hover { background: var(--panel); }
 .layer.muted .layer-name { color: #486a6d; }
 
 .grid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(16, 1fr);
   gap: 2px;
@@ -299,7 +312,19 @@ button:disabled:hover { background: var(--panel); }
 }
 .grid b.hit { background: var(--haze); }
 .grid b.hit.strong { background: var(--mint); }
-.grid b.cursor { outline: 1px solid var(--amber); }
+/* One cell wide, slid along the row by transform (see moveCursor). */
+.grid .cursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc((100% - (var(--steps, 16) - 1) * 2px) / var(--steps, 16));
+  outline: 1px solid var(--amber);
+  border-radius: 1px;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
 .layer.muted .grid b.hit { background: #325055; }
 
 .icon {
