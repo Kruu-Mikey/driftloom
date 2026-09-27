@@ -381,6 +381,10 @@ loudness where the audio path is touched.
    `keepalive.wav` (334 KB of 458 KB gzipped) though only one plays, and
    every script is fetched twice on a first visit. Precache what's used.
 
+6. **Drop the playhead lights' fade** (Mikey, 2026-09-27: "drop it for
+   speed"). #96 kept the 90 ms fade and put the choice to him; he chose
+   speed. Remove it, confirm paint under 10 ms/s at 1x.
+
 One PR per part, in this order, each merged under the policy.
 
 ## 15. The temple bell as a chord voice: lift it
@@ -416,14 +420,18 @@ Do:
   honest; low `lift` leans inward (reflective, peaceful), never sad. Keep
   every profile's character: steer within its scale pool where you can,
   and say where a profile's pool can't honour a mood.
-- **An honest label.** Drop the percentages or make them mean what they
-  appear to. Words like "happy, with a peaceful streak" or a single
-  leading word are candidates; say what you chose and why, "for Mikey's
-  ears".
+- **The labels: not yet.** Mikey (2026-09-27): the mood words are
+  "something we need to work through and maybe have some test albums to
+  decide. We might need more mood words." So leave the words and the
+  display as they are for now. Do make the vocabulary easy to change:
+  the moods, their feel targets and their display words as data in one
+  place, so adding, merging or renaming moods later is a small edit. The
+  brain will run listening albums (Mikey describing tracks in his own
+  words) to find the vocabulary; a later item changes the labels.
 - The balance lock will move (more major modes, perhaps); report and
   re-baseline deliberately.
-- Afterwards the brain builds a blind album: Mikey names the feel of each
-  track from a short word list, and the labels are scored against him.
+- Afterwards the brain builds a blind album to check the steering is
+  audible (bright moods sounding brighter), separate from the naming.
 
 ## 17. Composition depth, second pass
 
