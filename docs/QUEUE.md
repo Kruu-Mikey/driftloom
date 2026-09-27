@@ -644,3 +644,15 @@ Mikey decides this line:
   On short chords it now sits 2.7 LU above them, since it rings 6.5 s
   whatever the note: the long-note reading decided. The bell as a melody
   is unchanged.
+- #107, the mood steers the mode (item 16, v63),
+  https://270efce4-driftloom.kruu-mikey-thaiculture.workers.dev: new loops
+  whose mood is joyful, happy or enthusiastic now come out in bright modes
+  (lydian, ionian, major pentatonic, mixolydian ...) about 80% of the time,
+  was under 60%; "90%+ happy" in a minor-third mode went from 38% to 18%.
+  Reflective loops lean inward -- dorian, kumoi, minor pentatonic -- away
+  from both the bright and the darkest modes (for Mikey's ears: is that
+  inward, not sad?). Soothing, peaceful and comforting as they were.
+  Cinder's and shatter's pools have no bright mode, so a happy cinder or
+  shatter loop still is not bright. Loops that already exist are
+  unchanged (a code keeps its mode); the labels and display too. The mood
+  words, feel targets and code numbers now live in `js/moods.js`.
