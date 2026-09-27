@@ -631,3 +631,9 @@ Mikey decides this line:
   467), the unused WAV keepalive no longer precached. Look for the lock
   screen controls still appearing when playing, and the app still working
   offline after one visit.
+- #105, the playhead without its fade (item 14.6, v61),
+  https://c251be28-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear; the playhead's lights now switch on and off with the beat
+  instead of glowing out over 90 ms, and the main thread does a quarter
+  less work (61 to 46 ms a second at 1x, paint 15 to 10). Look for the
+  playhead still reading clearly on full and on lite.
