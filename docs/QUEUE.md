@@ -625,3 +625,9 @@ Mikey decides this line:
   sound identical. Four that would change it are proposed for Mikey's
   ears: four reverb combs instead of six, no saturator oversampling on
   full, one dynamics stage instead of two, a coarser wobble.
+- #104, page weight (item 14.5, v60),
+  https://01076bc2-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear; a first visit now sends half what it did (233 KB gzipped, was
+  467), the unused WAV keepalive no longer precached. Look for the lock
+  screen controls still appearing when playing, and the app still working
+  offline after one visit.
