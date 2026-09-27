@@ -105,6 +105,10 @@ driftloom live performance harness
                       waiting to be collected still cost audio render?)
   --js-profile        profile JS in the matrix runs too (default: only in
                       the split part)
+  --ab <folder>       A/B: run every configuration twice, back to back, on
+                      <folder> (A, say a worktree of main) and on this
+                      folder (B), so both sides share the machine and the
+                      moment. Reports B against A.
   --url <url>         measure a deployed page instead of this folder
   --query <q>         query string for the page, e.g. engine=rust
   --port <n>          local server port                 (default 8741)
@@ -176,6 +180,7 @@ function parseArgs(argv) {
       case '--memory-minutes': o.memoryMinutes = Number(next()); break;
       case '--js-profile': o.jsProfile = true; break;
       case '--url': o.url = next(); break;
+      case '--ab': o.ab = path.resolve(next()); break;
       case '--query': o.query = next().replace(/^\?/, ''); break;
       case '--port': o.port = Number(next()); break;
       case '--chrome': o.chrome = next(); break;
@@ -289,12 +294,12 @@ const TYPES = {
 // Every byte sent is logged, so a cold visit's page weight is what this
 // server actually handed over, service worker precache and all.
 const served = [];
-function startServer(port) {
+function startServer(port, root = ROOT) {
   const server = http.createServer((req, res) => {
     let url = decodeURIComponent(req.url.split('?')[0]);
     if (url.endsWith('/')) url += 'index.html';
-    const file = path.join(ROOT, path.normalize(url));
-    if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    const file = path.join(root, path.normalize(url));
+    if (!file.startsWith(root) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404);
       return res.end('not found');
     }
@@ -1086,11 +1091,39 @@ function report(data, opts) {
   return out.join('\n');
 }
 
+// B against A, for --ab: means across the loops, per part, quality and
+// throttle, each side measured back to back with the other.
+function abReport(data, opts) {
+  const out = [`Driftloom perf harness, A/B -- A: ${opts.ab}, B: this folder; Chromium ${data.chromium}, ${data.cpus}; ${opts.seconds} s windows, drift on.`, ''];
+  const ok = data.runs.filter((r) => !r.error);
+  const groups = [...new Set(ok.map((r) => `${r.part}|${r.quality}|${r.throttle}`))];
+  const figs = [['audio render ms', (r) => r.renderMs], ['main thread ms', (r) => r.taskMs], ['script ms', (r) => r.scriptMs],
+    ['paint ms', (r) => r.paintMs], ['live audio nodes', (r) => r.audioHandlers], ['renderer CPU ms', (r) => r.processMs]];
+  out.push(table(['part', 'quality', 'throttle', ...figs.flatMap(([n]) => [`${n} A`, 'B']), 'late ticks A / B', 'fill-ins A / B'],
+    groups.map((g) => {
+      const [part, quality, throttle] = g.split('|');
+      const side = (x) => ok.filter((r) => r.side === x && r.part === part && r.quality === quality && String(r.throttle) === throttle);
+      const mean = (xs, f) => xs.reduce((a, r) => a + f(r), 0) / xs.length;
+      const sum = (xs, f) => xs.reduce((a, r) => a + (f(r) || 0), 0);
+      const [A, B] = [side('A'), side('B')];
+      return [part, quality, `${throttle}x`, ...figs.flatMap(([, f]) => [f1(mean(A, f)), f1(mean(B, f))]),
+        `${sum(A, (r) => r.lateTicks)} / ${sum(B, (r) => r.lateTicks)}`, `${sum(A, (r) => r.fillEvents)} / ${sum(B, (r) => r.fillEvents)}`];
+    })));
+  out.push('\nPer loop, audio render ms (A -> B):');
+  for (const r of ok.filter((x) => x.side === 'B')) {
+    const a = ok.find((x) => x.side === 'A' && x.part === r.part && x.loop === r.loop && x.quality === r.quality && x.throttle === r.throttle);
+    if (a) out.push(`  ${r.part} ${r.loop} ${r.quality} ${r.throttle}x: ${f1(a.renderMs)} -> ${f1(r.renderMs)}; main ${f1(a.taskMs)} -> ${f1(r.taskMs)}`);
+  }
+  return out.join('\n');
+}
+
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
 const chromePath = findChrome(opts.chrome);
 const server = opts.url ? null : await startServer(opts.port);
+// The A side of --ab, served on the next port.
+const serverA = opts.ab ? await startServer(opts.port + 1, opts.ab) : null;
 const buildOf = () => {
   try { return fs.readFileSync(path.join(ROOT, 'js', 'main.js'), 'utf8').match(/const BUILD = '([^']+)'/)[1]; } catch { return '?'; }
 };
@@ -1141,10 +1174,20 @@ async function main() {
       }
     }
   }
+  const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/` } : null;
   const once = async (cfg) => {
-    log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''}${cfg.jsProfile ? ' profiled' : ''}`);
+    if (optsA) {
+      log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''} (A)`);
+      try {
+        data.runs.push({ ...(await run(optsA, chromePath, cfg)), side: 'A' });
+      } catch (err) {
+        log(`  failed: ${err.message}`);
+        data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message, side: 'A' });
+      }
+    }
+    log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''}${cfg.jsProfile ? ' profiled' : ''}${optsA ? ' (B)' : ''}`);
     try {
-      const r = await run(opts, chromePath, cfg);
+      const r = { ...(await run(opts, chromePath, cfg)), ...(optsA ? { side: 'B' } : {}) };
       data.runs.push(r);
       log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}, render ${f1(r.renderMs)} ms/s, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
     } catch (err) {
@@ -1180,7 +1223,7 @@ async function main() {
     }
   }
 
-  const text = report(data, opts);
+  const text = opts.ab ? abReport(data, opts) : report(data, opts);
   console.log(text);
   if (opts.json) fs.writeFileSync(opts.json, `${JSON.stringify(data, null, 1)}\n`);
   if (opts.md) fs.writeFileSync(opts.md, `${text}\n`);
@@ -1190,4 +1233,5 @@ try {
   await main();
 } finally {
   if (server) server.close();
+  if (serverA) serverA.close();
 }
