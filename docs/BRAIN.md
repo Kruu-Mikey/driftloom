@@ -229,6 +229,12 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   (heart, strangeness, light, texture and taste, motion, energy, sound,
   air), and each loop labelled with two or three words of different
   kinds, each chosen from what the loop actually does.
+  Agreed: labels of one to five words, mostly two or three; some loops
+  one word fully embraced. Words steer generation, bending a profile
+  within its character; each word x profile meeting to be defined with
+  Mikey by ear ("what would sour and floating sound like on cinder?").
+  Roadmap item 19: a pilot of about a dozen words, recipes as data,
+  listening albums, then widen. Happens before the generator's Rust port.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
