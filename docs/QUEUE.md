@@ -611,3 +611,10 @@ Mikey decides this line:
   work at normal speed and 44% less when the phone is busy, and no longer
   grows with load. Measured A/B on one machine (`perf.mjs --ab`), since a
   container restart moved the session to another mid-item.
+- #102, hidden tab (item 14.3, v59),
+  https://f18c1275-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear; with the screen off or the app in the background, each voice is
+  now built just before its note instead of up to 3 s early, and the
+  audio thread does about 31% less work there. Listen for music that
+  carries on with the phone locked exactly as before -- no gaps, no late
+  notes -- including after a long time in the background.

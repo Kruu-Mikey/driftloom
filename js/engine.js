@@ -18,6 +18,22 @@ const LOOKAHEAD_HIDDEN = 3.0;
 const TICK_VISIBLE = 50;
 const TICK_HIDDEN = 250;
 
+// A voice's graph is built only this many tick-gaps before its note, and
+// never further ahead than the lookahead itself.
+//
+// Hidden, the scheduler still decides 3 s ahead, so a throttled timer
+// cannot run the music dry. But building each voice as soon as it is
+// decided wired its oscillators and filters into the mix up to 3 s early,
+// and the browser renders a wired-up voice -- silence and all -- from the
+// moment it is connected: a hidden tab cost the audio thread 20-100% more
+// than a visible one (docs/perf-baseline.md). So a decided note waits in a
+// queue and is built on the tick before it is needed, with room for three
+// late ticks. The gap is measured, so if the timer does slow to a tick a
+// second the window widens to match, back to 3 s. Visible, the lookahead
+// is already shorter than the window and every note is built at once, as
+// before.
+const BUILD_TICKS = 4;
+
 // A chord's level, spread across its voicing so a five-note chord is not
 // five times louder than a single note: this, over the root of the note
 // count. Pads take the same figure. They reach pad(), which divides by the
@@ -69,6 +85,11 @@ export class Engine {
     this.worstLateMs = 0;
     this.totalTicks = 0;
     this.tailsDucked = false;
+    // Notes decided but not yet built, in the order they were decided (see
+    // BUILD_TICKS), and the measured gap between ticks.
+    this.pending = [];
+    this.tickGap = null;
+    this.lastTick = null;
     this.visualQueue = [];
     this.visualOffset = 0;   // optional manual trim, normally zero
     this.latency = null;     // measured, smoothed, seconds
@@ -173,6 +194,8 @@ export class Engine {
   stop() {
     this.playing = false;
     this.clock.stop();
+    this.pending = [];
+    this.lastTick = null;
     this.visualQueue = [];
     this.synth.silence();
     if (this.tailsDucked) {
@@ -211,9 +234,47 @@ export class Engine {
     this.synth.setTone(this.spec.tone);
   }
 
+  // How far ahead of its note a voice is built.
+  get buildAhead() {
+    if (!this.tickGap) return this.lookahead;
+    return Math.min(this.lookahead, Math.max(0.3, this.tickGap * BUILD_TICKS));
+  }
+
+  // Build a voice now if its note is close enough, otherwise queue it.
+  // Visible, every voice is built at once, exactly as before; whatever a
+  // hidden spell left queued goes first, so the order holds.
+  _play(time, build) {
+    if (!this.hidden || !this.pending) {
+      if (this.pending && this.pending.length) for (const p of this.pending.splice(0)) p.build();
+      build();
+    } else if (this.pending.length || time > this.ctx.currentTime + this.buildAhead) {
+      this.pending.push({ time, build });
+    } else {
+      build();
+    }
+  }
+
+  // Build every queued voice whose note is within reach, in the order the
+  // notes were decided, so the voice budget sees them in the same order.
+  _flush() {
+    if (!this.pending || !this.pending.length) return;
+    const horizon = this.hidden ? this.ctx.currentTime + this.buildAhead : Infinity;
+    let i = 0;
+    while (i < this.pending.length && this.pending[i].time <= horizon) i++;
+    for (const { build } of this.pending.splice(0, i)) build();
+  }
+
   _tick() {
     if (!this.playing) return;
     this.totalTicks++;
+    const now = performance.now();
+    if (this.lastTick != null) {
+      const gap = (now - this.lastTick) / 1000;
+      // Quick to widen when ticks slow down, slow to narrow again.
+      this.tickGap = this.tickGap == null || gap > this.tickGap ? gap : this.tickGap * 0.9 + gap * 0.1;
+    }
+    this.lastTick = now;
+    this._flush();
     // If the next step was already due before we woke up, the queue ran dry
     // and something audible was missed.
     const behind = this.ctx.currentTime - this.nextStepTime;
@@ -230,6 +291,7 @@ export class Engine {
       this._scheduleStep(this.step, this.nextStepTime);
       this._advance();
     }
+    this._flush();
   }
 
   _advance() {
@@ -306,15 +368,16 @@ export class Engine {
         // skip the humanising jitter that would smear them.
         const micro = e.micro ? e.micro * sd : 0;
         const jitter = e.roll ? 0 : (Math.random() - 0.5) * 0.008;
-        this.synth.drum(e.inst, t + micro + jitter, e.vel);
-        if (pump && (e.inst === 'kick' || e.inst === 'softkick')) this.synth.duck(t + micro, pump * e.vel);
+        const at = t + micro + jitter;
+        this._play(at, () => this.synth.drum(e.inst, at, e.vel));
+        if (pump && (e.inst === 'kick' || e.inst === 'softkick')) this._play(at, () => this.synth.duck(t + micro, pump * e.vel));
       }
     }
     if (!mutes.bass) {
       const s = at('bass');
       for (const e of p.tracks.bass) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice, e.chug);
+        this._play(t, () => this.synth.bass(e.midi, t, e.dur * sd, e.vel, e.glide, e.voice, e.chug));
       }
     }
     // An ensemble does not attack together. The composer's detune keeps
@@ -332,7 +395,7 @@ export class Engine {
       for (const e of p.tracks.chords) {
         if (e.step !== s || !e.vel) continue;
         if (e.voice === 'pad') {
-          this.synth.pad(e.notes, t, e.dur * sd, e.vel * CHORD_SPREAD);
+          this._play(t, () => this.synth.pad(e.notes, t, e.dur * sd, e.vel * CHORD_SPREAD));
         } else {
           const spread = CHORD_SPREAD / Math.sqrt(e.notes.length);
           if (e.strum) {
@@ -340,19 +403,19 @@ export class Engine {
             const strings = e.strum === 'down' ? e.notes : e.notes.slice().reverse();
             const weight = e.strum === 'down' ? 1 : STRUM.up;
             // The hand that strikes the chord stops the last one's strings.
-            this.synth.damp(this.synth.channels.chords.gain, t + slip);
+            this._play(t + slip, () => this.synth.damp(this.synth.channels.chords.gain, t + slip));
             strings.forEach((n, i) => {
               const at = strings.length > 1 ? span * i / (strings.length - 1) : 0;
-              this.synth.voice(e.voice, n, t + slip + at, e.dur * sd, e.vel * spread * weight,
-                this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune, strum: true });
+              this._play(t + slip + at, () => this.synth.voice(e.voice, n, t + slip + at, e.dur * sd, e.vel * spread * weight,
+                this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune, strum: true }));
             });
             continue;
           }
           e.notes.forEach((n, i) => {
             // Spread the notes of a chord by a few milliseconds so it
             // sounds like fingers rather than a switch closing.
-            this.synth.voice(e.voice, n, t + slip + i * 0.011, e.dur * sd, e.vel * spread,
-              this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune });
+            this._play(t + slip + i * 0.011, () => this.synth.voice(e.voice, n, t + slip + i * 0.011, e.dur * sd, e.vel * spread,
+              this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune }));
           });
         }
       }
@@ -363,20 +426,20 @@ export class Engine {
       for (const e of p.tracks.melody) {
         if (e.step !== s || !e.vel) continue;
         const out = this.synth.channels.melody.gain;
-        this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel, out,
-          { glide: e.glide, vowel: e.vowel, detune: e.detune, prev: e.prev });
+        this._play(t + slip, () => this.synth.voice(e.voice, e.midi, t + slip, e.dur * sd, e.vel, out,
+          { glide: e.glide, vowel: e.vowel, detune: e.detune, prev: e.prev }));
         // Asked for after the note, so where the budget is short it is the
         // decoration that yields, never the tune.
         const under = harmonyOf(e, p.spec);
         if (under != null) {
-          this.synth.voice(e.voice, under, t + slip, e.dur * sd, e.vel * HARMONY_VEL, out,
-            { vowel: e.vowel, detune: e.detune });
+          this._play(t + slip, () => this.synth.voice(e.voice, under, t + slip, e.dur * sd, e.vel * HARMONY_VEL, out,
+            { vowel: e.vowel, detune: e.detune }));
         }
         const graces = gracesOf(e, p.spec);
         graces.forEach((g, i) => {
           const at = t + slip - GRACE * (graces.length - i);
-          this.synth.voice(e.voice, g, Math.max(this.ctx.currentTime, at), GRACE, e.vel * GRACE_VEL, out,
-            { vowel: e.vowel, detune: e.detune });
+          this._play(at, () => this.synth.voice(e.voice, g, Math.max(this.ctx.currentTime, at), GRACE, e.vel * GRACE_VEL, out,
+            { vowel: e.vowel, detune: e.detune }));
         });
       }
     }
@@ -384,7 +447,7 @@ export class Engine {
       const s = at('texture');
       for (const e of p.tracks.texture) {
         if (e.step !== s || !e.vel) continue;
-        this.synth.texture(e.kind, e.notes, t, e.dur * sd, e.vel, { band: e.band });
+        this._play(t, () => this.synth.texture(e.kind, e.notes, t, e.dur * sd, e.vel, { band: e.band }));
       }
     }
 
