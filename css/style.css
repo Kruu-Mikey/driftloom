@@ -150,8 +150,11 @@ body {
   border-radius: 1px;
 }
 .playhead i.beat { background: #2f5158; }
-/* The lit light, laid over the unlit one and faded by opacity alone, on
-   its own compositor layer, so lighting and dimming never repaint. */
+/* The lit light, laid over the unlit one and switched by opacity, on its
+   own compositor layer, so lighting and dimming never repaint. It used to
+   fade out over 90 ms; even composited, a running transition makes the
+   browser commit a frame on every frame, and Mikey chose speed over the
+   glow-out (queue item 14.6). */
 .playhead i::after {
   content: '';
   position: absolute;
@@ -160,12 +163,10 @@ body {
   background: var(--amber);
   box-shadow: 0 0 8px rgba(228, 162, 78, 0.6);
   opacity: 0;
-  transition: opacity 90ms linear;
   will-change: opacity;
 }
 .playhead i.on::after {
   opacity: 1;
-  transition: none;
 }
 
 /* -------------------------------------------------------- transport */
