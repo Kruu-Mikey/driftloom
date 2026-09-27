@@ -95,7 +95,9 @@ driftloom live performance harness
   --seconds <n>       measured window per run           (default 60)
   --warmup <n>        seconds played before measuring   (default 8)
   --parts <list>      which parts to run, any of
-                      load,idle,matrix,hidden,muted,split,memory
+                      load,idle,matrix,hidden,muted,split,memory,fixed
+                      ('fixed' is not in the default set: an offline
+                      breakdown of the graph that runs with no notes)
                                                         (default all)
   --hidden-throttle <list>  throttles for the hidden runs (default 1,6)
   --hidden-seconds <n>      window for the hidden runs   (default --seconds)
@@ -939,6 +941,75 @@ function slopeOf(samples) {
   return { heapMBPerMin: fit('heapMB'), audioHandlersPerMin: fit('audioHandlers'), domNodesPerMin: fit('domNodes') };
 }
 
+// ---------------------------------------------------------- fixed graph
+
+// What the graph that always runs costs, part by part. The one place this
+// tool reaches inside the app: it builds the real Synth in an offline
+// context in the page, plays no notes, and times rendering FIXED_SECONDS
+// of it, first whole and then with one part at a time taken out of the
+// path to the speakers (a part nothing reaches is not rendered). The
+// difference is that part's cost. Offline render time is the audio
+// thread's work without the real-time device around it, so it reads as
+// milliseconds of rendering per second of sound, like the live figure.
+const FIXED_SECONDS = 30;
+const FIXED_PAIRS = 5;
+const FIXED_VARIANTS = {
+  whole: '',
+  'reverb (combs, pre-delay)': 's.combSum.disconnect();',
+  echo: 's.echoTone.disconnect();',
+  'wobble (modulated delay, two LFOs)': 's.preBus.disconnect(); s.preBus.connect(s.sat);',
+  'saturator oversampling': "s.sat.oversample = 'none';",
+  saturator: 's.wobble.disconnect(); s.wobble.connect(s.tone);',
+  'tone and high-pass filters': 's.sat.disconnect(); s.sat.connect(s.comp);',
+  'bus compressor': 's.hp.disconnect(); s.hp.connect(s.master);',
+  ceiling: 's.kill.disconnect(); s.kill.connect(ctx.destination);',
+  'zero-level sends (bass echo)': 's.channels.bass.echo.disconnect();',
+  'every channel and send': "for (const c of Object.values(s.channels)) { c.gain.disconnect(); c.verb.disconnect(); c.echo.disconnect(); }",
+};
+
+async function fixedRun(opts, chromePath, quality) {
+  const b = await launch(chromePath);
+  try {
+    const tab = await openTab(b, pageUrl(opts), { seed: FIRST_LOOP_SEED, throttle: 1 });
+    // One timed render of FIXED_SECONDS, whole or with one part out.
+    const time = (setup) => tab.eval(`(async () => {
+      const { Synth } = await import('/js/synth.js');
+      const ctx = new OfflineAudioContext(2, 44100 * ${FIXED_SECONDS}, 44100);
+      ${setup === null ? '' : `const s = new Synth(ctx, ${JSON.stringify(quality)}); ${setup}`}
+      const t0 = performance.now();
+      await ctx.startRendering();
+      return performance.now() - t0;
+    })()`);
+    const median = (xs) => xs.slice().sort((x, y) => x - y)[Math.floor(xs.length / 2)];
+    // Paired: each part is timed right after the whole graph, FIXED_PAIRS
+    // times, and the median difference is its cost. Machine noise moves
+    // both halves of a pair together, so it mostly cancels.
+    const out = { quality, seconds: FIXED_SECONDS, pairs: FIXED_PAIRS, ms: {}, spread: {} };
+    const wholes = [];
+    out.empty = median(await Promise.all([0, 1, 2].map(() => 0)).then(async () => {
+      const xs = [];
+      for (let i = 0; i < 3; i++) xs.push(await time(null));
+      return xs;
+    })) / FIXED_SECONDS;
+    for (const [name, setup] of Object.entries(FIXED_VARIANTS)) {
+      if (name === 'whole') continue;
+      const diffs = [];
+      for (let i = 0; i < FIXED_PAIRS; i++) {
+        const whole = await time(FIXED_VARIANTS.whole);
+        const part = await time(setup);
+        wholes.push(whole);
+        diffs.push((whole - part) / FIXED_SECONDS);
+      }
+      out.ms[name] = median(diffs);
+      out.spread[name] = (Math.max(...diffs) - Math.min(...diffs)) / 2;
+    }
+    out.ms.whole = median(wholes) / FIXED_SECONDS;
+    return out;
+  } finally {
+    await b.close();
+  }
+}
+
 // ------------------------------------------------------------- page load
 
 async function loadRun(opts, chromePath) {
@@ -1079,6 +1150,15 @@ function report(data, opts) {
     const top = Object.entries(calls).sort((a, b) => b[1] - a[1]).slice(0, 12);
     out.push('\nWeb Audio calls, mean ms per second across those runs: ' + top.map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ') + '.');
   }
+  if (data.fixed && data.fixed.length) {
+    out.push('\n### The graph that always runs, part by part (offline, ms of rendering per second of sound)\n');
+    const names = Object.keys(FIXED_VARIANTS).filter((k) => k !== 'whole');
+    out.push(table(['part', ...data.fixed.map((f) => f.quality)],
+      [['the whole graph, no notes', ...data.fixed.map((f) => f2(f.ms.whole))],
+        ['an empty context', ...data.fixed.map((f) => f2(f.empty))],
+        ...names.map((n) => [`${n}, saved by taking it out`, ...data.fixed.map((f) => `${f2(f.ms[n])} ± ${f2(f.spread[n])}`)])]));
+    out.push('\nEach part: the median of five paired differences (the whole graph, then the graph without it), ± half their range. Taking a part out changes the sound; the figures say what each part costs, not that it could go.');
+  }
   if (data.memory && data.memory.length) {
     out.push('\n### Memory over a long run (after a forced GC at each reading)\n');
     out.push(table(['loop', 'quality', 'minutes', 'heap MB start', 'heap MB end', 'heap MB/min', 'live audio handlers start / end', 'handlers/min', 'DOM nodes start / end'],
@@ -1157,7 +1237,7 @@ async function main() {
   await probe.close();
   const data = {
     build: buildOf(), chromium: product, cpus: `${os.cpus().length} x ${os.cpus()[0].model.trim()}`,
-    date: new Date().toISOString(), opts, loops, runs: [], memory: [], idle: [],
+    date: new Date().toISOString(), opts, loops, runs: [], memory: [], idle: [], fixed: [],
   };
   const has = (p) => opts.parts.includes(p);
   const log = (s) => console.error(`perf: ${s}`);
@@ -1203,6 +1283,12 @@ async function main() {
   if (has('hidden')) {
     for (const loop of loops) for (const quality of opts.quality) for (const throttle of opts.hiddenThrottle) {
       await once({ part: 'hidden', loop, quality, throttle, hidden: true, warmup: opts.warmup, seconds: opts.hiddenSeconds || opts.seconds });
+    }
+  }
+  if (has('fixed')) {
+    for (const quality of opts.quality) {
+      log(`fixed graph ${quality}`);
+      data.fixed.push(await fixedRun(opts, chromePath, quality));
     }
   }
   if (has('muted')) {

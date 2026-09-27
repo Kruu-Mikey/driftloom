@@ -348,3 +348,58 @@ Web Audio calls, mean ms per second across those runs: createOscillator 0.50, cr
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | undertow-sai-soan | full | 5 | 1.68 | 1.86 | 0.02 | 658 / 127 | -0.8 | 594 / 594 |
 | undertow-sai-soan | lite | 5 | 1.67 | 1.87 | 0.03 | 451 / 872 | 7.0 | 594 / 594 |
+
+## Addendum: the graph that always runs (item 14.4)
+
+`node tools/perf.mjs --parts fixed`, on main after #102 (v59). The real
+Synth in an offline context in the page, no notes, 30 s rendered at a
+time; each part taken out of the path to the speakers (a part nothing
+reaches is not rendered) and timed against the whole graph right after
+it, five times, the median difference its cost. Offline rendering has no
+device around it, so these read lower than the live "every layer muted"
+figure (28-39 ms/s in the baseline), but they split it.
+
+| part | full | lite |
+|---|---:|---:|
+| the whole graph, no notes | 23.6 | 17.0 |
+| reverb: six combs (three on lite) and a pre-delay | 7.3 ± 2.0 | 4.3 ± 1.9 |
+| the ceiling (a limiter at -3 dB) | 3.6 ± 1.5 | 3.6 ± 0.9 |
+| every channel gain and send | 3.6 ± 1.8 | 0.5 ± 1.3 |
+| the saturator's 2x oversampling | 2.3 ± 1.6 | off on lite |
+| the bus compressor | 2.1 ± 1.0 | 3.1 ± 1.3 |
+| echo | 1.9 ± 0.8 | 1.6 ± 2.8 |
+| wobble: the modulated delay and its two LFOs | 1.3 ± 1.7 | 1.3 ± 0.4 |
+| the tone and high-pass filters | 0.5 ± 2.2 | 0.0 ± 0.9 |
+| sends at zero level (the bass's echo) | -0.3 ± 4.1 | -1.2 ± 1.7 |
+
+(ms of rendering per second of sound; ± half the range of the five
+pairs. An earlier run of the same, on the 14.4 worktree, agreed within
+the ranges: reverb 6.8 and 3.5, the two compressors 3.3 + 0.7 and 3.9 +
+3.6, oversampling 2.3.)
+
+**Savings that leave the sound identical: none worth having.** Every part
+shapes the sound. The one pure candidate, a send whose level is zero (the
+bass's echo), costs nothing measurable, and the master and kill gains are
+too cheap to find.
+
+**Proposals that would change the sound** (not made; each for Mikey's
+ears, and each checkable with `measure.mjs` loudness and a blind A/B):
+
+1. **Four combs instead of six on full** (lite has three). About a third
+   of the reverb, ~2.4 ms/s. A slightly less dense tail.
+2. **No oversampling on the saturator at full**, as lite already does.
+   ~2.3 ms/s. The saturator is a gentle tanh ahead of the tone filter;
+   what oversampling prevents is aliasing of its harmonics, which at these
+   drives and with the tone filter after it should be faint -- but it is
+   in the top octave, where "harsh" lives, so it wants a listen.
+3. **One dynamics stage instead of two.** The bus compressor and the
+   ceiling together are 5-7 ms/s. A single compressor tuned to do both
+   would save one of them, and change how loud loops breathe; check it
+   against the punch figures of #31 before anyone listens.
+4. **The wobble's delay time automated per block** (k-rate) rather than
+   per sample. At most ~1-3 ms/s; the risk is a faint zipper on the 6.3 Hz
+   flutter.
+
+Together 1, 2 and 4 would take the full graph from about 24 to about 17
+ms/s offline, what lite costs now, with the reverb, dynamics and the
+tape character still there.
