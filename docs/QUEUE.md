@@ -390,6 +390,41 @@ the chords median, at 1.6 s it sits 1.9 LU under, and the bell rings 6.5 s
 whatever the note length. Mikey heard it as buried, so the long-note
 reading decides: lift the chord use about 1.9 LU, melody use unchanged.
 
+## 16. The mood labels: make "happy" sound happy
+
+Mikey: "sometimes I will get a track that is '100%' happy and it certainly
+doesn't sound that way. It's not a bad track or a negative sounding
+track, but it doesn't feel like it is '100%' happy." And the constraint
+stands: never negative or depressing -- Animal Crossing and a nice coffee
+shop wouldn't go there. The eight moods already keep to that.
+
+What the brain found (20,000 fresh loops on v55): 1,028 are labelled 90%+
+happy. Their final `lift` averages 0.80, right on the happy region (0.82),
+so the feel numbers are fine. But **42% of them are in minor-ish modes**:
+dorian 16%, aeolian 9%, then harmonic minor, phrygian dominant, kumoi,
+hirajoshi, insen and more. The scale comes from the profile's pool and the
+mood barely steers it, so a "100% happy" loop in aeolian or phrygian
+dominant sounds wistful or fiery, not happy. And the "100%" reads as
+intensity when it means "all of its mood comes from the happy region".
+
+Do:
+- **Measure first:** for each mood, how its loops come out on the cues a
+  listener hears as bright or dark -- mode (major-ish vs minor-ish), share
+  of major chords, tempo, register, melodic direction. Report the table.
+- **Let the mood steer the music.** High `lift` should weight bright modes
+  and major harmony, and the other cues, clearly enough that the label is
+  honest; low `lift` leans inward (reflective, peaceful), never sad. Keep
+  every profile's character: steer within its scale pool where you can,
+  and say where a profile's pool can't honour a mood.
+- **An honest label.** Drop the percentages or make them mean what they
+  appear to. Words like "happy, with a peaceful streak" or a single
+  leading word are candidates; say what you chose and why, "for Mikey's
+  ears".
+- The balance lock will move (more major modes, perhaps); report and
+  re-baseline deliberately.
+- Afterwards the brain builds a blind album: Mikey names the feel of each
+  track from a short word list, and the labels are scored against him.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
