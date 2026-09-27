@@ -604,3 +604,10 @@ Mikey decides this line:
   at normal speed, 338 -> 223 at 6x). Look for the same playhead and
   cursors; and whether a light that switched off instantly would do, which
   would save another ~12 ms/s (the 90 ms glow-out is kept for now).
+- #100, finished voices let go (item 14.2, v58),
+  https://c83c1eb5-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear -- every note of every voice renders identically with and
+  without it (`measure.mjs --retire`). The audio thread does 25% less
+  work at normal speed and 44% less when the phone is busy, and no longer
+  grows with load. Measured A/B on one machine (`perf.mjs --ab`), since a
+  container restart moved the session to another mid-item.

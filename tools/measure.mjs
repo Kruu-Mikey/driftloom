@@ -73,6 +73,7 @@ driftloom offline audio measurement
   --note <seconds>  how long each probed note is held       (default 1.6)
   --refusals [code] count voice-budget refusals per layer
   --endings         check that every note of every voice fades out
+  --retire          check that letting a finished voice go changes nothing
   --profile <id>    keep only loops that profile leads, drawing from the
                     same corpus until --n of them are in
   --selftest        check the loudness meter against reference signals
@@ -142,7 +143,7 @@ function parseArgs(argv) {
   const opts = {
     n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
     jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
-    profile: null, endings: false,
+    profile: null, endings: false, retire: false,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -176,6 +177,7 @@ function parseArgs(argv) {
       case '--json': opts.json = value(); break;
       case '--selftest': opts.selftest = true; break;
       case '--endings': opts.endings = true; break;
+      case '--retire': opts.retire = true; break;
       case '--note': opts.note = Math.max(0.05, number()); break;
       case '--voice':
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
@@ -863,6 +865,67 @@ function endingOf(d, rate, midi) {
   while (last > 0 && Math.abs(d[last]) < peak * 1e-3) last--;
   return { sudden, at, ringing: last >= d.length - 2 };
 }
+
+// --retire: the same note rendered twice, once as it always was and once
+// with the synth letting its finished voices go on schedule during the
+// render (a sweep every 50 ms, as a live engine would ask for notes), and
+// the two compared sample by sample. Drums are struck directly.
+function renderRetire(job, dur, o, sweep) {
+  Math.random = mulberry32(seedFor([job.layer, job.voice, dur, 'retire'].join('|')));
+  const seconds = dur + o.tail;
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * o.rate), o.rate);
+  const synth = new Synth(ctx, 'full');
+  synth._budget = () => true;
+  const channel = synth.channels[job.layer].gain;
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(ctx.destination);
+  if (job.layer === 'drums') {
+    synth.drum(job.voice, 0.05, 0.8);
+  } else {
+    const tracks = { drums: [], bass: [], chords: [], melody: [], texture: [] };
+    const d = dur / STEP;
+    if (job.layer === 'melody') tracks.melody.push({ step: 0, dur: d, midi: job.midi, vel: 0.7, voice: job.voice, vowel: 'a' });
+    if (job.layer === 'chords') tracks.chords.push({ step: 0, dur: d, notes: [job.midi], vel: 0.7, voice: job.voice, vowel: 'a' });
+    if (job.layer === 'bass') tracks.bass.push({ step: 0, dur: d, midi: job.midi, vel: 0.7, glide: false, voice: job.voice });
+    if (job.layer === 'texture') tracks.texture.push({ step: 0, dur: d, notes: [job.midi], vel: 0.7, kind: job.voice });
+    const engine = Object.create(Engine.prototype);
+    Object.assign(engine, {
+      ctx, synth,
+      spec: { bpm: 60 / STEP / 4, swing: 0, mutes: {} },
+      live: { tracks, totalSteps: 1, stepsPerBar: 16 },
+      absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [], pending: [],
+    });
+    engine._scheduleStep(0, 0.05);
+  }
+  if (sweep) {
+    for (let t = 0.1; t < seconds - 0.05; t += 0.05) {
+      ctx.suspend(t).then(() => { synth._sweep(); ctx.resume(); });
+    }
+  }
+  return ctx.startRendering();
+}
+
+window.probeRetire = async (o) => {
+  const tasks = [];
+  for (const job of o.jobs) {
+    for (const dur of job.lengths) {
+      tasks.push(async () => {
+        const plain = (await renderRetire(job, dur, o, false)).getChannelData(0);
+        const swept = (await renderRetire(job, dur, o, true)).getChannelData(0);
+        let worst = 0;
+        let peak = 0;
+        for (let i = 0; i < plain.length; i++) {
+          const d = Math.abs(plain[i] - swept[i]);
+          if (d > worst) worst = d;
+          if (Math.abs(plain[i]) > peak) peak = Math.abs(plain[i]);
+        }
+        return { layer: job.layer, voice: job.voice, dur, worst, peak };
+      });
+    }
+  }
+  return inParallel(tasks, o.width);
+};
 
 window.probeEndings = async (o) => {
   const tasks = [];
@@ -1648,7 +1711,7 @@ try {
 const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-const probing = !!opts.voices || opts.endings;
+const probing = !!opts.voices || opts.endings || opts.retire;
 const counting = !!opts.refusals;
 const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
 await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
@@ -1680,6 +1743,32 @@ if (counting) {
   }
   console.log(corpus ? reportRefusalsCorpus(data, opts) : reportRefusalsOne(data, opts));
   process.exit(0);
+}
+
+if (opts.retire) {
+  // Every voice characters.js draws, in each layer, and every drum.
+  const DRUMS = ['kick', 'softkick', 'snare', 'clap', 'rim', 'hat', 'ohat', 'shaker', 'frame', 'tap', 'jingle', 'ojingle'];
+  const jobs = DRUMS.map((voice) => ({ layer: 'drums', voice, midi: 0, lengths: [0.1] }));
+  for (const [layer, voices] of Object.entries(drawnLayers())) {
+    const midi = ENDING_MIDI[layer] ?? 79;
+    for (const voice of voices) jobs.push({ layer, voice, midi, lengths: endingLengths(layer) });
+  }
+  const rows = await page.evaluate((o) => window.probeRetire(o), { jobs, rate: opts.rate, tail: 7, width: opts.jobs });
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  const LIMIT = 1e-5;
+  const bad = rows.filter((r) => r.worst > LIMIT);
+  const db = (x) => (x > 0 ? `${(20 * Math.log10(x)).toFixed(1)} dBFS` : 'none');
+  const out = ['', 'driftloom: letting finished voices go', `  ${rows.length} notes (every voice in every layer, at each ending length; every drum), each rendered`,
+    '  twice -- as always, and with the synth letting go of finished voices every 50 ms -- and compared.',
+    `  largest difference anywhere: ${db(Math.max(...rows.map((r) => r.worst)))}; limit ${db(LIMIT)}.`];
+  for (const r of bad) out.push(`    DIFFERS  ${r.layer} ${r.voice} ${r.dur}s: ${db(r.worst)} (note peak ${db(r.peak)})`);
+  out.push(bad.length ? `  ${bad.length} notes differ.` : '  Every note is identical.');
+  console.log(out.join('\n'));
+  process.exit(bad.length || pageErrors.length ? 1 : 0);
 }
 
 if (opts.endings) {
