@@ -305,9 +305,19 @@ function startServer(port, root = ROOT) {
       res.writeHead(404);
       return res.end('not found');
     }
+    // Headers as Cloudflare's static assets send them: an ETag and
+    // "revalidate every time", so a second fetch of an unchanged file is a
+    // 304 with no body, as it is in production.
     const body = fs.readFileSync(file);
-    served.push({ at: Date.now(), url, bytes: body.length });
-    res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-cache' });
+    const etag = `"${zlib.crc32 ? zlib.crc32(body).toString(16) : body.length.toString(16)}-${body.length}"`;
+    const headers = { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'public, max-age=0, must-revalidate', etag };
+    if (req.headers['if-none-match'] === etag) {
+      served.push({ at: Date.now(), url, bytes: 0, status: 304 });
+      res.writeHead(304, headers);
+      return res.end();
+    }
+    served.push({ at: Date.now(), url, bytes: body.length, status: 200 });
+    res.writeHead(200, headers);
     return res.end(body);
   });
   return new Promise((resolve, reject) => {
@@ -1033,12 +1043,19 @@ async function loadRun(opts, chromePath) {
       return { domContentLoaded: n ? n.domContentLoadedEventEnd : null, load: n ? n.loadEventEnd : null, fcp: fcp ? fcp.startTime : null };
     })()`);
     const files = new Map();
-    for (const s of served) if (s.at >= start) files.set(s.url, (files.get(s.url) || { url: s.url, bytes: s.bytes, requests: 0 }));
-    for (const s of served) if (s.at >= start) files.get(s.url).requests++;
+    // Bytes actually sent: every full response, and nothing for a 304.
+    for (const s of served) {
+      if (s.at < start) continue;
+      const f = files.get(s.url) || { url: s.url, bytes: 0, requests: 0, full: 0, notModified: 0 };
+      f.bytes += s.bytes;
+      f.requests++;
+      if (s.status === 304) f.notModified++; else f.full++;
+      files.set(s.url, f);
+    }
     const rows = [...files.values()].map((f) => {
       const body = fs.readFileSync(path.join(ROOT, f.url));
       const text = /\.(js|css|html|json|webmanifest|svg)$/.test(f.url);
-      return { ...f, gzip: text ? zlib.gzipSync(body, { level: 9 }).length : f.bytes };
+      return { ...f, gzip: (text ? zlib.gzipSync(body, { level: 9 }).length : body.length) * f.full };
     });
     const firstLoad = served.filter((s) => s.at >= start).reduce((a, s) => a + s.bytes, 0);
     return { sw, timing, rows, firstLoad, local: !opts.url };
@@ -1109,7 +1126,7 @@ function report(data, opts) {
     const total = L.rows.reduce((a, r) => a + r.bytes, 0);
     const gz = L.rows.reduce((a, r) => a + r.gzip, 0);
     out.push('\n### Page weight, cold first visit\n');
-    out.push(table(['file', 'bytes', 'gzip', 'requests'], L.rows.sort((a, b) => b.bytes - a.bytes).map((r) => [r.url, r.bytes, r.gzip, r.requests])));
+    out.push(table(['file', 'bytes sent', 'gzipped', 'requests: full / 304'], L.rows.sort((a, b) => b.bytes - a.bytes).map((r) => [r.url, r.bytes, r.gzip, `${r.full ?? r.requests} / ${r.notModified ?? 0}`])));
     out.push(`\nTotal ${(total / 1024).toFixed(1)} KB sent (${(gz / 1024).toFixed(1)} KB gzipped), service worker ${L.sw}; DOMContentLoaded ${f0(L.timing.domContentLoaded)} ms, load ${f0(L.timing.load)} ms, first contentful paint ${f0(L.timing.fcp)} ms (local server).`);
   }
   if (data.idle && data.idle.length) {
