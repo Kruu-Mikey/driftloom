@@ -373,9 +373,45 @@ function tanhCurve(drive = 1.0, n = 2048) {
   return curve;
 }
 
+// Every voice lets go of its nodes when it ends.
+//
+// Nothing used to disconnect a finished voice. Its sources stopped, but
+// its gains and filters stayed wired to the channel, and the browser kept
+// rendering them -- silence, at full cost -- until the garbage collector
+// happened to find them. Measured live (docs/perf-baseline.md), that was
+// 40-45% of the audio thread's work at normal speed and about 70% when the
+// main thread was slow and collected less often.
+//
+// So the synth notes every node a voice creates, and when every source
+// that voice started has ended, it disconnects them all. A voice is one
+// call into one of the entry points below; one that calls another (harp
+// is two fm() strikes) is still one voice. Nodes built once and shared --
+// the master chain, the channels, the instrument bodies -- are never in
+// a voice's list. By the time the last source ends its envelope has
+// already reached zero, so letting go changes nothing that is heard.
+const VOICE_ENTRIES = ['drum', 'bass', 'fm', 'pad', 'pluck', 'voice', 'texture'];
+
+// The context as the synth sees it: the real one, except that any node
+// created while a voice is being built is added to that voice's list.
+function recordingContext(ctx, synth) {
+  return new Proxy(ctx, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target);
+      if (typeof value !== 'function') return value;
+      if (typeof key !== 'string' || !key.startsWith('create')) return value.bind(target);
+      return (...args) => {
+        const made = value.apply(target, args);
+        if (synth._building && made instanceof AudioNode) synth._building.push(made);
+        return made;
+      };
+    },
+  });
+}
+
 export class Synth {
   constructor(ctx, quality = 'full') {
-    this.ctx = ctx;
+    this._building = null;
+    this.ctx = recordingContext(ctx, this);
     this.quality = quality;
     this._releases = [];
     this.noise = this._makeNoise(2.0);
@@ -462,6 +498,9 @@ export class Synth {
     if (!byDest) this._bodies.set(kind, byDest = new Map());
     let input = byDest.get(dest);
     if (input) return input;
+    // Shared by every note to come, so never part of this one.
+    const building = this._building;
+    this._building = null;
     const ctx = this.ctx;
     const nodes = BODIES[kind].map(([type, frequency, Q, gain]) => {
       const b = ctx.createBiquadFilter();
@@ -475,7 +514,24 @@ export class Synth {
     nodes[nodes.length - 1].connect(dest);
     input = nodes[0];
     byDest.set(dest, input);
+    this._building = building;
     return input;
+  }
+
+  // Let a finished voice go: once every source it started has ended,
+  // disconnect everything it built. A voice the budget refused built
+  // nothing and has nothing to wait for.
+  _retire(nodes) {
+    const sources = nodes.filter((n) => n instanceof AudioScheduledSourceNode);
+    if (!sources.length) return;
+    let left = sources.length;
+    const ended = () => {
+      if (--left > 0) return;
+      for (const n of nodes) {
+        try { n.disconnect(); } catch { /* already gone */ }
+      }
+    };
+    for (const s of sources) s.addEventListener('ended', ended, { once: true });
   }
 
   // A new strum into `dest` at `time`: the last strum's strings that are
@@ -2415,4 +2471,20 @@ export class Synth {
       this._release(time, dur + 0.1, VOICE_COST.waves);
     }
   }
+}
+
+// One voice per outermost call into an entry point (see VOICE_ENTRIES).
+for (const name of VOICE_ENTRIES) {
+  const play = Synth.prototype[name];
+  Synth.prototype[name] = function (...args) {
+    if (this._building) return play.apply(this, args);
+    const built = [];
+    this._building = built;
+    try {
+      return play.apply(this, args);
+    } finally {
+      this._building = null;
+      this._retire(built);
+    }
+  };
 }
