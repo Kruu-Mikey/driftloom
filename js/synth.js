@@ -382,28 +382,45 @@ function tanhCurve(drive = 1.0, n = 2048) {
 // 40-45% of the audio thread's work at normal speed and about 70% when the
 // main thread was slow and collected less often.
 //
-// So the synth notes every node a voice creates, and when every source
-// that voice started has ended, it disconnects them all. A voice is one
-// call into one of the entry points below; one that calls another (harp
-// is two fm() strikes) is still one voice. Nodes built once and shared --
-// the master chain, the channels, the instrument bodies -- are never in
-// a voice's list. By the time the last source ends its envelope has
-// already reached zero, so letting go changes nothing that is heard.
+// So the synth notes every node a voice creates, and once the voice is
+// over it disconnects them all. A voice is one call into one of the entry
+// points below; one that calls another (harp is two fm() strikes) is still
+// one voice. Nodes built once and shared -- the master chain, the
+// channels, the instrument bodies -- are never in a voice's list.
+//
+// "Over" is the time the voice already gives the voice budget for when it
+// is done, tail included (`_release`), plus RETIRE_MARGIN. Finished voices
+// wait in a queue in that order and are let go the next time the synth is
+// asked for a note, so the whole of it costs a comparison per note and a
+// disconnect per node: no events. A voice that never tells the budget
+// when it ends falls back to waiting for its sources' 'ended' events. By
+// then every envelope has reached zero, so letting go changes nothing that
+// is heard.
 const VOICE_ENTRIES = ['drum', 'bass', 'fm', 'pad', 'pluck', 'voice', 'texture'];
+const RETIRE_MARGIN = 0.25;
 
 // The context as the synth sees it: the real one, except that any node
 // created while a voice is being built is added to that voice's list.
 function recordingContext(ctx, synth) {
+  // One wrapper per method, made once: a new closure on every access would
+  // be garbage on every note.
+  const methods = new Map();
   return new Proxy(ctx, {
     get(target, key) {
       const value = Reflect.get(target, key, target);
       if (typeof value !== 'function') return value;
-      if (typeof key !== 'string' || !key.startsWith('create')) return value.bind(target);
-      return (...args) => {
-        const made = value.apply(target, args);
-        if (synth._building && made instanceof AudioNode) synth._building.push(made);
-        return made;
-      };
+      let method = methods.get(key);
+      if (!method) {
+        method = typeof key === 'string' && key.startsWith('create')
+          ? (...args) => {
+            const made = value.apply(target, args);
+            if (synth._building && made instanceof AudioNode) synth._building.push(made);
+            return made;
+          }
+          : value.bind(target);
+        methods.set(key, method);
+      }
+      return method;
     },
   });
 }
@@ -411,6 +428,10 @@ function recordingContext(ctx, synth) {
 export class Synth {
   constructor(ctx, quality = 'full') {
     this._building = null;
+    this._voiceEnd = null;
+    // Finished-to-be voices, earliest end first: { end, nodes }.
+    this._retiring = [];
+    this._sweeper = null;
     this.ctx = recordingContext(ctx, this);
     this.quality = quality;
     this._releases = [];
@@ -518,20 +539,32 @@ export class Synth {
     return input;
   }
 
-  // Let a finished voice go: once every source it started has ended,
-  // disconnect everything it built. A voice the budget refused built
-  // nothing and has nothing to wait for.
-  _retire(nodes) {
-    const sources = nodes.filter((n) => n instanceof AudioScheduledSourceNode);
-    if (!sources.length) return;
-    let left = sources.length;
-    const ended = () => {
-      if (--left > 0) return;
-      for (const n of nodes) {
-        try { n.disconnect(); } catch { /* already gone */ }
-      }
-    };
-    for (const s of sources) s.addEventListener('ended', ended, { once: true });
+  // Queue a voice to be let go once it is over (see RETIRE_MARGIN). A
+  // voice the budget refused built nothing and has nothing to wait for.
+  _retire(nodes, end) {
+    if (!nodes.length) return;
+    if (end == null) {
+      // No end on record: wait for every source it started to end.
+      const sources = nodes.filter((n) => n instanceof AudioScheduledSourceNode);
+      if (!sources.length) return;
+      let left = sources.length;
+      const ended = () => { if (--left <= 0) letGo(nodes); };
+      for (const src of sources) src.addEventListener('ended', ended, { once: true });
+      return;
+    }
+    const at = end + RETIRE_MARGIN;
+    let i = this._retiring.length;
+    while (i > 0 && this._retiring[i - 1].at > at) i--;
+    this._retiring.splice(i, 0, { at, nodes });
+  }
+
+  // Let go of every voice that is over.
+  _sweep() {
+    const now = this.ctx.currentTime;
+    let n = 0;
+    while (n < this._retiring.length && this._retiring[n].at <= now) n++;
+    if (!n) return;
+    for (const { nodes } of this._retiring.splice(0, n)) letGo(nodes);
   }
 
   // A new strum into `dest` at `time`: the last strum's strings that are
@@ -840,6 +873,14 @@ export class Synth {
     g.cancelScheduledValues(when);
     g.setValueAtTime(g.value, when);
     g.linearRampToValueAtTime(0, when + 0.06);
+    // Stopped, nothing asks for notes, so nothing would let the last ones
+    // go: sweep once a second until they have all gone.
+    if (!this._sweeper && typeof setInterval === 'function') {
+      this._sweeper = setInterval(() => {
+        this._sweep();
+        if (!this._retiring.length) { clearInterval(this._sweeper); this._sweeper = null; }
+      }, 1000);
+    }
   }
 
   unsilence(when = this.ctx.currentTime) {
@@ -853,6 +894,7 @@ export class Synth {
   // one still wired to the speakers, with its LFOs running and its combs
   // ringing. Tear it down properly instead.
   dispose() {
+    if (this._sweeper) { clearInterval(this._sweeper); this._sweeper = null; }
     for (const osc of [this.wowLfo, this.flutterLfo]) {
       try { osc.stop(); } catch { /* already stopped */ }
       try { osc.disconnect(); } catch { /* already detached */ }
@@ -941,6 +983,8 @@ export class Synth {
 
   _release(time, dur, cost = DEFAULT_COST) {
     const at = (typeof dur === 'number' ? time + dur : this.ctx.currentTime + time) + 0.12;
+    // The voice being built is over when its last part is.
+    if (this._building) this._voiceEnd = Math.max(this._voiceEnd ?? 0, at);
     let i = this._releases.length;
     while (i > 0 && this._releases[i - 1].at > at) i--;
     this._releases.splice(i, 0, { at, cost });
@@ -2473,18 +2517,26 @@ export class Synth {
   }
 }
 
+function letGo(nodes) {
+  for (const n of nodes) {
+    try { n.disconnect(); } catch { /* already gone */ }
+  }
+}
+
 // One voice per outermost call into an entry point (see VOICE_ENTRIES).
 for (const name of VOICE_ENTRIES) {
   const play = Synth.prototype[name];
   Synth.prototype[name] = function (...args) {
     if (this._building) return play.apply(this, args);
+    this._sweep();
     const built = [];
     this._building = built;
+    this._voiceEnd = null;
     try {
       return play.apply(this, args);
     } finally {
       this._building = null;
-      this._retire(built);
+      this._retire(built, this._voiceEnd);
     }
   };
 }
