@@ -589,3 +589,10 @@ Mikey decides this line:
   before. Listen for long loops that go somewhere and come home, a middle
   that sounds like an answer rather than a new tune, and whether a third
   is too many or too few (`DEPTH` in `js/generator.js` is the knob).
+- #96, paint (item 14.1, v57),
+  https://762d584a-driftloom.kruu-mikey-thaiculture.workers.dev: nothing
+  to hear; the playhead lights and the layer cursors now move without
+  repainting the page (paint 33 -> 0.7 ms/s, the main thread 60 -> 43 ms/s
+  at normal speed, 338 -> 223 at 6x). Look for the same playhead and
+  cursors; and whether a light that switched off instantly would do, which
+  would save another ~12 ms/s (the 90 ms glow-out is kept for now).
