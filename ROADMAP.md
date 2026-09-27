@@ -770,6 +770,20 @@ Avoid anything needing special headers (threads, SharedArrayBuffer),
 keep the JavaScript engine as the fallback until the Rust one has been
 heard on real phones, and test on Mikey's own phone early.
 
+**Which language (considered 2026-09-27).** Rust stays the pick: no
+garbage collector to cause audio hiccups, the best WebAssembly toolchain,
+a native audio backend (`cpal`), a Rust game engine (Bevy) plus bindings
+for Godot and a C ABI for Unity, and DSP crates to build on (`fundsp`).
+The one real alternative is C++, the audio industry's language (JUCE,
+FMOD, Wwise, every engine speaks it), at the cost of memory bugs that are
+harder to catch in code maintained with AI help, and messier builds.
+Faust, a language just for DSP that compiles to Rust, C++ and
+WebAssembly, is worth a look for the voices alone. Not chosen:
+AssemblyScript (web only), Zig (young ecosystem, few engine bindings),
+C# (garbage collected, no good worklet story). Staying in JavaScript is
+also legitimate if the web app is the only target; the reason to port
+is portability, not speed.
+
 **Timing (agreed with Mikey, 2026-09-26):** sooner for
 the synth, later for the generator. The voices are close to settled --
 Mikey has approved nearly all of them -- while the composition is about
