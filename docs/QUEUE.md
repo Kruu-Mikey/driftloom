@@ -637,3 +637,10 @@ Mikey decides this line:
   instead of glowing out over 90 ms, and the main thread does a quarter
   less work (61 to 46 ms a second at 1x, paint 15 to 10). Look for the
   playhead still reading clearly on full and on lite.
+- #106, the temple bell as a chord voice (item 15, v62),
+  https://ca65ea28-driftloom.kruu-mikey-thaiculture.workers.dev: listen
+  for a loop whose keys are the temple bell -- its chords 1.9 dB up, now
+  level with the other chord voices on held chords (was 1.7 LU under).
+  On short chords it now sits 2.7 LU above them, since it rings 6.5 s
+  whatever the note: the long-note reading decided. The bell as a melody
+  is unchanged.
