@@ -353,6 +353,13 @@ const RESERVE_SHARE = 0.42;
 // sounds as it did and only the bottom comes up.
 const BELL_PARTIAL_VEL = 0.8;
 
+// The temple bell as a chord voice, lifted 1.9 LU (queue item 15). It rings
+// 6.5 s whatever the note, so a short-note probe flatters it against voices
+// that stop: at 0.4 s notes it sat above the chords median, at 1.6 s 1.9 LU
+// under it, and Mikey heard it as buried. The long-note reading decides.
+// Its melody use is unchanged.
+const TEMPLEBELL_CHORD_LIFT = Math.pow(10, 1.9 / 20);
+
 // Tape saturation, not a maximizer.
 //
 // Dividing by tanh(drive) -- the obvious normalisation, since it maps x=1 to
@@ -2226,7 +2233,7 @@ export class Synth {
         const stopAt = time + hold + 1.4;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
-        g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.006);
+        g.gain.exponentialRampToValueAtTime(vel * 0.3 * (soft ? TEMPLEBELL_CHORD_LIFT : 1), time + 0.006);
         this._release2(g.gain, time + 0.02, stopAt);
         g.connect(dest);
 
