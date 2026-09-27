@@ -494,6 +494,16 @@ Mikey decides this line:
   the 1.6 s median, or leave it and re-listen. The other three parts of
   item 11 went ahead without it.
 
+- **Item 17, 32-bar loops: two thirds is out of reach through the weights;
+  a decision if more is wanted (2026-09-27).** Three in four 32-bar loops
+  (287 of 378 in 30,000) play their own layer cycles -- the micro-loops
+  that slide short fragments against the long frame -- and those never
+  develop, by item 12's design: their motion is the sliding. The weight
+  reaches only the rest. At 0.72 (the same as 24 bars) 73% of those
+  develop, 17% of all 32-bar loops (was 16% at 0.65). Getting
+  near two thirds of all of them would mean developing micro-loops too,
+  which is a new kind of form rather than a weight: say if you want it.
+
 ## Done
 
 - #59, fiddle and accordion take two (v44),

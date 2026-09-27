@@ -5,7 +5,7 @@
 // voicing or an out-of-range note does not throw, it just sounds wrong,
 // and often only on one seed in a thousand. So we check thousands.
 
-import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf, developmentOf, DEPTH } from '../js/generator.js';
+import { newSpec, render, drift, rerollLayer, LAYERS, gracesOf, harmonyOf, developmentOf, DEPTH, characterOf } from '../js/generator.js';
 import { Rng, randomSeed, seedName } from '../js/rng.js';
 import { patternToMidi } from '../js/midi.js';
 import { SCALES, SCALE_BRIGHTNESS } from '../js/theory.js';
@@ -433,7 +433,8 @@ console.log('\nComposition depth');
     const spb = p.stepsPerBar;
     let at = 0;
     for (const sec of dev.sections) { sec.at = at; at += sec.bars; }
-    const [a, b] = dev.sections;
+    const a = dev.sections.find((x) => x.role === 'A');
+    const b = dev.sections.find((x) => x.role === 'B');
     // B's chords are not A's.
     const chordsIn = (sec) => p.tracks.chords.filter((e) => e.vel && e.step >= sec.at * spb && e.step < (sec.at + sec.bars) * spb)
       .map((e) => `${(e.step - sec.at * spb)}:${e.notes.join('.')}`).join();
@@ -452,6 +453,72 @@ console.log('\nComposition depth');
   check('only loops of 8 bars or more without their own layer cycles develop', wrongly === 0, `(${wrongly})`);
   check('a departure moves to other chords', departs / developing > 0.9, `(${departs} of ${developing})`);
   check('a departure plays another tune', answers / checked > 0.95, `(${answers} of ${checked})`);
+}
+
+// Queue item 17. Sixteen bars develop in four-bar phrases -- A, A varied,
+// the departure, A varied again -- and the departure moves register,
+// rhythm and harmony together. In every developing loop B's tune is heard.
+{
+  const master = new Rng(17);
+  let sixteen = 0;
+  let cadences = 0;
+  let generic = 0;
+  let shaped = 0;
+  let moves = 0;
+  let varied = 0;
+  let returns = 0;
+  let tuned = 0;
+  let heard = 0;
+  let withTune = 0;
+  const long = { 24: [0, 0], 32: [0, 0] };
+  for (let i = 0; i < 12000; i++) {
+    const spec = newSpec(master.seed32());
+    if (long[spec.bars]) {
+      long[spec.bars][0]++;
+      if (developmentOf(spec)) long[spec.bars][1]++;
+    }
+    const dev = developmentOf(spec);
+    if (!dev) continue;
+    const p = render(spec);
+    const spb = p.stepsPerBar;
+    let at = 0;
+    for (const sec of dev.sections) { sec.at = at; at += sec.bars; }
+    const role = (k) => dev.sections.find((x) => x.role === k);
+    const melIn = (sec) => p.tracks.melody.filter((e) => e.vel && e.step >= sec.at * spb && e.step < (sec.at + sec.bars) * spb)
+      .map((e) => `${(e.step - sec.at * spb)}:${e.midi}`).join();
+    const written = p.tracks.melody.some((e) => e.vel);
+    if (written) {
+      withTune++;
+      if (melIn(role('B'))) heard++;
+    }
+    if (spec.bars !== 16) continue;
+    sixteen++;
+    const chordsIn = (sec) => p.harmony.slots.filter((sl) => sl.startStep >= sec.at * spb && sl.startStep < (sec.at + sec.bars) * spb)
+      .map((sl) => sl.notes.join('.')).join();
+    const [ca, cv, cr] = ['A', 'V', 'R'].map((k) => chordsIn(role(k)));
+    if (!characterOf(spec).progressions) {
+      generic++;
+      if (cv !== ca && cr !== ca && cr !== cv) cadences++;
+    }
+    if (dev.sections.map((x) => `${x.role}${x.bars}`).join() === 'A4,V4,B4,R4') shaped++;
+    const d = p.meta.depth;
+    if (written && melIn(role('A'))) {
+      tuned++;
+      if ((d.answer === 'rhythm' || d.answer === 'both') && d.shift !== 0) moves++;
+      if (melIn(role('V')) !== melIn(role('A'))) varied++;
+      if (melIn(role('R')) !== melIn(role('A'))) returns++;
+    }
+  }
+  check('sixteen bars develop in four four-bar phrases', sixteen > 200 && shaped === sixteen, `(${shaped} of ${sixteen})`);
+  check('the departure moves rhythm and register', moves === tuned, `(${moves} of ${tuned})`);
+  // A profile's own progressions are idioms and end as written.
+  check('A, its variation and the return each cadence somewhere of their own', cadences / generic > 0.97, `(${cadences} of ${generic})`);
+  check('the varied statement is not the statement again', varied / tuned > 0.95, `(${varied} of ${tuned})`);
+  check('nor is the return', returns / tuned > 0.95, `(${returns} of ${tuned})`);
+  check('the departure\'s tune is heard', heard / withTune > 0.97, `(${heard} of ${withTune})`);
+  const share24 = long[24][1] / long[24][0];
+  check('about two thirds of the 24-bar loops develop', share24 > 0.6 && share24 < 0.74, `(${share24.toFixed(3)})`);
+  check('32-bar loops develop more than before', long[32][1] / long[32][0] > 0.14, `(${(long[32][1] / long[32][0]).toFixed(3)})`);
 }
 
 console.log('\nMoods steer the mode');
