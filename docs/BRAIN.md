@@ -203,6 +203,18 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   comes from the profile pool and the mood barely steers it, and "100%"
   reads as intensity. Queue item 16. Constraint unchanged: never negative
   or depressing.
+  **Item 12 merged (#92, v56), checked on main:** tests and `--check`
+  pass. `developmentOf(spec)` marks developing loops; `DEPTH` (1) is the
+  knob. Brain's measure, 12,000 loops: distinct melody bars / span,
+  developing vs simple -- 16 bars 7.3 / 14.2 vs 6.7 / 12.4 (a modest gain),
+  24 bars 9.6 / 19.8 vs 7.7 / 15.4, 32 bars 12.7 / 16.2 vs 5.3 / 10.3.
+  Blind album "Depth" (8 long loops, 5 developing, 3 simple) sent on the
+  live site. **Heard:** developing 24 and 32 bars both "goes somewhere";
+  developing 16 bars one yes, two partly ("at the end", "circles one
+  idea"); simple 16s both "loops"; his favourite ("wonderful") a simple
+  24-bar haven loop. Nothing "too busy". Least favourite: a developing
+  16-bar shrine loop and a simple 16-bar tide loop. Queue item 17:
+  stronger 16-bar development, two thirds of 24/32-bar loops develop.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
