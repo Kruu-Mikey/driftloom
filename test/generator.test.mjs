@@ -211,19 +211,24 @@ const third = (slot) => {
 // A two-bar loop has room for the first two chords of it. A loop that
 // develops can play it in its departure rather than from the top, so the
 // four chords are read from the start of the section it is in.
-const cadenceStart = ({ spec, p }) => {
+// A section has only its own chords: a two-bar departure holds the first
+// two of the cadence, as a two-bar loop does.
+const cadenceRange = ({ spec, p }) => {
   const dev = developmentOf(spec);
-  if (!dev) return 0;
+  if (!dev) return [0, Infinity];
   const first = p.harmony.slots.find((s) => s.steps).startStep;
   let at = 0;
-  let from = 0;
+  let range = [0, Infinity];
   for (const sec of dev.sections) {
-    if (first >= at * p.stepsPerBar) from = at * p.stepsPerBar;
+    if (first >= at * p.stepsPerBar) range = [at * p.stepsPerBar, (at + sec.bars) * p.stepsPerBar];
     at += sec.bars;
   }
-  return p.harmony.slots.findIndex((s) => s.startStep === from);
+  return range;
 };
-const cadenceOf = (x) => x.p.harmony.slots.slice(cadenceStart(x), cadenceStart(x) + 4);
+const cadenceOf = (x) => {
+  const [from, to] = cadenceRange(x);
+  return x.p.harmony.slots.filter((s) => s.startStep >= from && s.startStep < to).slice(0, 4);
+};
 const cadences = cinders.filter(({ p }) => p.harmony.slots.some((s) => s.steps));
 const whole = cadences.filter((x) => cadenceOf(x).length >= 4);
 const spelt = whole.map((x) => cadenceOf(x).map(third).join(''));
