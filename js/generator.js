@@ -9,6 +9,7 @@
 import { Rng, randomSeed, seedName } from './rng.js';
 import { SCALES, scalePitch, buildChord, voiceInRange, nearestChordTone, moodWeighted } from './theory.js';
 import { CHARACTERS, CHARACTER_WEIGHTS, POLY_CYCLES, blendMix, resolveKey } from './characters.js';
+import { MOODS } from './moods.js';
 
 export const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
 export const LAYER_LABELS = {
@@ -206,20 +207,9 @@ export function characterOf(spec) {
   return blendMix(mix);
 }
 
-// Named regions of the feeling space, in (lift, energy, warmth).
-//
-// Both wings of the axis are wholesome: the bright, quickened side and the
-// settled, comforted side, plus two inward ones. Nothing here is a sad end.
-export const MOODS = {
-  joyful: { lift: 0.92, energy: 0.72, warmth: 0.72 },
-  happy: { lift: 0.82, energy: 0.52, warmth: 0.78 },
-  enthusiastic: { lift: 0.88, energy: 0.9, warmth: 0.66 },
-  refreshing: { lift: 0.72, energy: 0.62, warmth: 0.42 },
-  soothing: { lift: 0.62, energy: 0.18, warmth: 0.82 },
-  peaceful: { lift: 0.58, energy: 0.28, warmth: 0.6 },
-  comforting: { lift: 0.54, energy: 0.36, warmth: 0.86 },
-  reflective: { lift: 0.3, energy: 0.22, warmth: 0.46 },
-};
+// Named regions of the feeling space, in (lift, energy, warmth). They live
+// in moods.js with the rest of the mood vocabulary.
+export { MOODS };
 
 const LAYER_SALT = {
   drums: 0x1f3b, bass: 0x2c5d, chords: 0x3a71, melody: 0x4d93, texture: 0x5e17,

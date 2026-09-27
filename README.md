@@ -123,13 +123,21 @@ layer seed, so re-rolling the bass does not reshuffle the feeling.
 Underneath, each mood is a point on three dials:
 
 - **lift** -- settled to lifted. Steers scale choice, register, the
-  direction of the melodic walk, added ninths.
+  direction of the melodic walk, added ninths. Above about 0.66 it leans
+  hard on the bright modes, and below 0.5 it leans inward, toward the
+  middle of the axis rather than its darkest modes; in between the choice
+  is only nudged. A loop labelled happy sounds happy in any profile whose
+  modes can: cinder's and shatter's have no bright mode to offer.
 - **energy** -- still to animated. Steers tempo, hat density, how often bars
   rest.
 - **warmth** -- glassy to warm. Steers saturation and timbre.
 
 Neither end of any axis is a sad end. The framing is sukha to piti, comfort
 to brightness, rather than gloom to joy.
+
+The moods, their places on the dials, their share-code numbers and the
+words the readout shows all live in `js/moods.js`, so adding, renaming or
+merging one is an edit to that file.
 
 ## How it works
 
@@ -144,6 +152,7 @@ js/rng.js         seeded PRNG, and the syllable generator for loop names
 js/clock.js       worker-based tick source that survives backgrounding
 js/media.js       media element routing and lock-screen / headset controls
 js/theory.js      scales, chord building, pitch maths
+js/moods.js       the mood vocabulary: feelings, words, share-code numbers
 js/generator.js   the composer: spec -> pattern, and the drift mutations
 js/synth.js       voices and the reverb/echo bus
 js/engine.js      lookahead scheduler
