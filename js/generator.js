@@ -536,7 +536,7 @@ const CHORD_RHYTHMS = {
   },
 };
 
-function genHarmony(spec) {
+function genHarmony(spec, vary = null, besides = null) {
   const r = new Rng(spec.layerSeeds.chords);
   const c = characterOf(spec);
   // A choir loop relabels the voice the draw produced; it never replaces
@@ -579,6 +579,19 @@ function genHarmony(spec) {
   // own progressions end as written, so the draw decides nothing there.
   if (c.flatSeven && !pentatonic && r.chance(c.flatSeven) && !own) {
     shape[shape.length - 1] = 6;
+  }
+
+  // A varied statement (a developing loop's V, and its return) keeps the
+  // progression's opening and takes another's ending, drawn from a stream
+  // of its own so every draw below -- rhythm, voicing, the holes -- is the
+  // statement's own: the same phrase, cadencing somewhere else, and not
+  // where `besides` (the other varied statement) cadences either. A
+  // profile's own progressions are idioms, and end as written.
+  if (vary && !own) {
+    const half = shape.length / 2;
+    const ends = shapePool.filter((sh) => sh.slice(half).join() !== shape.slice(half).join()
+      && !(besides && sh.slice(half).join() === besides.slice(half).join()));
+    if (ends.length) shape = shape.slice(0, half).concat(vary.pick(ends).slice(half));
   }
 
   // A waltz bar does not split in half: the change would land mid-beat.
@@ -2047,20 +2060,32 @@ export function harmonyOf(e, spec) {
 // salted), so a loop that does not develop draws exactly what it always
 // drew and renders exactly as it did.
 export const DEPTH = 1;
-const DEPTH_SHARE = { 8: 0.3, 16: 0.5, 24: 0.65, 32: 0.65 };
+// 24 and 32 bars at 0.72 (queue item 17): development there was heard and
+// liked, and 0.72 is two thirds of all the 24-bar loops (a few play their
+// own layer cycles and never develop). Of the 32-bar loops, three in four
+// are those, so 0.72 is 72% of the rest and about a sixth of all of them.
+const DEPTH_SHARE = { 8: 0.3, 16: 0.5, 24: 0.72, 32: 0.72 };
 // Profiles whose point is a small idea that changes without changing.
 const DEPTH_WEIGHTS = { vapor: 0, undertow: 0 };
 const DEPTH_SALT = 0x44455054;
 const B_SALT = 0x42534543;
 const RETURN_SALT = 0x52455455;
+const VARY_SALT = 0x56415259;
 
 // Sections by loop length, in bars: a statement, a departure and a return.
 // The statement is half the loop where it can be, and is one section with
 // its own phrase plan rather than a short one played twice, so it varies
 // as a simple loop of that length would.
+//
+// Sixteen bars are four four-bar phrases instead (queue item 17): A, A
+// varied (V), the departure, and A varied again as the return. As A8 B4 R4
+// the departure came at bar 9, and two of three such loops were still
+// heard as looping. B still comes at bar 9, but the tune has already moved
+// at bar 5. V and the return each take A's figure with its end turned, and
+// each cadences on chords of its own after A's opening two.
 const DEPTH_FORMS = {
   8: [['A', 4], ['B', 2], ['R', 2]],
-  16: [['A', 8], ['B', 4], ['R', 4]],
+  16: [['A', 4], ['V', 4], ['B', 4], ['R', 4]],
   24: [['A', 8], ['B', 8], ['R', 8]],
   32: [['A', 16], ['B', 8], ['R', 8]],
 };
@@ -2104,6 +2129,9 @@ function developHarmony(spec, dev) {
   const aBars = dev.sections.find((x) => x.role === 'A').bars;
   const bBars = dev.sections.find((x) => x.role === 'B').bars;
   const a = genHarmony(sectionSpec(spec, aBars));
+  const v = dev.sections.some((x) => x.role === 'V')
+    ? genHarmony(sectionSpec(spec, aBars), new Rng((spec.layerSeeds.chords ^ VARY_SALT) >>> 0))
+    : null;
   // B wants a progression that is not A's. Redrawn, from the next salt,
   // while it opens on A's chord or plays A's shape; four tries at most.
   let b = null;
@@ -2117,11 +2145,16 @@ function developHarmony(spec, dev) {
   const aVoices = a.events.map((e) => e.voice);
   const aVoice = aVoices.sort((x, y) => aVoices.filter((v) => v === y).length - aVoices.filter((v) => v === x).length)[0];
   if (aVoice) b = { ...b, events: b.events.map((e) => ({ ...e, voice: aVoice })) };
+  // The return's own ending, which is neither A's nor V's.
+  const r2 = v
+    ? genHarmony(sectionSpec(spec, aBars), new Rng((spec.layerSeeds.chords ^ RETURN_SALT) >>> 0), v.shape)
+    : null;
+  const own = { B: b, V: v, R: r2 };
   const slots = [];
   const events = [];
   let at = 0;
   for (const sec of dev.sections) {
-    const placed = placeHarmony(sec.role === 'B' ? b : a, sec.bars, at, spb);
+    const placed = placeHarmony(own[sec.role] || a, sec.bars, at, spb);
     slots.push(...placed.slots);
     events.push(...placed.events);
     sec.at = at;
@@ -2129,7 +2162,7 @@ function developHarmony(spec, dev) {
   }
   return {
     slots, events, shape: a.shape, cycleSteps: spec.bars * spb,
-    sectionHarmony: { A: a, B: b },
+    sectionHarmony: { A: a, B: b, V: v, R: r2 },
   };
 }
 
@@ -2137,10 +2170,14 @@ function developHarmony(spec, dev) {
 // upside down, both, or the figure slowed to half its notes at twice the
 // length. What makes it an answer rather than a new tune is that it is A's
 // motif, turned.
-function answerFigure(figure, r, spec) {
+function answerFigure(figure, r, spec, moves) {
   const spb = spec.stepsPerBar || STEPS_PER_BAR;
   const lf = feelForLayer(spec, 'melody');
-  const how = r.weighted([['rhythm', 3], ['invert', 2], ['both', 2], ['slow', 1]]);
+  // A departure that has to move everything at once always takes a new
+  // rhythm; the same one draw either way.
+  const how = r.weighted(moves
+    ? [['rhythm', 3], ['both', 2]]
+    : [['rhythm', 3], ['invert', 2], ['both', 2], ['slow', 1]]);
   let out = figure.map((x) => ({ ...x }));
   if (how === 'invert' || how === 'both') {
     const base = out[0].degree;
@@ -2160,6 +2197,18 @@ function answerFigure(figure, r, spec) {
   return { figure: out, how };
 }
 
+// A's figure with its end turned, for the varied statement: the same
+// rhythm and the same first half, the rest a step or two elsewhere. Every
+// bar of a melody is moved whole onto its chord, so the same figure over
+// the same chord comes out as the same bar; a figure whose own intervals
+// have changed cannot, which is what keeps V from being A again.
+function varyFigure(figure, r) {
+  const out = figure.map((x) => ({ ...x }));
+  const by = r.pick([1, -1, 2, -2]);
+  for (let i = Math.max(1, Math.ceil(out.length / 2)); i < out.length; i++) out[i].degree += by;
+  return out;
+}
+
 // The melody for a developing loop, section by section, over the harmony
 // developHarmony built.
 function developMelody(spec, harmony, dev) {
@@ -2169,23 +2218,42 @@ function developMelody(spec, harmony, dev) {
   const a = genMelody(sectionSpec(spec, aBars), ha);
   if (!a.events.length) return a;
   const r = new Rng((spec.layerSeeds.melody ^ B_SALT) >>> 0);
-  const answer = answerFigure(a.motif, r, spec);
+  // In the four-phrase form B moves register, rhythm and harmony together.
+  const four = dev.sections.some((x) => x.role === 'V');
+  const answer = answerFigure(a.motif, r, spec, four);
   // How far B moves from A's register. Mostly up, sometimes not at all,
-  // now and then a long way: some tunes stay narrow and some roam.
-  const shift = r.weighted([[0, 2], [3, 2], [5, 3], [7, 2], [-5, 1], [9, 1]]);
+  // now and then a long way: some tunes stay narrow and some roam. In the
+  // four-phrase form, never not at all.
+  const shift = r.weighted(four
+    ? [[3, 2], [5, 3], [7, 2], [-5, 1], [9, 1]]
+    : [[0, 2], [3, 2], [5, 3], [7, 2], [-5, 1], [9, 1]]);
   const bBars = dev.sections.find((x) => x.role === 'B').bars;
   const b = genMelody(sectionSpec(spec, bBars, { melody: (spec.layerSeeds.melody ^ B_SALT) >>> 0 }), hb, {
     figure: answer.figure, voice: a.voice, centre: a.centre + shift, openEnd: true, vel: 1.06,
   });
-  const rBars = dev.sections.find((x) => x.role === 'R').bars;
-  const back = genMelody(sectionSpec(spec, rBars, { melody: (spec.layerSeeds.melody ^ RETURN_SALT) >>> 0 }),
-    { ...ha, slots: ha.slots.filter((sl) => sl.startStep < rBars * spb), cycleSteps: rBars * spb }, {
-      figure: a.motif, voice: a.voice, centre: a.centre, openEnd: false, vel: 1,
-    });
+  // A again through another phrase plan: the return, and in the
+  // four-phrase form the varied A before the departure too, which leads on
+  // rather than closing. There both take A's figure with its end turned,
+  // each its own way; elsewhere the return takes A's figure as it is.
+  const restate = (role, salt, figure, openEnd) => {
+    const sec = dev.sections.find((x) => x.role === role);
+    if (!sec) return null;
+    const h = harmony.sectionHarmony[role] || ha;
+    return genMelody(sectionSpec(spec, sec.bars, { melody: (spec.layerSeeds.melody ^ salt) >>> 0 }),
+      { ...h, slots: h.slots.filter((sl) => sl.startStep < sec.bars * spb), cycleSteps: sec.bars * spb }, {
+        figure, voice: a.voice, centre: a.centre, openEnd, vel: 1,
+      });
+  };
+  const turned = (salt) => varyFigure(a.motif, new Rng((spec.layerSeeds.melody ^ salt) >>> 0));
+  const parts = {
+    A: a, B: b,
+    V: four ? restate('V', VARY_SALT, turned(VARY_SALT), true) : null,
+    R: restate('R', RETURN_SALT, four ? turned(RETURN_SALT) : a.motif, false),
+  };
   const events = [];
   let phrases = 0;
   for (const sec of dev.sections) {
-    const part = sec.role === 'A' ? a : sec.role === 'B' ? b : back;
+    const part = parts[sec.role];
     const end = sec.bars * spb;
     let top = 0;
     for (const e of part.events) {
@@ -2222,6 +2290,17 @@ export function render(spec) {
   const tracks = { ...raw };
   let quiet = [];
   if (form) {
+    // A departure nobody hears is not one: in a developing loop the melody
+    // plays all through B, whatever the airy schedule drew (queue item 17).
+    // It silenced the whole of B's tune in one developing loop in five, and
+    // in a quarter of the 8-bar ones.
+    if (dev && form.melody) {
+      let at = 0;
+      for (const sec of dev.sections) {
+        if (sec.role === 'B') for (let bar = at; bar < at + sec.bars; bar++) form.melody[bar % form.melody.length] = true;
+        at += sec.bars;
+      }
+    }
     for (const layer of LAYERS) tracks[layer] = applyForm(tracks[layer], form[layer], spb);
     const c = characterOf(spec);
     // Airier characters get a longer allowance, but nobody gets an outage.

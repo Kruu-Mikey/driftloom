@@ -494,6 +494,16 @@ Mikey decides this line:
   the 1.6 s median, or leave it and re-listen. The other three parts of
   item 11 went ahead without it.
 
+- **Item 17, 32-bar loops: two thirds is out of reach through the weights;
+  a decision if more is wanted (2026-09-27).** Three in four 32-bar loops
+  (287 of 378 in 30,000) play their own layer cycles -- the micro-loops
+  that slide short fragments against the long frame -- and those never
+  develop, by item 12's design: their motion is the sliding. The weight
+  reaches only the rest. At 0.72 (the same as 24 bars) 73% of those
+  develop, 17% of all 32-bar loops (was 16% at 0.65). Getting
+  near two thirds of all of them would mean developing micro-loops too,
+  which is a new kind of form rather than a weight: say if you want it.
+
 ## Done
 
 - #59, fiddle and accordion take two (v44),
@@ -656,3 +666,13 @@ Mikey decides this line:
   shatter loop still is not bright. Loops that already exist are
   unchanged (a code keeps its mode); the labels and display too. The mood
   words, feel targets and code numbers now live in `js/moods.js`.
+- #108, composition depth, second pass (item 17, v64),
+  https://0ee8da3d-driftloom.kruu-mikey-thaiculture.workers.dev: a 16-bar
+  loop that develops is now four four-bar phrases -- A, A turned, B, A
+  turned again. Listen for the tune moving at bar 5 (same rhythm, its end
+  going somewhere else over a new cadence), B at bar 9 in a new register
+  and rhythm over its own chords, and a return that is A but not A again.
+  B's tune is always heard now (an airy loop used to rest it away in one
+  developing loop in five). About two thirds of 24-bar loops develop (was
+  57%). Simple loops are untouched, note for note. 32 bars: see the note
+  above.

@@ -262,8 +262,13 @@ Notes worth knowing if you go digging:
   and a return. The departure (B) answers the statement (A) with its own
   motif turned -- on a new rhythm, upside down, or slowed -- usually in
   another register and over its own progression, played a touch firmer.
-  The return restates A's motif through a different phrase plan. Every
-  other loop is exactly as simple as it was: the choice and everything
+  The return restates A's motif through a different phrase plan. Sixteen
+  bars are four four-bar phrases instead -- A, A varied, B, A varied again
+  -- where each A takes the motif with its end turned and cadences on
+  chords of its own, and B always moves rhythm, register and harmony.
+  About two thirds of the 24-bar loops develop. B's tune is always heard:
+  an airy loop's rests never take the melody out of it. Every other loop
+  is exactly as simple as it was: the choice and everything
   about it come from salted streams of their own. `DEPTH` in
   `js/generator.js` is the knob (0 turns it off), with `DEPTH_SHARE` by
   length and `DEPTH_WEIGHTS` by profile beside it; `node tools/stats.mjs
