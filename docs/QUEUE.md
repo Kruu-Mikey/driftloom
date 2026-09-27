@@ -666,3 +666,13 @@ Mikey decides this line:
   shatter loop still is not bright. Loops that already exist are
   unchanged (a code keeps its mode); the labels and display too. The mood
   words, feel targets and code numbers now live in `js/moods.js`.
+- #108, composition depth, second pass (item 17, v64),
+  https://0ee8da3d-driftloom.kruu-mikey-thaiculture.workers.dev: a 16-bar
+  loop that develops is now four four-bar phrases -- A, A turned, B, A
+  turned again. Listen for the tune moving at bar 5 (same rhythm, its end
+  going somewhere else over a new cadence), B at bar 9 in a new register
+  and rhythm over its own chords, and a return that is A but not A again.
+  B's tune is always heard now (an airy loop used to rest it away in one
+  developing loop in five). About two thirds of 24-bar loops develop (was
+  57%). Simple loops are untouched, note for note. 32 bars: see the note
+  above.
