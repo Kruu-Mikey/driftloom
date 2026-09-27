@@ -84,3 +84,92 @@ motion word, say "merry, crisp, bouncy" -- each chosen from what the loop
 actually does. Many of these words describe measurable things (a strummed
 nylon *is* strumming, a drone *is* droning, a fast shaker *is* fizzing),
 so the label can be true.
+
+## Pilot recipes (draft, 2026-09-27, for Mikey to react to)
+
+The pilot dozen, agreed: merry, tender, serene, golden, twinkling, crisp,
+velvety, sour, bouncy, floating, swaying, quirky.
+
+Each recipe says what the word means musically, which dials it pushes,
+and where it gets interesting against a profile. The dials are the
+generator's own: tempo, feel (lift, energy, warmth), tone (warmth, space,
+wobble), swing, drums and hat density, rests (`restBar`, `airy`), chord
+size, scale colour, register, and which instruments are drawn. "Pushes"
+means leans the profile's own ranges, never leaves them: a word bends a
+profile, it doesn't replace it.
+
+**merry** -- company, dancing, a smile shared. Lift and energy up, warmth
+mid-high; brighter modes (ionian, mixolydian, major pentatonic); bouncing
+dotted or jig rhythms, a steady beat, drums likely; plucked and bowed
+leads (fiddle, whistle, marimba, pluck); a tune that moves by step with
+little skips. On cinder: a village fiesta rather than a duende. Differs
+from *happy* by being more social and rhythmic.
+
+**tender** -- close, careful, kind. Energy low, warmth high, lift mid;
+soft attacks and low velocities, small chord voicings, a narrow tune
+near the middle register, more rests; warm voices (rhodes, softpad,
+flute, harp, nylon), light or no drums, little wobble, a close room. On
+shatter: its brightness pulled back to a hush.
+
+**serene** -- still water, nothing asked for. Energy very low, lift mid,
+tone space high; slow tempo within the profile, long held chords
+(pad-like rhythms), the drone bass welcome, sparse or no drums; a slow,
+few-note tune with long notes; texture swells or waves. Differs from
+*tender* by being spacious rather than close.
+
+**golden** -- late light, warm glow. Warmth very high, lift mid-high,
+brightness mid (not sparkling); major and lydian colour, rich chords
+(sevenths and added ninths); warm sustaining voices (rhodes, keys, pad,
+ocarina), gentle swing, the tape-worn sound up a little. A colour more
+than a mood, so it pairs with almost any heart word.
+
+**twinkling** -- small lights, high and scattered. High register for the
+tune or a texture of bells, chime, musicbox, celeste, kalimba; short
+notes with space between; bright tone, a little reverb; arpeggiated
+chords welcome. Pairs with *serene* (a night sky) as easily as with
+*merry* (fairy lights).
+
+**crisp** -- clean edges, cool air. Tone warmth down, wobble low, space
+modest; short, defined attacks (pluck, marimba, nylon, rim, shaker);
+straight rather than swung; clear, uncluttered chords; clean drums on
+the tape or brush kit. Differs from *twinkling* in weight: crisp is
+about edges, not height.
+
+**velvety** -- deep, soft, smooth to the touch. Tone warmth high, wobble
+low, brightness low; sustained, smooth voices (softpad, analogpad, rhodes,
+choir, moogpad), legato, soft attacks; a lower register, full chords, a
+round bass (sub, round). The opposite corner from *crisp*.
+
+**sour** -- a tart twist, like tamarind or green mango: puckering but
+pleasant, never unpleasant. Harmony colour: added seconds, the b9 over a
+major chord, close clusters, a lydian or dorian tang; a touch of detune;
+a thinner, brighter tone. Used lightly -- a flavour on a loop, not the
+whole meal -- unless it's the one word. On cinder: its flamenco note
+leaning in. On glade: a sherbet edge on the folk tune.
+
+**bouncy** -- springs underfoot. Energy mid-high; short notes, dotted and
+syncopated rhythms, a tune that leaps a little; plucky voices; drums
+likely with a light, springing kick; walking or pulse bass. Can't pair
+with *floating* (the two pull against each other), which is fine.
+
+**floating** -- no ground under it. Energy low; the downbeat softened
+(fewer kicks, the bass held or sparse), long notes and ties across the
+bar, more space and reverb, a higher tune; sustained voices and swells;
+drift up a little. On cinder: the slowed, suspended siesta; on wayfare:
+the train seen from far off.
+
+**swaying** -- a slow rock from side to side. The waltz and the 6/8 lilt,
+or a strong swing in 4/4; moderate tempo; a clear strong-weak pulse in
+bass and chords, the tune following it; drums gentle if any. Tide's
+waltz is the model.
+
+**quirky** -- a happy oddness. A lydian #4 or whole-tone step now and then,
+unexpected intervals in the tune, off-beat accents, an unusual pairing
+of voices (musicbox over moogbass, say), stab and prepared piano
+welcome; still pleasant, still a tune. The strangeness word for the
+pilot; *bizarre* and *zany* would push further later.
+
+**How words combine:** each word's pushes add up, weighted; where they
+conflict, the heart word wins on feel and the motion word wins on rhythm.
+Some pairs won't work (bouncy + floating); the generator should simply
+not offer them.
