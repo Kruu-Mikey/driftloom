@@ -215,6 +215,26 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   24-bar haven loop. Nothing "too busy". Least favourite: a developing
   16-bar shrine loop and a simple 16-bar tide loop. Queue item 17:
   stronger 16-bar development, two thirds of 24/32-bar loops develop.
+  **2026-09-27:** #96 (paint, v57) merged; Mikey chose to drop the
+  playhead fade for speed (queue 14.6). The mood vocabulary is open: he
+  wants to work it out with test albums and may want *more* mood words,
+  so item 16 now steers the music but leaves the labels, and makes the
+  vocabulary data. Brain's plan for the naming: albums where Mikey
+  describes tracks in his own words, and the words come from him. Note
+  the current eight include near-twins (joyful/happy/enthusiastic,
+  soothing/peaceful/comforting).
+  **Mikey's mood vocabulary** (2026-09-27): about 200 words, saved with
+  his framing in `docs/MOODS.md`. Wholesome but free to be strange;
+  near-synonyms may differ. Brain's proposal there: words sorted by kind
+  (heart, strangeness, light, texture and taste, motion, energy, sound,
+  air), and each loop labelled with two or three words of different
+  kinds, each chosen from what the loop actually does.
+  Agreed: labels of one to five words, mostly two or three; some loops
+  one word fully embraced. Words steer generation, bending a profile
+  within its character; each word x profile meeting to be defined with
+  Mikey by ear ("what would sour and floating sound like on cinder?").
+  Roadmap item 19: a pilot of about a dozen words, recipes as data,
+  listening albums, then widen. Happens before the generator's Rust port.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.

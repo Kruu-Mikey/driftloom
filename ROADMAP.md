@@ -828,6 +828,42 @@ compiled core (item 16) to run outside a browser, and an API: set the
 parameters, get bar and phrase callbacks, trigger stingers. Not planned;
 recorded so item 16 is designed with it in mind.
 
+## 19. Words that steer the music — **L, a design project, worth doing well**
+
+From Mikey's mood vocabulary (`docs/MOODS.md`, about 200 words). Agreed
+2026-09-27:
+
+- **Labels of one to five words**, usually two or three of different
+  kinds (heart, light, texture and taste, motion, sound, strangeness),
+  each true of what the loop does. Some loops are **one word, fully
+  embraced**: everything about the loop leans into that word.
+- **Words steer, not just describe.** A one-word loop needs generating
+  *towards* its word, so every word gets a recipe in musical terms: which
+  dials it moves (lift, energy, warmth, tempo, swing, density, register,
+  brightness, space, harmony colour, instrument families, rhythm feel)
+  and by how much.
+- **Words bend a profile, they don't replace it.** The profile is the
+  base; a word pushes it within its character. How each word meets each
+  profile is to be defined together, by ear. Mikey's example: what would
+  "sour" and "floating" sound like on `cinder`? One reading: cinder's
+  flamenco core, slowed and suspended (long notes, sparse drums, more
+  space, a higher line), with tart harmony (the added b9, close
+  clusters, a thinner and brighter tone). Some pairings may turn out
+  not to fit; finding that out is part of the work.
+
+The process:
+1. A pilot set of about a dozen words across the kinds, chosen with
+   Mikey, each with a written recipe in `docs/MOODS.md`.
+2. Build the recipes as data the generator reads, so tuning a word is an
+   edit, not a code change.
+3. Listening albums per word across several profiles: "does this track
+   fit the word?", and "which word fits this track?" blind.
+4. Tune, then widen to more words.
+
+This is generator work, so it happens before the generator moves to Rust
+(item 16's timing); the vocabulary will be part of what the Rust
+generator carries.
+
 ---
 
 ## Decided against
