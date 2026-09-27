@@ -223,6 +223,12 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   describes tracks in his own words, and the words come from him. Note
   the current eight include near-twins (joyful/happy/enthusiastic,
   soothing/peaceful/comforting).
+  **Mikey's mood vocabulary** (2026-09-27): about 200 words, saved with
+  his framing in `docs/MOODS.md`. Wholesome but free to be strange;
+  near-synonyms may differ. Brain's proposal there: words sorted by kind
+  (heart, strangeness, light, texture and taste, motion, energy, sound,
+  air), and each loop labelled with two or three words of different
+  kinds, each chosen from what the loop actually does.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
