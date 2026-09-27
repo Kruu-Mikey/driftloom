@@ -425,6 +425,39 @@ Do:
 - Afterwards the brain builds a blind album: Mikey names the feel of each
   track from a short word list, and the labels are scored against him.
 
+## 17. Composition depth, second pass
+
+Mikey heard the blind "Depth" album (8 long loops, 5 developing, 3
+simple), rating each "goes somewhere", "loops" or "too busy":
+
+| loop | kind | bars | heard |
+|---|---|---|---|
+| rul-glun (glade) | developing | 32 | goes somewhere |
+| yam-vai (hollow) | developing | 24 | goes somewhere |
+| neing-sho (wayfare) | developing | 16 | goes somewhere |
+| shuing-soun (thaw) | developing | 16 | goes somewhere at the end, mostly loops |
+| loal-lor (shrine) | developing | 16 | kind of; circles one idea |
+| yain-hain (haven) | simple | 24 | goes somewhere -- "wonderful" |
+| thoum-yeim (tide) | simple | 16 | loops |
+| keing-shai (bloom) | simple | 16 | loops |
+
+Nothing was "too busy". At 24 and 32 bars development is clearly heard and
+liked. At 16 bars it's weak: the contrast comes late (A8 B4 A'4 puts B at
+bar 9) and two of three still read as looping, matching the numbers
+(distinct melody bars 7.3 developing vs 6.7 simple). And his favourite
+was a simple 24-bar loop, so simple long loops stay.
+
+Do:
+- **Stronger development at 16 bars:** the contrast earlier and clearer --
+  four-bar phrases (A A' B A'', each A varied, not repeated), a B that
+  moves register, rhythm and harmony together. Measure the 16-bar
+  developing loops against the 24-bar ones and aim for a comparable lift.
+- **More development at 24 and 32 bars:** raise their share to about two
+  thirds, per length, through the `DEPTH` weights. Leave 8 and 16 bars'
+  share as it is until the 16-bar form has been heard again.
+- Simple loops untouched. The usual checks; the balance lock will move.
+- Afterwards the brain sends a second blind album.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
