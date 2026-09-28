@@ -279,8 +279,9 @@ Stated decisions, not inferences. Dated where the date matters.
 ## State -- 2026-09-28
 
 `main` at **v64**, deployed. No open PRs. Queue items 0-17 done (13
-stopped at its gate, by design); item 18, a housekeeping pass over code
-comments and the README, is waiting for the new hands session. The
+stopped at its gate, by design); item 18, the housekeeping pass over
+code comments and the README, merged as #111 (brain check: tests pass,
+`--check` holds, `stats.mjs` output byte-identical). Nothing is queued. The
 brain's document audit (2026-09-28) rewrote this file, updated the
 roadmap's statuses (items 3, 9, 13, 14, 16, new 20 and 21) and the
 README (profiles, rough edges, `--retire`, `--profile`, a project
@@ -302,6 +303,9 @@ and `--check` pass.
 - **Cinder and shatter can't sound bright**: no bright modes in their
   pools. Part of roadmap 19.
 - The ocarina over drums: ease back 2-3 dB if it comes up buried again.
+- **Short loops' gaps** (from #111): `genGaps` draws at every length, so
+  about a third of 2- and 4-bar loops take a gap and 7-8% a whole bar of
+  silence (half a 2-bar loop). Keep, keep only beat-long ones, or none?
 
 **Out for listening:** `docs/ALBUMS.md` -- "Moods" (describe each track in
 his own words: checks the steering and starts the word study) and
