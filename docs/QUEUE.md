@@ -2,7 +2,13 @@
 
 Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
-later, in one combined review album the brain builds from the Done list.
+later, in listening albums the brain builds from the Done list.
+
+**Status, 2026-09-28:** items 0-17 are done (13 stopped at its gate by
+design). One housekeeping item is left, 18. After it, the next items will
+come from the brain's work on the words (roadmap 19). A new Claude Code
+session starts here: read the standing rules and the merge policy, then
+do item 18.
 
 ## Standing rules, for every item
 
@@ -465,6 +471,30 @@ Do:
   share as it is until the 16-bar form has been heard again.
 - Simple loops untouched. The usual checks; the balance lock will move.
 - Afterwards the brain sends a second blind album.
+
+## 18. Housekeeping: comments and README against the code
+
+The brain audited the documents at the end of its long session (README,
+roadmap, `docs/*.md` updated in the same PR as this item). The code's own
+comments it can't edit. Known stale ones:
+- `js/characters.js`'s header says profiles "would be ten boxes" and
+  "ten points"; there are sixteen.
+- `js/generator.js` (around line 1124) says phrase position "is roadmap
+  item 2 and is still absent"; item 2 shipped (phrase velocity, #11).
+
+Do a pass over `js/`, `tools/` and `test/`:
+- Fix comments that are stale: counts, "not yet" notes about things that
+  shipped, rules that changed (new voices may now join existing pools;
+  old share codes are not protected while testing; the hands merge under
+  the queue's policy).
+- Check the README's claims against the code where they are checkable
+  (flags, file names, figures quoted as current), and fix what's wrong.
+- Comments and docs only: no behaviour change. Prove it: tests three
+  times, `stats.mjs` output byte-identical, `--check` unchanged. No
+  version bump needed.
+
+List what you changed in the PR, and anything you found but weren't sure
+about as a note here.
 
 ## Later, not queued
 
