@@ -66,6 +66,14 @@ everything a session needs.
   `docs/*.md`, `ROADMAP.md`, `README.md` -- through small PRs it merges
   itself. Code stays with the hands. Never write the token into a file, a
   commit, memory, or a brief. Mikey manages his own tokens.
+- Things that tripped the hands before: a Claude Code session may push
+  only to its one designated branch, so an open draft PR on that branch
+  (like the never-to-merge drum knob, #42) blocks the next PR -- close it
+  first. The hands can't retry a failed Cloudflare build (one failed with
+  no log, #51); Mikey retries it from the check's Details link, or simply
+  merges, since main redeploys. Their sandbox can't fetch workers.dev, so
+  the brain checks previews. Sessions hit usage limits mid-item; the
+  queue and the branch make resuming cheap.
 - The brain's container: one core; `/tmp` does not survive between
   sessions; a background run must start with `setsid` or it dies when the
   tool call returns; `measure.mjs` takes a few seconds per loop, so 100
