@@ -724,3 +724,11 @@ Mikey decides this line:
   developing loop in five). About two thirds of 24-bar loops develop (was
   57%). Simple loops are untouched, note for note. 32 bars: see the note
   above.
+- #111, housekeeping: comments and README against the code (item 18; no
+  version bump), https://11e02ab0-driftloom.kruu-mikey-thaiculture.workers.dev:
+  nothing to hear -- comments and docs only, and `stats.mjs` renders the
+  same corpus byte for byte. Stale counts, "not yet" notes about things
+  that shipped and quoted figures were corrected in the code's comments
+  and the README (the list is in the PR). One thing for Mikey's ears came
+  out of it: short loops still take short gaps, a whole bar of silence in
+  about one 2- or 4-bar loop in thirteen (see the note above).
