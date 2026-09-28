@@ -235,7 +235,38 @@ Separate dials also dissolve some conflicts: *bouncy* is bounce up,
 *floating* is ground down -- different dials, so the balloon is a loop
 that is both, not an average of the two.
 
+## Maps and clouds (brain's proposal, 2026-09-28, open)
+
+Mikey: the ten dials are okay; could x-y graphs describe loops better,
+while still letting words that contrast sit on one loop?
+
+1. **Maps:** the ten dials paired into five x-y maps, words drawn on them
+   as *regions* (some wide, some narrow), not points.
+   - heart: lift x energy (the plane music-emotion research uses)
+   - touch: warmth x edge (velvety, buttery, crisp, frosty)
+   - space: room x height (tender, twinkling, booming, serene)
+   - motion: ground x bounce (floating, bouncy, steady, rocking)
+   - flavour: tang x oddness (sweet, cozy, sour, quirky, zany)
+2. **A loop is a cloud, not a point.** Measure it bar by bar and layer by
+   layer; each moment is a dot, weighted by how much it's heard. Words that
+   pull apart stop cancelling, because they can hold in three ways, all
+   visible in the one cloud: *in between* (dots in the middle), *in
+   different layers* (crisp drums under velvety pads), *over time* (the
+   helium balloon: a floating home with excursions to bouncy).
+3. **Honest percentages:** a word's share is the share of the cloud inside
+   its region. "Floating 70%" means seventy percent of what you hear sits
+   there.
+4. **Steering:** a label becomes a plan -- home words, and words carried
+   by one layer or by excursions -- and the generator aims the cloud.
+
+Unproven: whether every dial can be measured per bar and per layer
+(height, bounce, ground and edge look easy; room and tang may be
+loop-wide). First test, no code: plot the clouds of the "Moods" album
+loops and see whether Mikey's own words land where the clouds say.
+
 ## Candidate words (brain's suggestions, 2026-09-28, for Mikey to pick)
+
+Mikey likes about half of these; picking is for later.
 
 Not in the list, grouped by the gap they'd fill. Take, drop or change.
 

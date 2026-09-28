@@ -313,8 +313,10 @@ his own words: checks the steering and starts the word study) and
 
 **Words session (2026-09-28, in progress):** State checked against GitHub,
 no drift in code or deploy. Mikey answered the first round (decisions
-under "The words" above and in `docs/MOODS.md`). Waiting on him: the ten
-dials proposal and which candidate words join. Then the brain queues item
+under "The words" above and in `docs/MOODS.md`). Dials okayed; he asked about
+x-y graphs so contrasting words can coexist, and the brain proposed maps
+and clouds (`docs/MOODS.md`). Waiting on him: that proposal; candidate
+words later (he likes about half). Then the brain queues item
 19's first build, dormant: words as data, heart words as points, the
 honest-share measure. A fresh
 hands chat reads `docs/QUEUE.md`. Later, a separate brain chat for the
