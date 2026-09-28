@@ -860,7 +860,7 @@ recorded so item 16 is designed with it in mind.
 
 ## 19. Words that steer the music — **L, a design project, worth doing well**
 
-From Mikey's mood vocabulary (`docs/MOODS.md`, about 200 words). Agreed
+From Mikey's mood vocabulary (`docs/MOODS.md`, 178 words). Agreed
 2026-09-27:
 
 - **Labels of one to five words**, usually two or three of different

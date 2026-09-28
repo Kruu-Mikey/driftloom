@@ -8,8 +8,11 @@ ever-changing" -- and it's up to the listener to hold them wholesomely.
 Near-synonyms are allowed to mean different things: "a happy song isn't
 the same as a merry song."
 
-This is the pool, not yet the app's labels. Queue item 16 steers the music
-by mood first; the labels come after, tested by ear.
+This is the pool (178 words), not yet the app's labels. The eight moods the
+app shows today -- joyful, happy, enthusiastic, refreshing, soothing,
+peaceful, comforting, reflective -- are all from it, and since queue item 16
+(#107) they steer the mode. The labels change once the words are tested by
+ear (roadmap 19).
 
 ## The list
 
@@ -24,7 +27,7 @@ Flickering, Floating, Flowing, Fluffy, Fluttering, Flying, Freeing,
 Friendly, Frosty, Fuzzy, Gentle, Glad, Gleaming, Gleeful, Gliding,
 Glistening, Glowing, Golden, Groovy, Happy, Heartfelt, Heartwarming,
 Humming, Intimate, Jolly, Joyful, Jubilant, Laid-back, Leisurely, Light,
-Lighthearted, Lingering, Luminous, Meandering, Mellow, Merry, Misty,
+Lighthearted, Lingering, Lively, Luminous, Meandering, Mellow, Merry, Misty,
 Nourishing, Nurturing, Oscillating, Otherworldly, Pastel, Peaceful,
 Playful, Pleasant, Plush, Pristine, Puffing, Pulsing, Purring, Quirky,
 Radiant, Reflective, Refreshing, Relaxing, Reminiscent, Resilient,
@@ -181,3 +184,71 @@ events -- a springy figure, a pickup, a leap, a few plucked notes -- that
 settle back into the float. So a conflict becomes a *shape over time*
 (a default state and excursions from it) rather than a cancellation.
 Every conflicting pair gets its own image like this, worked out by ear.
+
+## Decided (Mikey, 2026-09-28)
+
+- **Lively** joins the list (it had crept into the sorting above).
+- **Near neighbours, told apart:** *tender* is close (a small room, a soft
+  touch, a narrow tune); *soothing* is settling (slow, long chords).
+  *Serene* is still and wide; *peaceful* is content and moving gently. On
+  the three feeling dials these pairs sit almost on top of each other, so
+  what separates them has to live in the recipe.
+- **Heart words replace the eight moods**, eventually: the eight become
+  heart words with recipes like the rest, not a second system beside
+  them. Their share-code numbers stay frozen (`js/moods.js`).
+- **The percentages stay, if they are honest.** A word's share on a loop
+  is only worth showing if it represents what actually comes through. So
+  the share should be measured from the rendered loop, not taken from the
+  draw.
+- **The pilot recipes:** "love most of" the approach -- words as leans on
+  the draw, heart words as points, the honest-label check, the first build
+  dormant (random loops don't draw words until they're tuned).
+- **Open: more dials than three** (proposal below), and more words
+  (candidates below).
+
+## Dials (brain's proposal, 2026-09-28, open)
+
+Three dials (lift, energy, warmth) can't tell tender from soothing. The
+proposal: about ten, each with two wholesome ends, each something the
+generator can steer *and* something a rendered loop can be measured on.
+A word is a point on only the dials it cares about and leaves the rest
+free (*golden* sets warmth and tang, and doesn't care about bounce). The
+measured position of a loop then gives every word an honest share: how
+close the loop landed to that word's point.
+
+| dial | one end -- other end | steers / measures |
+|---|---|---|
+| lift | inward -- bright | mode brightness, share of major chords |
+| energy | still -- lively | tempo, note density, drums |
+| warmth | cool -- warm | tone warmth, filter |
+| room | close -- wide | tone space, chord spread, tune span |
+| ground | floating -- grounded | kicks and bass on the beat, notes tied over it |
+| edge | soft -- crisp | attack, note length, tone brightness |
+| height | low -- high | register of tune and texture |
+| bounce | flowing -- springy | dotted and syncopated rhythm, short notes, leaps |
+| tang | sweet -- tart | added seconds, b9, clusters over plain triads |
+| oddness | familiar -- strange | unexpected intervals, whole-tone steps, odd pairings |
+
+Some things stay leans rather than dials: instrument families (strumming,
+humming, chirping), metre (swaying's lilt), shapes over time (the balloon).
+Separate dials also dissolve some conflicts: *bouncy* is bounce up,
+*floating* is ground down -- different dials, so the balloon is a loop
+that is both, not an average of the two.
+
+## Candidate words (brain's suggestions, 2026-09-28, for Mikey to pick)
+
+Not in the list, grouped by the gap they'd fill. Take, drop or change.
+
+- **Light and time of day:** bright, sunny, sunlit, moonlit, starry,
+  twilight, dusky, hazy.
+- **Close and sleepy** (the close end of room): hushed, snug, homey,
+  sleepy, drowsy, lulling, tranquil.
+- **Dance and step** (Ocarina-style whimsy): lilting, jaunty, sprightly,
+  nimble, skipping, tiptoeing, mischievous, cheeky, plucky.
+- **Taste** (tang): tangy, zesty, tart.
+- **Wonder:** magical, enchanted, wondrous, adventurous, hopeful,
+  triumphant (used rarely).
+- **Stillness:** reverent, meditative, hypnotic.
+- **Sound:** tinkling, chiming.
+- **Near the line** -- gentle, but they lean toward longing; only if they
+  read as textures to you: wistful, nostalgic, bittersweet, mysterious.
