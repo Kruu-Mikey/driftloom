@@ -151,7 +151,8 @@ Stated decisions, not inferences. Dated where the date matters.
 
 **The words (roadmap 19)**
 
-- About 200 mood words of his own, in `docs/MOODS.md`. Near-synonyms may
+- 178 mood words of his own, in `docs/MOODS.md` (lively added
+  2026-09-28; candidates for more listed there). Near-synonyms may
   differ ("a happy song isn't the same as a merry song").
 - Labels of one to five words, mostly two or three of different kinds;
   some loops one word fully embraced. Words steer generation, bending a
@@ -161,7 +162,14 @@ Stated decisions, not inferences. Dated where the date matters.
   a shape over time (bouncy + floating is a helium balloon).
 - A pilot dozen is agreed: merry, tender, serene, golden, twinkling,
   crisp, velvety, sour, bouncy, floating, swaying, quirky. Draft recipes
-  in `docs/MOODS.md`, awaiting his reactions.
+  in `docs/MOODS.md`; he loves most of the approach (2026-09-28).
+- **Heart words replace the eight moods** (2026-09-28), eventually; the
+  eight become heart words with recipes. Tender is close, soothing
+  settling; serene still and wide, peaceful content and gently moving.
+- **Percentages stay only if honest:** measured from the rendered loop.
+- Open: more dials than lift/energy/warmth (proposal of ten in
+  `docs/MOODS.md`), and which candidate words join.
+- The old branches stay: he likes looking back on them.
 
 **The platform**
 
@@ -299,8 +307,12 @@ and `--check` pass.
 his own words: checks the steering and starts the word study) and
 "Depth two" (goes somewhere / loops / too busy).
 
-**Next:** a fresh brain chat for roadmap 19, the words -- react to the
-pilot recipes in `docs/MOODS.md`, then queue the first build. A fresh
+**Words session (2026-09-28, in progress):** State checked against GitHub,
+no drift in code or deploy. Mikey answered the first round (decisions
+under "The words" above and in `docs/MOODS.md`). Waiting on him: the ten
+dials proposal and which candidate words join. Then the brain queues item
+19's first build, dormant: words as data, heart words as points, the
+honest-share measure. A fresh
 hands chat reads `docs/QUEUE.md`. Later, a separate brain chat for the
 Rust port (roadmap 16).
 
