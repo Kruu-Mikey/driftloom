@@ -96,7 +96,14 @@ and **1.62x** between the buckets (0.097 low, 0.157 high). The within-phrase
 range roughly doubles, 0.223 to 0.360, but that is a consequence rather than
 the test.
 
-## 3. Melodic range — **M**
+## 3. Melodic range — **M** — *largely taken up by composition depth (item 21)*
+
+*Update 2026-09-28:* the average-of-14 target was reframed with Mikey as a
+**spread** -- some tunes narrow, some roaming -- and delivered through
+composition depth (queue items 12 and 17): developing loops now span up
+to 20-22 semitones while simple ones stay as they were. What follows is
+the original item.
+
 
 Melodies average 9.6 semitones. **Target: 14, roughly an octave and a half**,
 which is an ordinary range for a tune and clearly wider than now.
@@ -203,7 +210,7 @@ mostly high-entropy seeds, so measure before building.
 **Done when** either a measurement below 35% is recorded here and the item is
 closed, or codes are 35%+ shorter with a working no-compression fallback.
 
-## 9. Articulation v2 and v3 — **M each**
+## 9. Articulation v2 and v3 — **M each** — *v2 shipped; v3 (breath before phrase entries) open*
 
 Only after item 2 ships. Most of what makes a whistle sound human is
 articulation, so these subsume the old "human whistle" item rather than
@@ -515,7 +522,17 @@ Worth recording that the marker is *audible* and not just statistical: an
 effect that only a spectrum reveals is not an event, and this one does not
 need the spectrum.
 
-## 13. Level, by ear — **M**
+## 13. Level, by ear — **M** — *the complaint solved; 13b-13d not needed for now*
+
+*Outcome, 2026-09-28:* the volume reaches came from the melody leads, not
+the drums: pluck and saw sat 4-6 dB hot, and trimming them at the source
+(#48) took the reaches on the test album from five to none; five more
+leads were trimmed the same way (#53). Since then Mikey reports nothing
+too loud or too quiet, so the catalogue-wide albums 13b-13d, including
+"twenty in a row", are not needed for now. The ocarina over drums is on
+watch (ease it back 2-3 dB if it comes up buried). The original item
+follows.
+
 
 Item 11 in the narrower form it asked to be reopened in. The spread across
 the catalogue is still wanted: a hushed loop stays hushed, a busy one stays
@@ -639,7 +656,14 @@ what moves, and the phrase-level dynamics are not to be touched by anything
 done here. Item 11's warning stands too: a change that passes the first half
 by collapsing the spread toward 4 dB has failed the item.
 
-## 14. Folk sounds: the 6/8 fix, new voices, new profiles — **L, in steps**
+## 14. Folk sounds: the 6/8 fix, new voices, new profiles — **L, in steps** — *shipped*
+
+*Shipped 2026-09-24/25:* the 6/8 accompaniment (#34-#46), fiddle and
+accordion (take two, #59), nylon with strumming and pan flute (#65),
+`tide` (#57, #62, #63), `cinder` (#66) and `wayfare` (#67, then #79 and
+#82 for its drums), all heard in the review album. The plan below is
+kept as written.
+
 
 The island and sea music of Wind Waker and Spirit Tracks: Celtic-folk
 melody, waltz and jig metres, fiddle, whistle, accordion, guitar, hand
@@ -729,7 +753,7 @@ notes than the catalogue (mean 2.9% and 3.5% against 1.5%), the same on
 the old code. The fixes above are the likely remedy; re-measure both
 profiles when this item is done.
 
-## 16. A compiled audio engine — **L** — *after the performance baseline*
+## 16. A compiled audio engine (Rust) — **L** — *after composition depth and the words settle; its own brain chat*
 
 Mikey wants the app light and fast even at full quality ("DHH-wow" smooth
 with a hundred other apps open), and is open to an overhaul. Today every
@@ -755,8 +779,9 @@ problem), and most of the audio thread is finished voices never
 disconnected plus the always-running effects -- both fixable in
 JavaScript (queue item 14). So a compiled engine is not the performance
 fix; its case is portability: the phone app's core, a native build,
-games. Taken up after composition depth settles (agreed with Mikey,
-2026-09-26), in a fresh brain chat.
+games. Taken up after composition depth and the words settle (agreed
+with Mikey, 2026-09-26), in a fresh brain chat. The prototype (queue item
+13) stopped at its gate, as designed.
 
 **Design requirement: a host-agnostic core.** The Rust core generates
 samples and knows nothing about browsers: `process(buffer)` plus the
@@ -784,8 +809,13 @@ C# (garbage collected, no good worklet story). Staying in JavaScript is
 also legitimate if the web app is the only target; the reason to port
 is portability, not speed.
 
-**Timing (agreed with Mikey, 2026-09-26):** sooner for
-the synth, later for the generator. The voices are close to settled --
+**Timing -- superseded.** The first plan (below, 2026-09-26) moved the
+synth soon after queue item 11 for speed. The baseline then showed speed
+wasn't the reason, so the whole port waits until composition depth and
+the words (item 19) settle, and happens in its own brain chat. Within
+the port, the order stays: synth first, generator after. The original
+paragraph, for the record: sooner for the synth, later for the
+generator. The voices are close to settled --
 Mikey has approved nearly all of them -- while the composition is about
 to change a lot (queue item 12). So the synth moves to Rust once queue
 item 11's polish lands, and voice design freezes during the port (any
@@ -863,6 +893,34 @@ The process:
 This is generator work, so it happens before the generator moves to Rust
 (item 16's timing); the vocabulary will be part of what the Rust
 generator carries.
+
+## 20. `tools/listen.mjs`: albums in one command — **S**
+
+Every listening album so far was assembled by hand in the brain's
+container: filter a corpus, shuffle, encode, round-trip, and work out the
+key. A tool that does it -- by voice, profile, kit, metre, length,
+development or mood, blind or labelled, with the key derivable -- would
+make albums quick for any brain session and remove the chance of a
+mistyped code.
+
+## 21. Composition depth — **M** — *two passes shipped; tuning by ear*
+
+Mikey (2026-09-25): long loops too often stick with an elementary idea;
+some compositions should explore more depth while simple ones stay.
+Shipped as queue items 12 (#92) and 17 (#108): some loops develop -- a
+contrasting B, varied returns, harmony spanning the form, a wider range --
+while simple loops render exactly as before. `DEPTH` in
+`js/generator.js` is the knob, with `DEPTH_SHARE` by length and
+`DEPTH_WEIGHTS` by profile; `stats.mjs --depth` measures it and
+`developmentOf(spec)` marks a developing loop.
+
+Heard (the "Depth" album): development audible and liked at 24 and 32
+bars, weak at 16 until the second pass (A A' B A'' in four-bar phrases).
+His favourite was a simple 24-bar loop. Open:
+- "Depth two" is out for listening (`docs/ALBUMS.md`).
+- Three in four 32-bar loops are micro-loops that never develop; making
+  them develop would be a new kind of form. Mikey to decide.
+- The share is his to tune as he listens.
 
 ---
 

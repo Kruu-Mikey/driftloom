@@ -83,7 +83,7 @@ density, metre, form -- that move together.
 | **Cinder** | island and volcano: fast, rhythmic, Spanish-tinged. A driving 6/8 at 120-150 bpm, some 4/4, drums in nine loops in ten with the hand kit leading; a strummed nylon guitar on the Andalusian cadence, fiddle, whistle, marimba, accordion and pan flute on top |
 | **Wayfare** | the travelling music: steady, bright, moving. A walking 4/4 at 104-138 bpm, some 6/8; pan flute, fiddle, whistle and ocarina over accordion, nylon guitar and harp, and in half its loops a chug -- eighth notes on the bass, and on the brushes when brushes play -- like wheels on rails. Its own light, steady drum grooves |
 
-These are not ten boxes. Every loop draws a **weight across several of
+These are not sixteen boxes. Every loop draws a **weight across several of
 them** -- an exponential draw per profile, normalised, which is a Dirichlet
 and spreads weight far more naturally than picking fractions by hand. About
 78% of loops blend two to four profiles, with lopsided mixes commoner than
@@ -91,12 +91,13 @@ even ones, so a loop still sounds like it is *about* something. Pools are
 unioned rather than replaced, so a mostly-Dust loop with a little Glade in
 it can still reach for an ocarina.
 
-New voices go into **new profiles**, never into existing pools. Voices are
-drawn at render time from the blended pool, so adding one entry to an
-existing pool shifts that weighted draw and every random decision after it --
-every share code already in circulation would quietly render as different
-music. Verified: 2000 codes referencing only pre-existing profiles decode
-identically after `grove` and `hollow` were added.
+Adding a voice to an existing pool re-renders every loop that draws from
+that pool, because voices are drawn at render time from the blended pool
+and one added entry shifts that draw and every random decision after it.
+While the app is in testing that is allowed -- old share codes are not
+protected -- and the fiddle and accordion went straight into Glade that
+way. The balance lock (`stats.mjs --check`, below) is what guards the
+overall character when pools change.
 
 ## Feeling
 
@@ -138,6 +139,11 @@ to brightness, rather than gloom to joy.
 The moods, their places on the dials, their share-code numbers and the
 words the readout shows all live in `js/moods.js`, so adding, renaming or
 merging one is an edit to that file.
+
+The words themselves are being reworked: a larger vocabulary of
+Mikey's (`docs/MOODS.md`), labels of one to five words drawn from what a
+loop actually does, and words that steer the music as well as describe
+it. See roadmap item 19.
 
 ## How it works
 
@@ -512,6 +518,21 @@ and Web Audio runs a ramp from the event before it -- the release -- so a
 and was cut off. Heard as static when pan flute notes overlapped. The
 flute, ocarina and analoglead had the same fault; every ramp now ends by
 the time a note lets go.
+
+```sh
+node tools/measure.mjs --retire
+```
+
+Renders each voice and drum note twice, once as it plays and once with its
+audio nodes let go at the moment the synth disconnects them, and checks the
+two are identical. Finished voices are disconnected to save the audio
+thread (roadmap item 14.2 in the queue); this proves letting go never
+cuts anything short. Letting voices go a second early makes it fail, as it
+should.
+
+`--profile <id>` keeps only the loops a profile leads, for the loudness
+report and for `--refusals`; it is how a new profile's `level` is solved
+against the catalogue median.
 
 ### The balance lock
 
@@ -1228,14 +1249,35 @@ behind it:
   `thaw`, `haven` and the other airy palettes are quiet by design, nothing
   normalises between loops, and a loop machine whose every loop arrives at
   the same level has had something taken away from it. Run
-  `node tools/measure.mjs` to see the current figures. Whether the spread is
-  wider than intended over twenty tracks in a row is roadmap item 11.
-- Loops are always 4/4. No odd meters yet.
+  `node tools/measure.mjs` to see the current figures. What made listeners
+  reach for the volume turned out to be two melody voices sitting too hot,
+  since trimmed at the source (roadmap item 13).
+- Metres are 4/4, 6/8, 3/4 (the waltz reading of twelve steps) and 5/4;
+  nothing else yet.
+- Album codes are long (well over a thousand characters for a full
+  album), which makes them awkward to share by hand. Roadmap item 8.
+- On lite quality, tide and cinder loops drop a few more melody notes than
+  average, and a rare fast blend with shrine's temple bell can crowd the
+  tune. Roadmap item 15.
 - There's no way to edit a pattern by hand — you can only re-roll.
 - Saves live in this browser on this device. "Back up all" downloads a file;
   if Android's file picker will not show it again, use "Copy backup" and
   "Paste backup", which go through the clipboard and avoid the file system
   entirely.
+
+## Project documents
+
+- `ROADMAP.md` -- everything planned, shipped or decided against, and the
+  contribution rules.
+- `docs/QUEUE.md` -- the work queue Claude Code works down, with its
+  standing rules and merge policy, and a Done list of what shipped.
+- `docs/BRAIN.md` -- the planning side's handoff: decisions, listening
+  results, methods, current state.
+- `docs/MOODS.md` -- the mood vocabulary and its draft recipes.
+- `docs/ALBUMS.md` -- listening albums waiting for answers.
+- `docs/perf-baseline.md` -- the live performance baseline and what came
+  of it.
+- `docs/theory-sheets.md` -- music theory notes.
 
 ## Licence
 
