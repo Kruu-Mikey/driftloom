@@ -1,10 +1,12 @@
 // A metronome that survives the screen going off.
 //
 // Backgrounded pages get their setInterval clamped to roughly one tick a
-// second. The scheduler only queues a fraction of a second of audio at a
-// time, so once the clamp kicks in it runs dry between wake-ups and the
-// music stutters or stops. A Worker keeps its own timer and is throttled
-// far less aggressively, so the ticks keep arriving.
+// second. While the page is visible the scheduler queues only a fraction
+// of a second of audio at a time, so a clamp that caught it there would
+// run it dry between wake-ups and the music would stutter or stop. Hidden,
+// it queues three seconds (see engine.js), and a Worker keeps its own
+// timer and is throttled far less aggressively, so the ticks keep
+// arriving either way.
 //
 // The worker is built from a Blob rather than a separate file so there is
 // no extra request and nothing to get out of sync in the service worker

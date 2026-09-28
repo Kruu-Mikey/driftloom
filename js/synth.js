@@ -9,8 +9,8 @@ import { midiToFreq } from './theory.js';
 // Earlier versions capped a flat count of active voices (28, then 44). That
 // treats a hi-hat and a fat three-oscillator analogue pad as costing the
 // same "one voice", which measured render time across every voice type
-// shows is wrong by a lot: an analogpad note costs roughly 36x what a hat
-// does, a choir note 34x, an FM piano note 28x. A flat cap is either far too
+// shows is wrong by a lot: an analogpad note costs roughly 32x what a hat
+// does, a choir note 34x, an FM piano note 26x. A flat cap is either far too
 // loose for a chord of pads or far too tight for a busy hat pattern -- there
 // is no single number that is right for both.
 //

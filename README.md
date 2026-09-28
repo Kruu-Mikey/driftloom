@@ -116,7 +116,9 @@ while the harmony stays soothing; high coherence keeps everyone agreeing.
 The moods are joyful, happy, enthusiastic, refreshing, soothing, peaceful,
 comforting and reflective -- the bright quickened wing and the settled
 comforted one, plus two inward. No sad pole. Roughly 76% of loops carry two
-or three, and each mood takes between 10% and 15% of all emotional weight.
+or three, and each mood takes between about 7% and 17% of all emotional
+weight: the bright wing the most (refreshing, enthusiastic, joyful, happy
+at 15-17% each), soothing and reflective the least.
 
 Which layer carries which mood is keyed off the loop seed rather than any
 layer seed, so re-rolling the bass does not reshuffle the feeling.
@@ -159,10 +161,13 @@ js/clock.js       worker-based tick source that survives backgrounding
 js/media.js       media element routing and lock-screen / headset controls
 js/theory.js      scales, chord building, pitch maths
 js/moods.js       the mood vocabulary: feelings, words, share-code numbers
+js/characters.js  the sixteen profiles, and how a blend of them is mixed
 js/generator.js   the composer: spec -> pattern, and the drift mutations
 js/synth.js       voices and the reverb/echo bus
 js/engine.js      lookahead scheduler
 js/midi.js        standard MIDI file writer
+js/share.js       song and album share codes
+js/cover.js       cover art, from the same numbers as the music
 js/storage.js     localStorage saves, plus backup and restore
 js/ui.js          DOM rendering
 js/main.js        state and wiring
@@ -371,9 +376,9 @@ node tools/stats.mjs --voice-codes ocarina
 Prints share codes whose melody draws a given voice, with the bar count,
 length, note count and how many of those notes are joined to the one
 before. A change to one voice is otherwise close to unfindable by rolling
-dice in the app: the three wind voices are 12.4% of melody draws between
-them and any single one is nearer 4%. Deterministic in `--seed`, so the
-same codes come back.
+dice in the app: the three wind voices that slide are about 16% of melody
+draws between them, and the flute alone under 2%. Deterministic in
+`--seed`, so the same codes come back.
 
 ## Measurement
 
@@ -526,7 +531,7 @@ node tools/measure.mjs --retire
 Renders each voice and drum note twice, once as it plays and once with its
 audio nodes let go at the moment the synth disconnects them, and checks the
 two are identical. Finished voices are disconnected to save the audio
-thread (roadmap item 14.2 in the queue); this proves letting go never
+thread (queue item 14.2); this proves letting go never
 cuts anything short. Letting voices go a second early makes it fail, as it
 should.
 
@@ -578,7 +583,7 @@ deterministic, so rewriting it on unchanged code changes nothing.
 node tools/perf.mjs                          # the whole baseline, about 100 minutes
 node tools/perf.mjs --quick                  # a smoke run, one loop, a few minutes
 node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
-node tools/perf.mjs --query engine=rust      # the same, with a flag on the page
+node tools/perf.mjs --query engine=rust      # passed to the page; nothing reads it yet
 ```
 
 `measure.mjs` renders offline, faster than real time; this plays the real
@@ -673,7 +678,9 @@ Two decisions worth recording:
   ten characters, but it would mean whatever the generator happened to make
   of it *that week*: change one weighting and every code already written
   down quietly becomes different music. Writing the parameters down costs
-  about seventy bytes and makes a code mean one thing permanently.
+  about seventy bytes and makes a code mean one thing permanently. That is
+  the design; while the app is in testing a voice added to a pool still
+  re-renders the codes that draw from it (see Profiles).
 - **Crockford Base32**, because codes get read aloud and typed. It drops I,
   L, O and U so there is no 1/l or 0/O confusion, it is case-insensitive,
   and a Fletcher-16 checksum catches transposed characters -- which is
@@ -805,12 +812,12 @@ putting it in the pool roughly doubles what the budget refuses -- melody
 notes from 8.9% to 19.7%. A doubled melody with a fifth of its notes
 missing is not the feature.
 
-**Whether it works is a listening question**, and the answer is not in.
-The test is whether somebody who does not know the feature exists can pick
-the choirs out of twenty loops by ear. `node tools/stats.mjs --choir-quiz`
-prints twenty share codes in shuffled order, five of them choirs, and
-writes the answer key to a file instead of the screen. Nobody has sat it
-yet.
+**Whether it works is a listening question**, and it passed. The test is
+whether somebody who does not know the feature exists can pick the choirs
+out of twenty loops by ear. `node tools/stats.mjs --choir-quiz` prints
+twenty share codes in shuffled order, five of them choirs, and writes the
+answer key to a file instead of the screen. Sat on `--seed 4127`: 5 of 5
+picked, no false picks (roadmap item 12).
 
 ## Why the melody was losing notes
 
@@ -1179,11 +1186,14 @@ Entries and exits are quantised to two-bar boundaries. Music stopping on
 bar three and a half is what reads as "it just stopped"; stopping where a
 phrase would end reads as a breath.
 
-Loops under 8 bars are left alone entirely; a hole in a two-bar loop is a
-glitch, not a breath. Reverb and echo run through one gain node so a rest
-can be ducked rather than filled with wash. Rests land 20-45 dB below
-programme level rather than at digital zero, because held notes are allowed
-to decay into them, which is what the references do too.
+Entry schedules leave loops under 8 bars alone, since a rest of a bar or
+more in a two-bar loop reads as a glitch rather than a breath. Short gaps
+are drawn at any length, though: about one loop in three of 2 or 4 bars
+takes one, and about one in thirteen a whole bar of silence. Reverb and
+echo run through one gain node so a rest can be ducked rather than filled
+with wash. Rests land 20-45 dB below programme level rather than at
+digital zero, because held notes are allowed to decay into them, which is
+what the references do too.
 
 ## Audit notes
 

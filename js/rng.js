@@ -1,7 +1,7 @@
 // Deterministic pseudo-random number generation.
 // Everything in Driftloom grows from seeds, so the same seed always
-// produces the same loop. That is what makes a 40-byte save file enough
-// to store a whole four-bar piece.
+// produces the same loop. That is what makes a share code of about
+// seventy bytes enough to carry a whole loop.
 
 export function mulberry32(a) {
   return function () {

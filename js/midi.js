@@ -102,7 +102,7 @@ export function patternToMidi(pattern, { repeats = 1 } = {}) {
   //
   // The old version offset every layer by the pattern length, which is only
   // right when all the cycles match. Under polymeter, or the short
-  // fragments the pulse profile uses, a layer with a five-bar cycle inside
+  // fragments undertow uses, a layer with a five-bar cycle inside
   // a four-bar loop ran past the end and collided with the next repeat,
   // while a one-bar fragment simply never repeated. The export did not
   // match what you heard, which for a file whose whole job is to leave the

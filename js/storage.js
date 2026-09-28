@@ -1,5 +1,6 @@
 // Saved loops live in localStorage. A loop is only its spec — a few
-// numbers and five seeds — so a hundred saves is a few kilobytes.
+// numbers and a handful of seeds, under a kilobyte as JSON — so a hundred
+// saves is well under a hundred kilobytes.
 
 const KEY = 'driftloom.saves.v1';
 const PREFS = 'driftloom.prefs.v1';

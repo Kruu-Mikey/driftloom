@@ -1,6 +1,6 @@
 // Live performance measurement: the real app, playing, in headless Chromium.
 //
-// Run with:  node tools/perf.mjs [--quick] [--out docs/perf-baseline.json]
+// Run with:  node tools/perf.mjs [--quick] [--json <file>] [--md <file>]
 //
 // `measure.mjs` renders offline, faster than real time, which answers "how
 // loud" and "how much does a voice cost" but not "how does it feel to have

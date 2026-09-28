@@ -1,10 +1,11 @@
 // Sound profiles.
 //
 // A profile is a set of constraints -- tempo band, scale pool, instruments,
-// density, metre, form -- that move together. On their own they would be ten
-// boxes. They are not used that way: every loop draws a *weight* across
-// several of them, so the palette is a continuous space rather than ten
-// points, and a loop can be mostly one thing with three others colouring it.
+// density, metre, form -- that move together. On their own they would be
+// sixteen boxes. They are not used that way: every loop draws a *weight*
+// across several of them, so the palette is a continuous space rather than
+// sixteen points, and a loop can be mostly one thing with three others
+// colouring it.
 //
 // Names are deliberately about the sound rather than where it came from.
 

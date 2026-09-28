@@ -57,9 +57,9 @@ driftloom generation statistics
   --choir-quiz [file] print a listening test instead of the report
   --voice-codes <v>   print share codes whose melody draws voice <v>
   --drums <profiles>  drum variety for the loops each profile leads
+                      (comma-separated; --n of each, default 150)
   --depth             composition depth by loop length, for loops that
                       develop and loops that do not (default --n 3000)
-                      (comma-separated; --n of each, default 150)
   --write-baseline [file]  write the balance lock      (default ${BASELINE_DEFAULT})
   --check [file]      rerun the locked corpus against it; non-zero exit on a miss
   --help              this
@@ -79,9 +79,10 @@ driftloom generation statistics
   low column.
 
   --voice-codes exists because a change to one voice is otherwise hard to
-  hear: the three wind voices together are 12.4% of melody draws, so
-  rolling the dice in the app until one turns up is a poor use of an
-  evening. Give it a voice name and it prints codes to paste straight in.
+  hear: the three wind voices that slide together are about 16% of melody
+  draws, and the flute alone under 2%, so rolling the dice in the app
+  until one turns up is a poor use of an evening. Give it a voice name and
+  it prints codes to paste straight in.
 
   --drums reports how varied a profile's drums are, over --n loops it
   leads that have drums (150 unless --n is given), counting sounding hits
@@ -900,9 +901,10 @@ function quiz(opts) {
 // -------------------------------------------------------- finding a voice
 
 // A change to one voice is close to unfindable by rolling dice in the app.
-// The three wind voices are 12.4% of melody draws between them, and any
-// single one is nearer 4%, so hearing a change to the ocarina means
-// re-rolling twenty-five times and hoping. This prints codes that are
+// The three wind voices that slide are about 16% of melody draws between
+// them (--n 4000: whistle 8.5%, ocarina 6.2%, flute 1.8%), so hearing a
+// change to the ocarina means re-rolling sixteen times and hoping, and to
+// the flute more than fifty. This prints codes that are
 // guaranteed to have it.
 //
 // The loops are picked for being worth listening to as well as for the

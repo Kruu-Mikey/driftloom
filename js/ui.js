@@ -176,10 +176,10 @@ export function resetCursor() {
 // phone.
 //
 // Nothing here repaints. A light's lit colour and glow are its own
-// pseudo-element fading by opacity, and the layer cursors slide by
-// transform; both run on the compositor. The old background-colour fade
-// repainted the whole page on every frame it ran, and at a sixteenth's
-// pace it was always running.
+// pseudo-element switched on and off by opacity, with no fade, and the
+// layer cursors slide by transform; both run on the compositor. The old
+// background-colour fade repainted the whole page on every frame it ran,
+// and at a sixteenth's pace it was always running.
 export function moveCursor(lights, cells, index) {
   if (index === lastCursor) return;
   if (lastCursor >= 0 && lights[lastCursor]) lights[lastCursor].classList.remove('on');

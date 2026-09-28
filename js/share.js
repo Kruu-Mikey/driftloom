@@ -12,6 +12,11 @@
 // quietly becomes a different piece of music. Writing the parameters down
 // costs about seventy bytes and makes a code mean one thing forever.
 //
+// Forever is the design, not yet the promise. Voices are still drawn at
+// render time from the blended pool, so adding a voice to a pool re-renders
+// every code that draws from it; while the app is in testing that is
+// allowed, and old codes are not protected (see the README's Profiles).
+//
 // Crockford Base32 because codes get read aloud, written down and typed.
 // It drops I, L, O and U, so there is no 1/l or 0/O confusion, and it is
 // case-insensitive.
