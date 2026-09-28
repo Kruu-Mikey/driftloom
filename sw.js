@@ -1,8 +1,8 @@
-// Offline cache. The whole app is a few kilobytes of text, so it is
-// cached whole on install -- but served *network first*, with the cache as
-// the fallback when the network is gone. That ordering is deliberate: it is
-// what lets a deployed change show up on the next cold start instead of
-// waiting for a cache bump.
+// Offline cache. The whole app is a few hundred kilobytes of text (about
+// 130 KB gzipped), so it is cached whole on install -- but served *network
+// first*, with the cache as the fallback when the network is gone. That
+// ordering is deliberate: it is what lets a deployed change show up on the
+// next cold start instead of waiting for a cache bump.
 //
 // CACHE is also the build stamp shown in Diagnostics. Bump it on every
 // change, together with BUILD in js/main.js, so you can tell at a glance

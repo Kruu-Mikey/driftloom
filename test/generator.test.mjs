@@ -69,9 +69,10 @@ for (let i = 0; i < SEEDS; i++) {
 
 check('every note lands inside the playable range', problems.length === 0, problems.slice(0, 4).join('; '));
 check('loops are almost never empty', sparse / SEEDS < 0.01, `${((sparse / SEEDS) * 100).toFixed(2)}% empty`);
-// Three of the six characters are ambient by definition, so a large share of
-// loops having no percussion is the design, not a fault. The band is wide;
-// the printed figure is the thing to actually look at.
+// Six of the sixteen profiles rarely or never have drums (haven and vapor
+// never; thaw, clockwork, hollow and shrine about one loop in ten), so a
+// large share of loops having no percussion is the design, not a fault.
+// The band is wide; the printed figure is the thing to actually look at.
 check('drums appear on a reasonable share of loops', drumless / SEEDS > 0.2 && drumless / SEEDS < 0.6, `${((drumless / SEEDS) * 100).toFixed(1)}% drumless`);
 console.log(`        registers: melody ${range.melody}, bass ${range.bass}, keys ${range.chords}`);
 

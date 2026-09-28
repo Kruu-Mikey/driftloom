@@ -21,7 +21,8 @@ export const LAYER_LABELS = {
 };
 
 // Kept as the default and as the export other modules still import, but the
-// real value now lives on the spec: 16 is 4/4, 12 is 6/8, 20 is 5/4.
+// real value now lives on the spec: 16 is 4/4, 12 is 6/8 (or 3/4, when the
+// loop's gait reads it as a waltz), 20 is 5/4.
 export const STEPS_PER_BAR = 16;
 
 // Vowels belong to the composition, not to the pitch. Deriving them from
@@ -1121,7 +1122,8 @@ function genMelody(spec, harmony, dev = null) {
       dur,
       // The accent belongs to the figure, not to the phrase: a syncopation
       // nobody leans on does not read as a syncopation. Velocity by
-      // position within a phrase is roadmap item 2 and is still absent.
+      // position within a phrase goes on top of this, below (roadmap
+      // item 2).
       vel: 0.36 + r.f() * 0.26 + (accent ? 0.16 : 0),
     });
     // A tune moves mostly by step.
@@ -1421,13 +1423,14 @@ function genMelody(spec, harmony, dev = null) {
   if (events.length) {
     const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 
-    // Where the line wants to sit. Its own centre, unless the keys drew
-    // the same voice the melody did -- then the two are meant to be in
-    // unison, and the register to aim at is the one the keys are already
-    // in. Item 4 moves the keys to hold that separation afterwards, but it
-    // can only move them by whole octaves, so a melody that lands five
-    // semitones off can never be met; aiming here instead is what makes
-    // the unison a unison rather than an approximate one.
+    // Where the line wants to sit. Its own centre (or, in a developing
+    // loop, the one its section is handed), unless the loop is a choir --
+    // then the two are meant to be in unison, and the register to aim at
+    // is the one the keys are already in. Item 4 moves the keys to hold
+    // that afterwards, but it can only move them by whole octaves, so a
+    // melody that lands five semitones off can never be met; aiming here
+    // instead is what makes the unison a unison rather than an approximate
+    // one.
     let centre = unison
       ? chordPitches.reduce((a, b) => a + b, 0) / chordPitches.length
       : dev && dev.centre != null ? dev.centre : mean(events.map((e) => e.midi));

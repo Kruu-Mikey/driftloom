@@ -4,11 +4,11 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-09-28:** items 0-17 are done (13 stopped at its gate by
-design). One housekeeping item is left, 18. After it, the next items will
-come from the brain's work on the words (roadmap 19). A new Claude Code
-session starts here: read the standing rules and the merge policy, then
-do item 18.
+**Status, 2026-09-28:** items 0-18 are done (13 stopped at its gate by
+design). Nothing is queued: the next items will come from the brain's work
+on the words (roadmap 19). A new Claude Code session starts here: read the
+standing rules and the merge policy, then take the next item once there is
+one.
 
 ## Standing rules, for every item
 
@@ -534,6 +534,24 @@ Mikey decides this line:
   near two thirds of all of them would mean developing micro-loops too,
   which is a new kind of form rather than a weight: say if you want it.
 
+- **Item 18, short loops can still fall silent: a decision (2026-09-28).**
+  The README said loops under 8 bars get no rests at all, "a hole in a
+  two-bar loop is a glitch". That holds for the entry schedules
+  (`genForm` returns early under 8 bars) but not for the short gaps:
+  `genGaps` draws at every length. Over 6,000 loops, 30% of the 2-bar and
+  34% of the 4-bar loops take a gap, and 7% and 8% a whole bar of silence
+  -- half of a two-bar loop. Item 18 was comments and docs only, so the
+  README now says what the code does; whether short loops should keep
+  their gaps (or keep only the beat-long ones) is for Mikey's ears. Any
+  change re-renders the short loops that have one.
+- **Item 18, left alone (2026-09-28).** `ROADMAP.md` item 9 v2 still says
+  the three wind voices are 12.4% of melody draws; that was true when it
+  was written and reads as history there, so it stays (the README and
+  `stats.mjs` now say about 16%). The synth and vowel-drift comments that
+  keep articulation off the composer's stream "or every share code in
+  circulation renders differently" are still true, and still the reason
+  existing loops render identically, so they stay as written.
+
 ## Done
 
 - #59, fiddle and accordion take two (v44),
@@ -706,3 +724,11 @@ Mikey decides this line:
   developing loop in five). About two thirds of 24-bar loops develop (was
   57%). Simple loops are untouched, note for note. 32 bars: see the note
   above.
+- #111, housekeeping: comments and README against the code (item 18; no
+  version bump), https://11e02ab0-driftloom.kruu-mikey-thaiculture.workers.dev:
+  nothing to hear -- comments and docs only, and `stats.mjs` renders the
+  same corpus byte for byte. Stale counts, "not yet" notes about things
+  that shipped and quoted figures were corrected in the code's comments
+  and the README (the list is in the PR). One thing for Mikey's ears came
+  out of it: short loops still take short gaps, a whole bar of silence in
+  about one 2- or 4-bar loop in thirteen (see the note above).

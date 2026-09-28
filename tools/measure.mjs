@@ -611,9 +611,9 @@ window.measure = async (opts) => {
 // ------------------------------------------------------ the voice probe
 
 // Roadmap item 1 described a per-voice probe and never built it, on the
-// grounds that nothing had needed one. Something does now: the vowel voice
-// is harsh, and "harsh" has to become a number before it can be fixed
-// without breaking something else.
+// grounds that nothing had needed one. The vowel voice was the first thing
+// that did: it was harsh, and "harsh" had to become a number before it
+// could be fixed without breaking something else.
 //
 // The number is the share of a note's A-weighted energy that falls between
 // 2 and 5kHz. A-weighting because the ear is not flat and the complaint is
