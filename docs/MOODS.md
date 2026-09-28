@@ -149,8 +149,8 @@ leaning in. On glade: a sherbet edge on the folk tune.
 
 **bouncy** -- springs underfoot. Energy mid-high; short notes, dotted and
 syncopated rhythms, a tune that leaps a little; plucky voices; drums
-likely with a light, springing kick; walking or pulse bass. Can't pair
-with *floating* (the two pull against each other), which is fine.
+likely with a light, springing kick; walking or pulse bass. Meets *floating*
+in the balloon (below).
 
 **floating** -- no ground under it. Energy low; the downbeat softened
 (fewer kicks, the bass held or sparse), long notes and ties across the
@@ -171,5 +171,13 @@ pilot; *bizarre* and *zany* would push further later.
 
 **How words combine:** each word's pushes add up, weighted; where they
 conflict, the heart word wins on feel and the motion word wins on rhythm.
-Some pairs won't work (bouncy + floating); the generator should simply
-not offer them.
+
+**No pair is forbidden** (Mikey, 2026-09-28). Words that pull against
+each other find their in-between. His example: *bouncy* and *floating* is
+a helium balloon -- it floats by default, children bat it and it bounces
+around the room, then it drifts back to floating. Musically: a floating
+base (soft downbeat, long notes, space, a high line) with bounces as
+events -- a springy figure, a pickup, a leap, a few plucked notes -- that
+settle back into the float. So a conflict becomes a *shape over time*
+(a default state and excursions from it) rather than a cancellation.
+Every conflicting pair gets its own image like this, worked out by ear.

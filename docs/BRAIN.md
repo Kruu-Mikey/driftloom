@@ -235,6 +235,32 @@ wheels on rails or a machine gun. Budget follow-ups are roadmap item 15.
   Mikey by ear ("what would sour and floating sound like on cinder?").
   Roadmap item 19: a pilot of about a dozen words, recipes as data,
   listening albums, then widen. Happens before the generator's Rust port.
+
+  **Handoff, 2026-09-28 (end of the long brain chat).** Queue items 14-17
+  all merged: #96, #100, #102-#108; main is **v64**; brain check: tests and
+  `--check` pass. Performance: paint down from 33 to under 1 ms/s,
+  finished voices now let go (audio thread -25% at 1x, -44% at 6x),
+  hidden-tab excess from +61% to +11%, first visit 467 -> 233 KB gzipped,
+  the playhead fade gone; the always-on chain was costed and left as is
+  (`docs/perf-baseline.md`). Temple bell chords lifted 1.9 LU (#106).
+  Moods now steer the mode (#107): loops 90%+ happy in minor-ish modes
+  38% -> about 20% (brain's count 21%); the mood vocabulary is data in
+  `js/moods.js`. Composition depth second pass (#108): 16-bar developing
+  loops 8.8 distinct melody bars against 6.7 simple.
+
+  Open decisions for Mikey, carried forward:
+  - **32-bar micro-loops** (three in four 32-bar loops) never develop,
+    by design; developing them would be a new kind of form. Say if wanted.
+  - **Reflective leans brighter** since #107; is that right?
+  - **Cinder and shatter can't sound bright**: no bright modes in their
+    pools. Part of roadmap 19's "how words bend a profile".
+  - **Bouncy + floating**: Mikey says no pair is forbidden; conflicts
+    become a shape over time (the helium balloon). In `docs/MOODS.md`.
+
+  Out for listening: `docs/ALBUMS.md` ("Moods", "Depth two").
+  Next brain chat: dedicated to roadmap item 19, the words. A later,
+  separate chat for the Rust port. One brain chat at a time edits these
+  files.
 - **The north star for tone (2026-09-25): pleasant.** Things should sound
   pleasant generally: nothing that would bother people in a coffee shop.
   Harsh, buzzy or toy-like timbres fail this whatever their level.
