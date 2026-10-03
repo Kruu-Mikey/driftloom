@@ -97,7 +97,7 @@ Each recipe says what the word means musically, which dials it pushes,
 and where it gets interesting against a profile. The dials are the
 generator's own: tempo, feel (lift, energy, warmth), tone (warmth, space,
 wobble), swing, drums and hat density, rests (`restBar`, `airy`), chord
-size, scale colour, register, and which instruments are drawn. "Pushes"
+size, scale color, register, and which instruments are drawn. "Pushes"
 means leans the profile's own ranges, never leaves them: a word bends a
 profile, it doesn't replace it.
 
@@ -121,9 +121,9 @@ few-note tune with long notes; texture swells or waves. Differs from
 *tender* by being spacious rather than close.
 
 **golden** -- late light, warm glow. Warmth very high, lift mid-high,
-brightness mid (not sparkling); major and lydian colour, rich chords
+brightness mid (not sparkling); major and lydian color, rich chords
 (sevenths and added ninths); warm sustaining voices (rhodes, keys, pad,
-ocarina), gentle swing, the tape-worn sound up a little. A colour more
+ocarina), gentle swing, the tape-worn sound up a little. A color more
 than a mood, so it pairs with almost any heart word.
 
 **twinkling** -- small lights, high and scattered. High register for the
@@ -144,9 +144,9 @@ choir, moogpad), legato, soft attacks; a lower register, full chords, a
 round bass (sub, round). The opposite corner from *crisp*.
 
 **sour** -- a tart twist, like tamarind or green mango: puckering but
-pleasant, never unpleasant. Harmony colour: added seconds, the b9 over a
+pleasant, never unpleasant. Harmony color: added seconds, the b9 over a
 major chord, close clusters, a lydian or dorian tang; a touch of detune;
-a thinner, brighter tone. Used lightly -- a flavour on a loop, not the
+a thinner, brighter tone. Used lightly -- a flavor on a loop, not the
 whole meal -- unless it's the one word. On cinder: its flamenco note
 leaning in. On glade: a sherbet edge on the folk tune.
 
@@ -188,7 +188,7 @@ Every conflicting pair gets its own image like this, worked out by ear.
 ## Decided (Mikey, 2026-09-28)
 
 - **Lively** joins the list (it had crept into the sorting above).
-- **Near neighbours, told apart:** *tender* is close (a small room, a soft
+- **Near neighbors, told apart:** *tender* is close (a small room, a soft
   touch, a narrow tune); *soothing* is settling (slow, long chords).
   *Serene* is still and wide; *peaceful* is content and moving gently. On
   the three feeling dials these pairs sit almost on top of each other, so
@@ -230,7 +230,7 @@ close the loop landed to that word's point.
 | oddness | familiar -- strange | unexpected intervals, whole-tone steps, odd pairings |
 
 Some things stay leans rather than dials: instrument families (strumming,
-humming, chirping), metre (swaying's lilt), shapes over time (the balloon).
+humming, chirping), meter (swaying's lilt), shapes over time (the balloon).
 Separate dials also dissolve some conflicts: *bouncy* is bounce up,
 *floating* is ground down -- different dials, so the balloon is a loop
 that is both, not an average of the two.
@@ -246,10 +246,10 @@ while still letting words that contrast sit on one loop?
    - touch: warmth x edge (velvety, buttery, crisp, frosty)
    - space: room x height (tender, twinkling, booming, serene)
    - motion: ground x bounce (floating, bouncy, steady, rocking)
-   - flavour: tang x oddness (sweet, cozy, sour, quirky, zany)
+   - flavor: tang x oddness (sweet, cozy, sour, quirky, zany)
 2. **A loop is a cloud, not a point.** Measure it bar by bar and layer by
    layer; each moment is a dot, weighted by how much it's heard. Words that
-   pull apart stop cancelling, because they can hold in three ways, all
+   pull apart stop canceling, because they can hold in three ways, all
    visible in the one cloud: *in between* (dots in the middle), *in
    different layers* (crisp drums under velvety pads), *over time* (the
    helium balloon: a floating home with excursions to bouncy).
@@ -259,16 +259,16 @@ while still letting words that contrast sit on one loop?
 4. **Steering:** a label becomes a plan -- home words, and words carried
    by one layer or by excursions -- and the generator aims the cloud.
 
-**Pairings are open.** Option B (brain's lean, 2026-09-28) puts more of
-the pilot words on a single map: colour (warmth x lift: golden, sunny,
+**Pairings: option B** (Mikey, 2026-09-28). It puts more of
+the pilot words on a single map: color (warmth x lift: golden, sunny,
 tender, misty), shimmer (edge x height: twinkling, sparkling, velvety,
 booming), air (room x ground: floating, airy, cozy, serene), motion
-(energy x bounce: still, flowing, bouncy, bursting), flavour (tang x
+(energy x bounce: still, flowing, bouncy, bursting), flavor (tang x
 oddness). The pairs are views for placing words by ear; the engine can
 measure on all ten dials, so a word may use any dials it needs.
 
 **Better than hand-drawn regions:** fit each word's region from Mikey's
-listening picks (most/least tests), so the words are defined by what he
+listening answers (the word-ranking test, queue item 19), so the words are defined by what he
 hears rather than by the brain's guesses.
 
 Unproven: whether every dial can be measured per bar and per layer

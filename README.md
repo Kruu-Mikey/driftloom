@@ -51,7 +51,7 @@ keys is the exception — it changes the harmony, so the bass and melody follow
 it while keeping their own rhythms.
 
 **Drift** makes the loop vary as it repeats: a hat drops out, a melody note
-steps to its neighbour, a layer takes a bar off. It always returns to the loop
+steps to its neighbor, a layer takes a bar off. It always returns to the loop
 you saved, because the variations are computed fresh from the original each
 pass and never written back.
 
@@ -62,7 +62,7 @@ Whatever the browser synth sounds like, the composition itself travels.
 ## Profiles
 
 A profile is a set of constraints -- tempo band, scale pool, instruments,
-density, metre, form -- that move together.
+density, meter, form -- that move together.
 
 | | |
 |---|---|
@@ -81,10 +81,10 @@ density, metre, form -- that move together.
 | **Undertow** | hypnotic pulse. Steady four, very short fragments, the mix breathing against the kick |
 | **Tide** | sea and island folk. Fiddle, whistle and pan flute over harp, accordion and a strummed nylon guitar; gentle loops waltz in 3/4, lively ones jig in 6/8, and about a third sit on a drone. A frame drum and tambourine in place of the kit, and the slow swell of waves |
 | **Cinder** | island and volcano: fast, rhythmic, Spanish-tinged. A driving 6/8 at 120-150 bpm, some 4/4, drums in nine loops in ten with the hand kit leading; a strummed nylon guitar on the Andalusian cadence, fiddle, whistle, marimba, accordion and pan flute on top |
-| **Wayfare** | the travelling music: steady, bright, moving. A walking 4/4 at 104-138 bpm, some 6/8; pan flute, fiddle, whistle and ocarina over accordion, nylon guitar and harp, and in half its loops a chug -- eighth notes on the bass, and on the brushes when brushes play -- like wheels on rails. Its own light, steady drum grooves |
+| **Wayfare** | the traveling music: steady, bright, moving. A walking 4/4 at 104-138 bpm, some 6/8; pan flute, fiddle, whistle and ocarina over accordion, nylon guitar and harp, and in half its loops a chug -- eighth notes on the bass, and on the brushes when brushes play -- like wheels on rails. Its own light, steady drum grooves |
 
 These are not sixteen boxes. Every loop draws a **weight across several of
-them** -- an exponential draw per profile, normalised, which is a Dirichlet
+them** -- an exponential draw per profile, normalized, which is a Dirichlet
 and spreads weight far more naturally than picking fractions by hand. About
 78% of loops blend two to four profiles, with lopsided mixes commoner than
 even ones, so a loop still sounds like it is *about* something. Pools are
@@ -108,9 +108,9 @@ says.
 Averaging those would land on one middling value that is none of them. But a
 piece really can be glad and inward at once -- a bright line over a low,
 sparse accompaniment -- and that is not a midpoint, it is different layers
-carrying different feeling. So the loop has a centre, and **each layer draws
+carrying different feeling. So the loop has a center, and **each layer draws
 its own mood from the mixture** and is pulled part-way back toward that
-centre by the loop's *coherence*. Low coherence lets the melody be happy
+center by the loop's *coherence*. Low coherence lets the melody be happy
 while the harmony stays soothing; high coherence keeps everyone agreeing.
 
 The moods are joyful, happy, enthusiastic, refreshing, soothing, peaceful,
@@ -129,7 +129,7 @@ Underneath, each mood is a point on three dials:
   direction of the melodic walk, added ninths. Above about 0.66 it leans
   hard on the bright modes, and below 0.5 it leans inward, toward the
   middle of the axis rather than its darkest modes; in between the choice
-  is only nudged. A loop labelled happy sounds happy in any profile whose
+  is only nudged. A loop labeled happy sounds happy in any profile whose
   modes can: cinder's and shatter's have no bright mode to offer.
 - **energy** -- still to animated. Steers tempo, hat density, how often bars
   rest.
@@ -187,22 +187,22 @@ Notes worth knowing if you go digging:
   anticipated, short-short-long, three-against-four, staccato bursts, long
   sustains -- with separate tables for 4/4, 6/8 and the waltz (long notes
   on the beat, lilting pickups into the bar line), and the rest built to
-  fit whatever other metre a profile asks for. Which cells are
+  fit whatever other meter a profile asks for. Which cells are
   likely follows the loop's energy and lift, so a joyful loop gets a
   bouncier figure and a reflective one gets long notes. Pitch is a random
   walk laid over whatever the cell decided.
-- **The chords keep time in their own metre.** A chord rhythm is drawn by
+- **The chords keep time in their own meter.** A chord rhythm is drawn by
   name -- pad, breathe, backbeat, pushed, offbeat, late bloom, stutter --
-  and each metre has its own table, so in 6/8 the offbeat is the jig's
+  and each meter has its own table, so in 6/8 the offbeat is the jig's
   "pah-pah" on the eighths between the two dotted beats rather than 4/4's
   pattern cut off at step 12. The rest of the 6/8 table was settled by ear:
   chords move on the two dotted beats and hold, figures between the beats
   are welcome, and a weak-eighth entry tied over the second beat or a chord
-  cut short is not. Tables are keyed by metre, not step count, because a
+  cut short is not. Tables are keyed by meter, not step count, because a
   waltz reads the same twelve steps as 3/4: beats at 0, 4 and 8, the bass
   on the downbeat and the chords answering on the other two, so every name
   in its table is a way of playing the oom-pah-pah.
-- **A profile can bring its tempo, metre and harmony with it.** Tide draws
+- **A profile can bring its tempo, meter and harmony with it.** Tide draws
   a gait -- a slow waltz, a quick jig or, now and then, a reel in four --
   and its tempo band from the gait, so a gentle loop is never a fast one.
   It plays its own progressions (the I-bVII shuttle, i-bVII-bVI-bVII,
@@ -236,13 +236,13 @@ Notes worth knowing if you go digging:
   sounds (0.4 s past its end rather than the bass's usual 0.8): charged
   the old way, eight short notes a bar took room the tune needed on lite.
 - **Drum grooves can belong to one profile too.** Wayfare plays grooves
-  of its own rather than the catalogue's lo-fi patterns, whose boom-bap
+  of its own rather than the catalog's lo-fi patterns, whose boom-bap
   kicks and claps spoiled its tunes: the kick on 1 and 3, a rim or soft
   snare on 2 and 4 (in 6/8 a kick and a backbeat a bar), the eighths
   light, the same on every kit it draws, with a softer, rounder kick on
   tape and brush. One plain bar repeated was heard as lifeless, so the
-  bars vary as the catalogue's do: a four-bar phrase with answer bars (a
-  pickup kick, an open hat), ghost notes, colour from the shaker or the
+  bars vary as the catalog's do: a four-bar phrase with answer bars (a
+  pickup kick, an open hat), ghost notes, color from the shaker or the
   hats, a fill or a soft roll at the phrase's end, and a swell across it.
   `stats.mjs --drums <profile>` measures the variety.
 - **The figure is fixed before it is played.** Which notes a motif leaves
@@ -290,10 +290,10 @@ Notes worth knowing if you go digging:
   chance of moving and how far it travels follow the note's length in
   seconds, so short notes keep their shape and only sustains change.
 - **No sung note jumps out.** A note whose fundamental lands on a formant
-  peak used to come out 10-15 LU louder than its neighbours. Each note is
+  peak used to come out 10-15 LU louder than its neighbors. Each note is
   now trimmed by how much energy the vowel's own filters hand its
   harmonics, against the voice's usual note on that vowel: loud notes come
-  down, nothing is lifted, and the filters -- the vowel's colour -- are
+  down, nothing is lifted, and the filters -- the vowel's color -- are
   untouched. Worked out from the filter formulas, so it costs no nodes and
   draws no random numbers.
 - **The wind voices slide into notes.** `ocarina`, `flute` and `whistle`
@@ -399,7 +399,7 @@ Beside peak and RMS it reports loudness as the ear weights it: K-weighted
 integrated loudness in LUFS and loudness range in LU, per ITU-R BS.1770 and
 EBU Tech 3342, with the mono bus measured as one channel at weight 1.0, and
 crest as sample peak minus loudness. Raw RMS over-counts bass, which is why
-roadmap item 13 wanted this before anything is levelled. `--selftest` checks
+roadmap item 13 wanted this before anything is leveled. `--selftest` checks
 the meter against reference tones and Tech 3342's range cases, no browser
 needed.
 
@@ -413,7 +413,7 @@ is one block, and PSR, the sample peak against the loudest short-term
 loudness, beside the existing crest. `--selftest` holds them to EBU Tech
 3341's constancy signals. Beside them, the drums over the music: the drums
 layer's integrated loudness less that of every other layer summed, per loop
-and by kit and metre (`--json` carries each loop's kit and metre too).
+and by kit and meter (`--json` carries each loop's kit and meter too).
 
 Each loop is also rendered a second time with the master compressor and
 ceiling routed around -- inside the tool only -- so the report can say what
@@ -488,7 +488,7 @@ node tools/measure.mjs --voice all
 
 The same probe also measures each voice's K-weighted loudness, note by note
 across two octaves, at velocities 0.4 and 0.8 reported separately -- a voice
-can match its neighbours at one and not the other, and one whose velocity
+can match its neighbors at one and not the other, and one whose velocity
 also brightens it gets louder faster than one whose velocity is only a
 level. Each voice is measured in every layer `characters.js` draws it for,
 across the two octaves that layer actually plays in, and through that
@@ -537,7 +537,7 @@ should.
 
 `--profile <id>` keeps only the loops a profile leads, for the loudness
 report and for `--refusals`; it is how a new profile's `level` is solved
-against the catalogue median.
+against the catalog median.
 
 ### The balance lock
 
@@ -560,7 +560,7 @@ loops whose pools drew one voice by accident.
 `--check` redraws the corpus the baseline recorded (its `--n` and
 `--seed`, not the command line's), prints every figure as baseline, now,
 difference and tolerance, and exits 1 if any is outside its tolerance.
-Profile, metre and voice shares are printed beside them and never fail it,
+Profile, meter and voice shares are printed beside them and never fail it,
 because new profiles move those on purpose.
 
 Tolerances are sampling noise, not taste: three times each figure's
@@ -717,8 +717,8 @@ A cover is now built the way a picture is:
 
 Tied to the music throughout: energy becomes turbulence, warmth picks the
 palette family, lift sets brightness, **the key rotates the hue** (twelve
-roots, twelve colourways), swing shears the field, bar count sets the number
-of strata, **the metre sets rotational order** (threes in 6/8, fives in 5/4),
+roots, twelve colorways), swing shears the field, bar count sets the number
+of strata, **the meter sets rotational order** (threes in 6/8, fives in 5/4),
 the number of profiles in the blend sets the number of layers, and coherence
 governs how unified the composition is -- the same number that governs how
 much the layers of the music agree.
@@ -746,7 +746,7 @@ come back, and read `lateTicks` and `worstLateMs`.
 ## A note on the tape saturator
 
 It is easy to write this stage as `tanh(x * drive) / tanh(drive)`, because
-that maps 1 to 1 and looks like the right normalisation. It is not. The
+that maps 1 to 1 and looks like the right normalization. It is not. The
 slope at zero becomes `drive / tanh(drive)`, which reached 3.2, so every
 quiet detail got hauled up while the peaks were clamped. That is a
 distortion pedal wearing a tape machine's name, and it was audible as
@@ -800,7 +800,7 @@ going to happen.
 **Cost: 2.3 units a note, 14%**, counted across the melody and keys of
 12,000 loops at the weights in `VOICE_COST`. The worst single chord attack
 on a choir loop is 88 units at the 90th percentile against 125 for the
-catalogue at large, and 110 at the maximum against 170. A choir loop is
+catalog at large, and 110 at the maximum against 170. A choir loop is
 nowhere near the heaviest thing here. It actually refuses *fewer* notes
 than an ordinary loop, because a sung chord at 16-22 a note is cheaper
 than the pad or piano it replaced -- keys refusals fall from 17.5% to
@@ -968,7 +968,7 @@ quarter: the note has to be *on* pitch for most of its length, or the slide
 stops being an attack and becomes the note. Notes under 180ms, the shortest
 quarter of the corpus, stay clean.
 
-**The rate is one judgement rather than a measurement**, so it is worth
+**The rate is one judgment rather than a measurement**, so it is worth
 stating plainly: 0.22 of eligible notes, which measures **18.1%** of wind
 melody notes overall -- 9.8% from the previous note, 8.3% scooped. About
 one note in five and a half. Much above that and the line reads as an
@@ -1059,7 +1059,7 @@ noise floor than it started, because the thing that was crowding it has
 gone.
 
 **Level is compensated**, because a fix that quietly turns a voice down is
-a trade nobody agreed to. A `PeriodicWave` is normalised when it is built
+a trade nobody agreed to. A `PeriodicWave` is normalized when it is built
 and a 1/n^2.5 wave is a far smoother shape than a sawtooth, so it arrives
 several dB hotter; the trim is set from A-weighted loudness, since that is
 what "no quieter in the mix" means to a listener. Both voices come back
@@ -1089,7 +1089,7 @@ something sung.
 
 **Where it goes.** One rung along the open/close axis and never across it:
 a to o or e, o to u or a, u to o, e to a. F1 is the openness formant --
-a 800Hz, o 450, e 400, u 325 -- so neighbouring rungs glide, and the ear
+a 800Hz, o 450, e 400, u 325 -- so neighboring rungs glide, and the ear
 hears one vowel changing shape rather than two vowels in succession. A jump
 across the ladder ("eh" straight into "oo") is a diphthong, which is a word,
 and words are deliberately out of scope. A hum has no vowel to move to and
@@ -1103,7 +1103,7 @@ rather than as a mouth.
 **How much it moves follows how long the note is.** `held` is how far a note
 is into "long" -- zero below 0.5s, one from 2.0s up -- and it serves as both
 the probability of moving at all and, through `0.34 + held * 0.66`, the
-fraction of the distance actually travelled. Over 4000 loops that puts 26.4%
+fraction of the distance actually traveled. Over 4000 loops that puts 26.4%
 of formant-voice notes in motion at a mean depth of 0.81, while the 41% of
 them shorter than 0.55s never move. A mouth that crosses a whole vowel in
 half a second has sung a word.
@@ -1128,7 +1128,7 @@ clean passes, so 5. One constant rather than three, because in every case it
 is the same three biquads doing the same extra work.
 
 Two caveats on that figure, both of which cut the same way. The probe's
-hat-normalised column does not reproduce the table's own internal ratios on
+hat-normalized column does not reproduce the table's own internal ratios on
 this machine -- a 0.05s hat against a 2.4s vowel is not a like-for-like
 per-note comparison -- so the conversion goes through each voice's own
 weight rather than through a hat. And the table's absolute weights were
@@ -1191,7 +1191,7 @@ more in a two-bar loop reads as a glitch rather than a breath. Short gaps
 are drawn at any length, though: about one loop in three of 2 or 4 bars
 takes one, and about one in thirteen a whole bar of silence. Reverb and
 echo run through one gain node so a rest can be ducked rather than filled
-with wash. Rests land 20-45 dB below programme level rather than at
+with wash. Rests land 20-45 dB below program level rather than at
 digital zero, because held notes are allowed to decay into them, which is
 what the references do too.
 
@@ -1257,12 +1257,12 @@ behind it:
   0.84; that was never measured over a whole corpus and is not true. The
   low end is a property of the sparse profiles rather than a fault --
   `thaw`, `haven` and the other airy palettes are quiet by design, nothing
-  normalises between loops, and a loop machine whose every loop arrives at
+  normalizes between loops, and a loop machine whose every loop arrives at
   the same level has had something taken away from it. Run
   `node tools/measure.mjs` to see the current figures. What made listeners
   reach for the volume turned out to be two melody voices sitting too hot,
   since trimmed at the source (roadmap item 13).
-- Metres are 4/4, 6/8, 3/4 (the waltz reading of twelve steps) and 5/4;
+- Meters are 4/4, 6/8, 3/4 (the waltz reading of twelve steps) and 5/4;
   nothing else yet.
 - Album codes are long (well over a thousand characters for a full
   album), which makes them awkward to share by hand. Roadmap item 8.
@@ -1289,6 +1289,6 @@ behind it:
   of it.
 - `docs/theory-sheets.md` -- music theory notes.
 
-## Licence
+## License
 
 MIT. Do what you like with it.

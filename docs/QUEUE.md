@@ -5,10 +5,9 @@ has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
 **Status, 2026-09-28:** items 0-18 are done (13 stopped at its gate by
-design). Nothing is queued: the next items will come from the brain's work
-on the words (roadmap 19). A new Claude Code session starts here: read the
-standing rules and the merge policy, then take the next item once there is
-one.
+design). Next: item 19, the word-ranking test. A new Claude Code session
+starts here: read the standing rules and the merge policy, then take the
+next item.
 
 ## Standing rules, for every item
 
@@ -22,9 +21,9 @@ one.
   share at or below the flute's. That last one is the coffee-shop test:
   Mikey's north star is that nothing should bother people in a coffee
   shop. Every new profile: its `level` solved so its loops land on the
-  catalogue median (`measure.mjs --profile <id>`).
+  catalog median (`measure.mjs --profile <id>`).
 - **Refusals** on full and lite for the loops the item touches: melody at
-  full quality stays near zero, and lite no worse than the catalogue.
+  full quality stays near zero, and lite no worse than the catalog.
 - **The balance lock:** run `stats.mjs --check`. If a locked figure moves,
   report which and by how much, re-baseline at `--n 10000`, and say so.
 - **Existing loops:** say exactly what changes for specs that already
@@ -33,6 +32,9 @@ one.
 - **Taste:** where the item leaves a musical choice open, take the more
   conservative option and write it down in the PR, marked "for Mikey's
   ears". Never guess silently.
+- **American English** in new comments, docs and PR text (Mikey,
+  2026-09-28). Don't rename identifiers or spec fields for spelling:
+  share codes and history depend on them.
 - **Stop and leave a note** at the bottom of this file, rather than push
   on, if a check can't be met or the item turns out to need a decision.
 - **When a PR is merged,** add one line to Done below: the PR number, the
@@ -102,7 +104,7 @@ The island-and-volcano music: fast, rhythmic, Spanish-tinged.
 
 ## 5. `wayfare`, the rolling train
 
-The travelling music: steady, bright, moving.
+The traveling music: steady, bright, moving.
 
 - Mostly 4/4 (about 104-138 bpm), some 6/8. A **chug**: a steady
   eighth-note pulse in the bass (and brushes) under the tune, like wheels
@@ -146,25 +148,25 @@ re-check tone, level and cost.
 
 Mikey, review album tracks 16-19 (all `wayfare`): the melodies, chords
 and the minor v are nice, but the drums "kill it" on all four, though
-"not at all terrible". The chug "leans a bit towards that machine gun
+"not at all terrible". The chug "leans a bit toward that machine gun
 vibe or hip-hop ... too heavy or tough rather than playful". On the
 others: "the kick on the drums is a bit too loud, or not the right sound
 shape or tone -- more tribal sounding? Not sure."
 
-What the brain found: `wayfare` draws the catalogue's lo-fi drum patterns,
+What the brain found: `wayfare` draws the catalog's lo-fi drum patterns,
 so two of the four tracks played a syncopated boom-bap kick (steps 0, 6
 and 11 in the bar) with claps; one played the tape kit; the hand-kit track
 put the same kind of pattern on the frame drum. The kits aren't the
 problem (tide's hand-kit jig got "love it"); the grooves are.
 
 Do, for `wayfare` only:
-- **Its own drum grooves:** travelling music, light and steady. The kick
+- **Its own drum grooves:** traveling music, light and steady. The kick
   (or frame drum) on 1 and 3, never syncopated boom-bap; brush, rim or tap
   on 2 and 4; no claps; hats, shaker or jingles light on the eighths. The
   same shapes on every kit it draws.
 - **A softer kick in `wayfare`**, lower and rounder. Yardstick: the drums'
   level over the music (as in #31) should sit near tide's hand-kit jig
-  loops, which Mikey loved, not near the catalogue's lo-fi loops.
+  loops, which Mikey loved, not near the catalog's lo-fi loops.
 - **A playful chug:** the beat accented and the offbeats ghosted well
   down ("chug-a" rather than an even rattle), shorter bass notes, and the
   brush's eighths lighter to match. Keep it a train, not a march.
@@ -196,11 +198,11 @@ with "the same shapes on every kit", and took it too literally.
 
 Do, for `wayfare` only:
 - Several groove variants per loop, not one, with bars that vary as the
-  catalogue's do: the kick stays anchored on 1 and 3, but pickups, an
+  catalog's do: the kick stays anchored on 1 and 3, but pickups, an
   occasional extra kick into a beat, ghost notes, open hats or shaker
   accents, and a fill or roll at phrase ends are all welcome. Still never
   boom-bap and never claps.
-- Back to about 4-5 instruments per loop (percussion colour: rim, shaker,
+- Back to about 4-5 instruments per loop (percussion color: rim, shaker,
   jingles, taps, whatever each kit has).
 - Dynamics: accents and ghosts, and swells across the phrase, so the
   velocity spread returns to v52's or tide's.
@@ -232,7 +234,7 @@ least 1x, 4x and 6x), full and lite. Per run, report:
 - the same with the tab hidden, which should cost next to nothing.
 Use a fixed set of loops that includes the heaviest profiles and long
 loops. Commit a baseline report (for example `docs/perf-baseline.md`) and
-say where the time goes. Do not optimise anything yet.
+say where the time goes. Do not optimize anything yet.
 
 Two more asks, because this baseline is what a future compiled audio
 engine (roadmap item 16) has to beat:
@@ -252,7 +254,7 @@ Each is small and measurable; they change how existing loops sound, which
 is the point.
 - **Sung notes that jump out.** In `vowel`, `choir` and `hum`, a note whose
   fundamental lands on a formant peak comes out 10-15 LU louder than its
-  neighbours (#24's probe: note-to-note spreads of 16-21 LU against about
+  neighbors (#24's probe: note-to-note spreads of 16-21 LU against about
   1-2 for most voices). Tame the jumps without flattening the voices'
   character; report the per-note spread before and after.
 - **Temple bell as a chord voice** is still about 2.5 LU under the chords
@@ -289,7 +291,7 @@ an 8-bar one. Long loops mostly repeat a short idea.
 
 Do:
 - **Development in some loops, not all.** A share of loops, weighted
-  towards the long ones, develop: a contrasting section (a B phrase that
+  toward the long ones, develop: a contrasting section (a B phrase that
   answers the A, derived from its motif, often in a different register or
   rhythm), a return that varies rather than repeats (A'), chord movement
   that spans the form rather than cycling one short progression, and a
@@ -364,7 +366,7 @@ loudness where the audio path is touched.
 1. **Paint, the main thread's biggest cost** (57-67 ms/s of 71-84 at 1x,
    90% at 6x). The whole 765 x 3555 page repaints about 116 times a
    second because it is one paint layer and the cursor, the playhead
-   lights (a 90 ms colour transition and a glowing `box-shadow`) and the
+   lights (a 90 ms color transition and a glowing `box-shadow`) and the
    grid cells change on it every step. Put what moves on its own
    compositor layers, animate only `transform` and `opacity`, drop the
    glow's `box-shadow` transition for something that doesn't repaint,
@@ -408,7 +410,7 @@ track, but it doesn't feel like it is '100%' happy." And the constraint
 stands: never negative or depressing -- Animal Crossing and a nice coffee
 shop wouldn't go there. The eight moods already keep to that.
 
-What the brain found (20,000 fresh loops on v55): 1,028 are labelled 90%+
+What the brain found (20,000 fresh loops on v55): 1,028 are labeled 90%+
 happy. Their final `lift` averages 0.80, right on the happy region (0.82),
 so the feel numbers are fine. But **42% of them are in minor-ish modes**:
 dorian 16%, aeolian 9%, then harmonic minor, phrygian dominant, kumoi,
@@ -458,7 +460,7 @@ simple), rating each "goes somewhere", "loops" or "too busy":
 Nothing was "too busy". At 24 and 32 bars development is clearly heard and
 liked. At 16 bars it's weak: the contrast comes late (A8 B4 A'4 puts B at
 bar 9) and two of three still read as looping, matching the numbers
-(distinct melody bars 7.3 developing vs 6.7 simple). And his favourite
+(distinct melody bars 7.3 developing vs 6.7 simple). And his favorite
 was a simple 24-bar loop, so simple long loops stay.
 
 Do:
@@ -489,18 +491,62 @@ Do a pass over `js/`, `tools/` and `test/`:
   the queue's policy).
 - Check the README's claims against the code where they are checkable
   (flags, file names, figures quoted as current), and fix what's wrong.
-- Comments and docs only: no behaviour change. Prove it: tests three
+- Comments and docs only: no behavior change. Prove it: tests three
   times, `stats.mjs` output byte-identical, `--check` unchanged. No
   version bump needed.
 
 List what you changed in the PR, and anything you found but weren't sure
 about as a note here.
 
+## 19. A word-ranking test (diagnostics, roadmap 19)
+
+Mikey (2026-09-28): describing tracks in his own words is too abstract.
+He wants to hear a loop, see four or five words, and put them in order
+from most like the track to least like it -- "not an over-engineered test
+with nice UI, in fact simple code and fast would be preferable", so that
+"a hundred plus songs" is easy. His answers become the data that places
+each word on the maps (`docs/MOODS.md`, maps and clouds).
+
+Build a separate page, `rank.html`, not linked from the app's main screen
+(Mikey opens it by URL). It uses the app's own engine and synth, so it
+always tests what the app plays. Plain HTML, legible on a phone, nothing
+more.
+
+- **A trial:** a fresh loop from `newSpec`, seeds counting up from a
+  fixed start so a run is reproducible; it starts on its own and loops.
+  Don't show the loop's mood label or profile (they'd bias the answer).
+- **Five words** from the pool, shuffled, as big buttons. Mikey taps them
+  in order, most like the track first, and **stops when the rest don't
+  fit**: untapped words mean "doesn't fit" (no taps at all is allowed).
+  Buttons: Undo, Next (records, moves on), Skip (a loop he can't judge or
+  that sounds broken; recorded as a skip).
+- **The pool is data** at the top of the page's script, so the brain can
+  change it. Each trial draws five different words, balanced so every
+  word is shown about equally often. Pool v1 (all from his list): merry,
+  tender, serene, golden, twinkling, crisp, velvety, sour, bouncy,
+  floating, swaying, quirky, happy, joyful, peaceful, reflective, lively,
+  cozy, airy, misty, intimate, spacious.
+- **A consistency check:** about one trial in twenty replays an earlier
+  loop with the same five words in a new order, unmarked.
+- **Record per trial:** trial number, build, the loop's song code
+  (`encodeSong`), the words in the order shown, the taps in order, skip,
+  and seconds from start to Next. Saved in the browser as he goes, so he
+  can stop and pick up another day; a counter shows how many are done.
+- **Export:** one button that copies everything as JSON lines and also
+  downloads a `.jsonl`. Clear sits behind a confirm.
+- **A tool for the brain:** `tools/ranks.mjs <file.jsonl>` prints per
+  word how often it was shown, tapped first, tapped at all, never tapped,
+  and the repeat trials' agreement. Measuring each loop's cloud on the
+  dials is a later item.
+- **Nothing in the app changes:** `index.html`, the engine and share
+  codes untouched; the balance lock doesn't move. Say in the PR whether
+  the service worker caches `rank.html` and why.
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
 more nuance in them later. Not now. No new sound profiles or instruments
-for now (2026-09-25): the base is solid; the focus is optimisation and
+for now (2026-09-25): the base is solid; the focus is optimization and
 bettering what the app already makes.
 
 ## Merge policy
@@ -592,7 +638,7 @@ Mikey decides this line:
   takes should go.
 - #67, wayfare, the rolling train (v50),
   https://6d5ae00b-driftloom.kruu-mikey-thaiculture.workers.dev: a new
-  profile for travelling -- a walking 4/4, pan flute and fiddle over
+  profile for traveling -- a walking 4/4, pan flute and fiddle over
   accordion, nylon and harp, and in half its loops a chug, a short bass
   note on every eighth with the brushes swishing along. Listen for wheels
   on rails rather than a machine gun, and whether I-IV-v-IV's minor v in
@@ -616,7 +662,7 @@ Mikey decides this line:
   and 4, light eighths, no boom-bap and no claps -- with a softer, rounder
   kick on tape and brush, the drums a little under where tide's jigs sit;
   and the chug leans on the beat with the eighths between ghosted, short
-  notes, the brushes lighter with it. Listen for a light, steady travelling
+  notes, the brushes lighter with it. Listen for a light, steady traveling
   beat under the same tunes, a kick that thumps rather than punches, and a
   chug that bounces ("chug-a") like wheels on rails rather than a machine
   gun -- and whether the chug's bass, 4.4 LU lighter, is now too faint.
@@ -624,12 +670,12 @@ Mikey decides this line:
   https://edcf8d59-driftloom.kruu-mikey-thaiculture.workers.dev: the same
   soft wayfare kit as #79 -- kick on 1 and 3, a rim or soft snare on 2 and
   4, no boom-bap, no claps, the chug as it was -- but no longer one bar
-  over and over: four-bar phrases that swell towards a fill or a soft
+  over and over: four-bar phrases that swell toward a fill or a soft
   roll, an answer bar every so often with a pickup kick and an open hat,
-  ghost notes before the backbeat, and a shaker or hat colouring the
+  ghost notes before the backbeat, and a shaker or hat coloring the
   offbeats. Listen for drums that move and breathe across the phrase
   again, as in v52, while still sounding like v53's gentle kit; and
-  whether the fills or the pickup kick ever tip it back towards tough.
+  whether the fills or the pickup kick ever tip it back toward tough.
 - #88, the performance harness and baseline (item 10; `js/` untouched,
   still v54), https://15986051-driftloom.kruu-mikey-thaiculture.workers.dev:
   nothing to listen for, it measures and changes no sound. What it found
@@ -640,7 +686,7 @@ Mikey decides this line:
 - #89, sound polish (item 11, v55),
   https://8de059b7-driftloom.kruu-mikey-thaiculture.workers.dev: sung notes
   (vowel, hum, choir) no longer leap out when a note lands on a formant --
-  the loud ones come down, nothing is lifted, the vowels' colour is the
+  the loud ones come down, nothing is lifted, the vowels' color is the
   same; 5/4 chords fill the bar, felt 3+2, instead of stopping after four
   beats; keys arpeggios stop with their chord instead of ringing into the
   next one. Listen for hollow and choir tunes that stay even, thaw's 5/4

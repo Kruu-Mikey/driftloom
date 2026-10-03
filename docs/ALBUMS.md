@@ -4,7 +4,10 @@ Blind albums the brain has sent Mikey and not yet heard back on. Each
 key is derivable from the album code itself (decode it with
 `share.js decodeAlbum` and read the specs), so no key is written here.
 
-## "Moods" (2026-09-28, on v64 or later)
+## "Moods" (2026-09-28, on v64 or later) -- retired 2026-09-28
+
+Retired before it was heard: the word-ranking test (queue item 19) asks
+the same things faster. Kept for the record.
 
 Eight short loops (8 bars or fewer), each led at 80%+ by one mood: two
 joyful, two happy, two peaceful, two reflective, shuffled. Key: each

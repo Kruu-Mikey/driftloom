@@ -37,7 +37,7 @@ main thread, and paint is 90% of that.
 1. **Paint is the main thread's biggest cost, not the music.** Every
    frame repaints the whole page: about 116 paints a second, each covering
    the full 765 x 3555 document, because the page is one paint layer and
-   the cursor, the playhead lights (a 90 ms colour transition and a glow
+   the cursor, the playhead lights (a 90 ms color transition and a glow
    `box-shadow`) and the grid cells change on it every step. (Paint
    areas from the trace's Paint events, in a separate 15 s run of
    undertow-sai-soan, full, 1x.) That is
@@ -151,7 +151,7 @@ run), a stop and a warm press, the fixed loop is pasted, played for 8 s,
 and then measured for 45 s (30 s hidden). The full method, figure by
 figure, is at the top of `tools/perf.mjs`.
 
-What the rig is, because it colours every number:
+What the rig is, because it colors every number:
 
 - **Machine:** a 4-core cloud container, no GPU, Chromium 141 (the build
   Playwright installs), `--headless=new`. Audio goes to Chromium's fake

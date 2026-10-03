@@ -1,17 +1,17 @@
 # Brain session handoff
 
 Read this first in any new "brain" session. It is the working memory of the
-project's planning side: how the work is organised, what Mikey has decided,
+project's planning side: how the work is organized, what Mikey has decided,
 what he has heard, which methods proved themselves, and where things stand.
 Keep **State** current as you go, not only at the end; a long session can
 stop without warning.
 
-## How the work is organised
+## How the work is organized
 
 Three roles.
 
 - **Brain** -- a claude.ai chat in the *Procedural Music App* project.
-  Analyses, verifies, designs, and writes the queue. Does not write code.
+  Analyzes, verifies, designs, and writes the queue. Does not write code.
 - **Hands** -- Claude Code sessions. Write code, open PRs, measure, merge
   under the merge policy, and report.
 - **Mikey** -- the ears. His listening is the acceptance test for anything
@@ -98,11 +98,11 @@ imports every loop in order.
   in `docs/ALBUMS.md` with how to read their key. **Never write a key into
   a public file before Mikey has answered** -- the brain slipped once
   (#35, taken back in #36).
-- **A/Bs:** play the same album on two commit previews, labelled X and Y,
+- **A/Bs:** play the same album on two commit previews, labeled X and Y,
   randomly assigned. If the change is synth-only, both previews render the
   same loops. A control track that didn't change is worth including: it
   measures his test-retest noise.
-- **Labelled albums** (keep / tune / drop) for new sounds; **blind A/Bs**
+- **Labeled albums** (keep / tune / drop) for new sounds; **blind A/Bs**
   only when a change alters sounds he already likes (the middle path).
 - He rates in one word per track, and describes freely when asked.
 
@@ -125,12 +125,12 @@ Stated decisions, not inferences. Dated where the date matters.
   a nice coffee shop). In the spirit of Buddhadasa and Ajahn Dhammarato:
   feelings and sensations are textures, neither good nor bad. See
   `docs/MOODS.md`.
-- **Dynamic but sensible:** quiet loops and a spread across the catalogue
+- **Dynamic but sensible:** quiet loops and a spread across the catalog
   are wanted, but the listener shouldn't need the volume every other
   track. Fixed at the source, never by a limiter, compressor or
-  normalisation on the mix. (Solved in practice by the lead trims, #48 and
+  normalization on the mix. (Solved in practice by the lead trims, #48 and
   #53. "Twenty in a row" is not needed for now.)
-- **One behaviour for everybody:** no user-facing modes, toggles or sliders
+- **One behavior for everybody:** no user-facing modes, toggles or sliders
   to scroll through.
 - **Loops with fewer layers are wanted variety**, not a bug, even drums
   over a texture alone.
@@ -142,10 +142,10 @@ Stated decisions, not inferences. Dated where the date matters.
   2/4 against the 6/8); only the chords wanted to be strict.
 - **Cinder's added F over the E chord stays; wayfare's minor v stays.**
 - **Composition depth:** some loops develop, simple ones stay (his
-  favourite in the Depth album was a simple 24-bar loop). The share is a
+  favorite in the Depth album was a simple 24-bar loop). The share is a
   knob to tune by ear.
 - **No new sound profiles or instruments for now** (2026-09-25). The base is
-  solid; the focus is optimisation, composition, and bettering what the
+  solid; the focus is optimization, composition, and bettering what the
   app already makes. Fiddle, accordion and drone may get more nuance later.
 - **The playhead fade is gone for speed** (2026-09-27).
 
@@ -167,8 +167,11 @@ Stated decisions, not inferences. Dated where the date matters.
   eight become heart words with recipes. Tender is close, soothing
   settling; serene still and wide, peaceful content and gently moving.
 - **Percentages stay only if honest:** measured from the rendered loop.
-- Open: more dials than lift/energy/warmth (proposal of ten in
-  `docs/MOODS.md`), and which candidate words join.
+- **Ten dials, five maps (option B), loops as clouds**, word regions
+  fitted from his rankings (`docs/MOODS.md`). Open: which candidate words
+  join.
+- **Listening tests don't ask him to describe tracks freely** (too
+  abstract). The word-ranking test (queue item 19) is the tool.
 - The old branches stay: he likes looking back on them.
 
 **The platform**
@@ -311,21 +314,19 @@ and `--check` pass.
 his own words: checks the steering and starts the word study) and
 "Depth two" (goes somewhere / loops / too busy).
 
-**Words session (2026-09-28, in progress):** State checked against GitHub,
-no drift in code or deploy. Mikey answered the first round (decisions
-under "The words" above and in `docs/MOODS.md`). Dials okayed; he asked about
-x-y graphs so contrasting words can coexist, and the brain proposed maps
-and clouds (`docs/MOODS.md`). He likes clouds. Free description
-of tracks felt too abstract, so listening tests for words are now
-**most/least** (which track is most like the word, which least), with
-**odd one out** (three tracks: which differs, and how) to discover dials.
-The Moods album switched to most/least (`docs/ALBUMS.md`). Waiting on him:
-that album, the pairings (option A or B in `docs/MOODS.md`); candidate
-words later (he likes about half). Then the brain queues item
-19's first build, dormant: words as data, heart words as points, the
-honest-share measure. A fresh
-hands chat reads `docs/QUEUE.md`. Later, a separate brain chat for the
-Rust port (roadmap 16).
+**Words session (2026-09-28, in progress):** State checked against GitHub;
+item 18 (#111) verified. Decided this session (details in `docs/MOODS.md`):
+lively joins (178 words); tender/soothing and serene/peaceful told apart;
+heart words will replace the eight moods; percentages stay only if honest;
+ten dials, paired as option B into five maps; a loop measured as a cloud,
+with each word's region fitted from Mikey's own answers. **American
+English** for the project (docs converted; identifiers left alone).
+Free description and most/least albums were too slow and abstract, so the
+words get a **ranking test** instead: queue item 19 (`rank.html`), for the
+hands. The Moods album is retired; Depth two is still out. Next: Mikey
+runs item 19 with the hands, does a first batch of rankings, exports, and
+the brain reads them with `tools/ranks.mjs`. Candidate words later (he
+likes about half).
 
 ## History
 
