@@ -4,10 +4,10 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-03:** items 0-19 are done (13 stopped at its gate by
-design). Next: item 20, the ranking test's second pool. A new
+**Status, 2026-10-03:** items 0-20 are done (13 stopped at its gate by
+design). The queue is empty until the brain adds an item. A new
 Claude Code session starts here: read the standing rules and the merge
-policy, then take the next item.
+policy, then take the next item if there is one.
 
 ## Standing rules, for every item
 
@@ -813,3 +813,12 @@ Mikey decides this line:
   buttons are easy to hit on the phone, and that Export downloads the file
   (`node tools/ranks.mjs <file>` reads it). Drift is off on this page so
   each recorded code is exactly what was heard.
+- #122, the ranking test's second pool (item 20, v66),
+  https://6e6a5116-driftloom.kruu-mikey-thaiculture.workers.dev/rank.html:
+  nothing changes in the app. Each loop now offers one word from each of
+  the five maps (color, shimmer, air, motion, flavor), so the five can't
+  bunch on one corner and fast, tense loops get words to reach for. Saved
+  v1 answers stay and the run carries on from the next seed; new trials
+  are marked `"pool": 2`, and `tools/ranks.mjs` reports per pool and per
+  group. Check that a fresh trial shows a spread of words, and that your
+  earlier answers are still counted.
