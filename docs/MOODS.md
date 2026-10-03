@@ -295,3 +295,24 @@ Not in the list, grouped by the gap they'd fill. Take, drop or change.
 - **Sound:** tinkling, chiming.
 - **Near the line** -- gentle, but they lean toward longing; only if they
   read as textures to you: wistful, nostalgic, bittersweet, mysterious.
+
+## Ranking results
+
+Mikey (2026-09-28): "don't take my answers as the only truth. I'm just
+one person, and I might have selected different options on a different
+day or while in a different mood." So answers are votes, not verdicts:
+regions are fitted softly over many trials and days, never from one
+answer, and the hidden repeats measure how much a day's mood moves them.
+
+**Batch 1 (20 trials, seeds 19000-19019, v65, full quality).** Too few to
+fit anything; first impressions only.
+- 8 of 20 had no word fit. Five random words from 22 often miss a loop.
+- He reached most for motion and texture words (bouncy, crisp, airy) and
+  seldom for the heart words.
+- The app's mood label and his ear often disagreed: loops labeled
+  joyful (79%, 100%) got reflective/velvety/airy and misty/lively/
+  peaceful, and two bright-labeled loops in major modes took neither
+  happy nor joyful when offered. A loop labeled reflective 100% got
+  bouncy and crisp. Hints that lift alone doesn't make a loop sound
+  happy -- what the dials and clouds are for.
+- Sour was tapped on harmonic minor (shatter) and mixolydian (tide).
