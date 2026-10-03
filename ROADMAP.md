@@ -762,6 +762,36 @@ touches it. The generator waits until the words' draws stop moving, so
 changes aren't made twice. Word recipes, maps and pools live as data, so
 most later tuning needs no code in either language.
 
+**Feasibility (2026-10-03, brain, Session 3).** Can Rust be built where
+the work happens, or is the compiled file committed?
+- *The hands' sandbox* (Claude Code cloud): `rustc` and `cargo` come
+  pre-installed, and the default network allowlist includes
+  `static.rust-lang.org`, `rustup.rs` and crates.io, so adding the
+  `wasm32-unknown-unknown` target or a pinned toolchain should work.
+  crates.io has been flaky behind its proxy before, which is one more
+  reason for **no dependencies**: plain Rust `std` compiles its math
+  (`sin`, `exp`, `powf`, `tanh`) to WebAssembly with zero imports.
+- *Cloudflare Workers Builds*: the build image has Node, Python, Go, Ruby,
+  Bun and Hugo, no Rust. Rust can be installed in a build command (about a
+  minute per build, reported elsewhere), but that turns a site with no
+  build step into a pipeline, adds a minute to every preview, and adds a
+  failure the hands can't retry (#51).
+- *The brain's probe* (Rust 1.90.0, `wasm32-unknown-unknown`, no crates):
+  a pool of sine voices through a Web-Audio-formula lowpass, 2.8 KB
+  (7.5 KB with `std` math). Built in two different folders, the two files
+  were **byte-identical**. Run in an AudioWorklet in headless Chromium
+  (OfflineAudioContext, the harness's own setting), it nulled against the
+  same notes built from Web Audio nodes to a **-55.6 dB** residual --
+  but only once note starts were sample-accurate; starting notes at the
+  128-sample block boundary left the residual at -0.1 dB.
+
+Decision: **commit the built `.wasm`**, as item 13's brief proposed. The
+deploy stays plain files, old commit previews keep working, and the
+bytes the brain verifies are the bytes that ship. A pinned toolchain
+(`rust-toolchain.toml`) makes the build reproducible; a build script
+with a `--check` mode, and a check on every PR, prove the committed file
+matches its source.
+
 Mikey wants the app light and fast even at full quality ("DHH-wow" smooth
 with a hundred other apps open), and is open to an overhaul. Today every
 note builds its own little Web Audio graph (oscillators, filters, gains),
@@ -787,7 +817,8 @@ disconnected plus the always-running effects -- both fixable in
 JavaScript (queue item 14). So a compiled engine is not the performance
 fix; its case is portability: the phone app's core, a native build,
 games. Taken up after composition depth and the words settle (agreed
-with Mikey, 2026-09-26), in a fresh brain chat. The prototype (queue item
+with Mikey, 2026-09-26; superseded 2026-10-03, see Timing above), in a
+fresh brain chat. The prototype (queue item
 13) stopped at its gate, as designed.
 
 **Design requirement: a host-agnostic core.** The Rust core generates
