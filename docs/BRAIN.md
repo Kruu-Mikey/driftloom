@@ -188,8 +188,9 @@ Stated decisions, not inferences. Dated where the date matters.
   and changes the loop every pass, and re-rolls must be instant. Baking
   lives on as an audio export (roadmap 17).
 - **Rust:** the synth, then the generator, move to a host-agnostic Rust
-  core (WebAssembly in an AudioWorklet for the web), **after** composition
-  depth and the words settle, in its own brain chat. Its case is
+  core (WebAssembly in an AudioWorklet for the web), in its own brain
+  chat. **Timing (2026-10-03): the synth ports now; the generator waits
+  until the words' draws stop moving.** Its case is
   portability, not speed (the performance baseline showed the fixable
   costs were elsewhere). The deliverable is the phone app; a native build
   and games are separate projects. Rust over C++ and the rest: roadmap 16.
@@ -279,9 +280,13 @@ Stated decisions, not inferences. Dated where the date matters.
   Baseline in `docs/perf-baseline.md`.
 - `tools/listen.mjs` -- one-command albums; still not built (roadmap 20).
 
-## State -- 2026-09-28
+## State -- 2026-10-03
 
-`main` at **v64**, deployed. No open PRs. Queue items 0-17 done (13
+`main` at **v65** (#117, the ranking test), deployed; #118-#121 were
+docs. No open PRs. Queue item 20 (Session 2, hands) has no branch or PR
+on GitHub yet.
+
+As of 2026-09-28: queue items 0-17 done (13
 stopped at its gate, by design); item 18, the housekeeping pass over
 code comments and the README, merged as #111 (brain check: tests pass,
 `--check` holds, `stats.mjs` output byte-identical). Nothing is queued. The
@@ -310,9 +315,8 @@ and `--check` pass.
   about a third of 2- and 4-bar loops take a gap and 7-8% a whole bar of
   silence (half a 2-bar loop). Keep, keep only beat-long ones, or none?
 
-**Out for listening:** `docs/ALBUMS.md` -- "Moods" (describe each track in
-his own words: checks the steering and starts the word study) and
-"Depth two" (goes somewhere / loops / too busy).
+**Out for listening:** `docs/ALBUMS.md` -- "Depth two" (goes somewhere /
+loops / too busy). "Moods" was retired unheard (2026-09-28).
 
 **Sessions (Mikey, 2026-10-03).** Every session gets a label, one
 counter for brain and hands: Session 1 is the words brain chat
@@ -323,7 +327,7 @@ clear spec, Opus 5.5 at high for hard or judgment-heavy ones (DSP
 parity, first prototypes). Next labels: Session 2, hands, queue item 20;
 Session 3, brain, the Rust port.
 
-**Words session (2026-09-28, in progress):** State checked against GitHub;
+**Words session (Session 1, 2026-09-28 to 10-03, closed):** State checked against GitHub;
 item 18 (#111) verified. Decided this session (details in `docs/MOODS.md`):
 lively joins (178 words); tender/soothing and serene/peaceful told apart;
 heart words will replace the eight moods; percentages stay only if honest;
@@ -339,6 +343,15 @@ lives at https://driftloom.kruu-mikey-thaiculture.workers.dev/rank
 still out. Next: Mikey does a first batch of rankings, exports, and the
 brain reads them with `tools/ranks.mjs`. Candidate words later (he
 likes about half).
+
+**Rust session (Session 3, brain, 2026-10-03, in progress):** State
+checked against GitHub (drift fixed here: v65, the Rust timing line,
+the retired album). Feasibility settled -- see roadmap 16, "Feasibility":
+the hands' sandbox can build Rust, Cloudflare's build image can't without
+installing it on every build, and the decision is to **commit the built
+`.wasm`**, built by a pinned toolchain, with a check that it
+matches its source. A first prototype is proposed to Mikey (scaffold and
+kalimba, then fiddle and pad), not yet queued.
 
 ## History
 
