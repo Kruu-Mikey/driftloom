@@ -5,9 +5,9 @@ has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
 **Status, 2026-10-03:** items 0-20 are done (13 stopped at its gate by
-design). The queue is empty until the brain adds an item. A new
-Claude Code session starts here: read the standing rules and the merge
-policy, then take the next item if there is one.
+design). Next: **21 and 22, the Rust core's first steps** (Session 4,
+hands). A new Claude Code session starts here: read the standing rules
+and the merge policy, then take the next item.
 
 ## Standing rules, for every item
 
@@ -568,6 +568,158 @@ ends of every map. All words are from Mikey's list.
   hidden repeats work as before.
 - `tools/ranks.mjs` reports per pool version, and per group.
 - Nothing else in the app changes; the balance lock doesn't move.
+
+## 21. Rust core, step 1: the pipeline and one voice (kalimba)
+
+Roadmap 16, timing 2026-10-03: the synth moves to a Rust core now. Its
+case is **portability**, not speed: the same core will later run the
+phone app, a native build and games. This item proves the whole path end
+to end with one voice, so the next voices are routine. Read roadmap 16
+first, including "Feasibility": the brain's probe built, ran in an
+AudioWorklet and nulled to -55.6 dB against Web Audio, but only once
+note starts were sample-accurate.
+
+**Intent.** With the flag on, a kalimba note comes out of Rust and sounds
+the same as today; with it off, nothing in the app changes at all. Every
+other voice, the effects and the master chain stay in JavaScript and
+work exactly as now. The JavaScript synth stays the reference.
+
+**The crate.**
+- `core/`: a Rust library crate with **no dependencies** (crates.io has
+  been flaky behind the sandbox's proxy, and the core needs none). Use
+  `std`: its math (`sin`, `exp`, `powf`, `tanh`) compiles to WebAssembly
+  with zero imports.
+- **Host-agnostic:** the DSP knows nothing about browsers -- a voice
+  pool, `process` into a block, events in. The WebAssembly exports live
+  in their own module behind `cfg(target_arch = "wasm32")`. Native
+  `cargo test` covers the core.
+- **Preallocated:** a fixed pool of voices, no allocation after init, no
+  panics reachable from `process`. Note what happens when the pool is
+  full (it shouldn't be: the JS budget still decides who plays).
+- **The building blocks, built to be reused by every later voice:** a
+  parameter type that follows Web Audio's automation rules exactly
+  (`setValueAtTime`, linear and exponential ramps, `setTargetAtTime`,
+  as the spec defines them, including where a ramp starts), a sine
+  oscillator, and FM by phase modulation the way an oscillator's
+  frequency input does it. Kalimba is `fm()` (sine carrier, sine
+  modulator, the decaying index) plus a sine body an octave down; port
+  that, nothing more.
+
+**The build -- the committed file.**
+- `core/rust-toolchain.toml` pins an **exact** stable version (the newest
+  the sandbox can fetch, e.g. `1.9x.0`, never `stable`) with the
+  `wasm32-unknown-unknown` target. Release profile: `opt-level = 3`,
+  `lto`, one codegen unit, `panic = "abort"`, `strip`; remap the source
+  path so the output doesn't depend on where the repo sits.
+- `tools/build-core.sh` builds and copies the result to `js/dlcore.wasm`
+  (commit it). `--check` rebuilds and fails if the committed file
+  differs by a single byte.
+- `.github/workflows/core.yml`: on every PR and push to `main`, run
+  `tools/build-core.sh --check`, `cargo test` in `core/`, and
+  `node test/generator.test.mjs`. This becomes the repo's first CI beyond
+  Cloudflare's build. **If the push of the workflow file is refused**
+  (Claude Code may lack permission to change workflows), leave the
+  file's full contents in a note at the bottom of this file and carry
+  on; Mikey adds it on GitHub's website.
+- `.gitignore`: `core/target/`. `.assetsignore`: `core`, `.github` (the
+  source must not ship as site assets; `js/dlcore.wasm` must).
+- If the sandbox and GitHub Actions produce different bytes from the same
+  source, stop and leave a note: the whole decision rests on this.
+
+**The host -- the worklet.**
+- `js/worklet.js`, an `AudioWorkletProcessor`. The main thread fetches
+  `js/dlcore.wasm` once and passes the **bytes** in `processorOptions`;
+  the worklet compiles them with `new WebAssembly.Module` (sync, small
+  module). Bytes rather than a compiled module, because iOS Safari is
+  the target and support for passing a module across is less certain.
+- No `SharedArrayBuffer`, no threads, nothing that needs special headers.
+- **Events by `port.postMessage`**, each with its absolute start time in
+  context seconds. The worklet queues them and starts each **on its exact
+  sample** within the block (block-boundary starts wrecked the probe's
+  match). A note that arrives late starts at once; count late notes for
+  Diagnostics.
+- **Outputs into the existing channels:** the node has one output per
+  channel it serves (melody and chords for now), each connected into
+  that channel's input in the synth, so echo, reverb, ducking, mutes,
+  `silence()` and the master chain apply exactly as to a JS note. If a
+  note's destination isn't one of those, it plays on the JS engine
+  (count those too).
+- Stop, re-roll, "let the loop wander", the hidden tab and `dispose()`:
+  find what happens to an already-scheduled JS kalimba note in each case
+  and make the Rust note do the same. Add a clear-all message for
+  disposal.
+- `recordingContext` and `OfflineAudioContext` (the measure harness) must
+  work too: the probe ran there.
+
+**The split -- what stays in JavaScript.**
+- Scheduling, the voice budget (`_budget` and `_release` with kalimba's
+  same costs, so refusals don't move), and **every `Math.random` draw,
+  in the same order and number as today's kalimba code**. The values a
+  note needs travel with its event. That keeps seeded renders comparable
+  and keeps every other voice's draws where they were. Kalimba draws none
+  today as far as the brain can see; check, and keep the principle for
+  the next voices.
+
+**The flag.** `?engine=rust` turns it on; off by default. Diagnostics
+shows `engine: js` or `engine: rust` (plus late and fallback counts when
+on). Precache `js/dlcore.wasm` and `js/worklet.js` in the service worker
+so the flag works offline; say the bytes added.
+
+**Proven, not assumed.** `measure.mjs --engine js|rust` (default js).
+Report, both engines, kalimba as a melody voice and as a chord voice:
+- `--voice kalimba` level at `--note 0.4` and `--note 1.6`: within
+  **0.25 dB**.
+- The tone probe's bands, including the 2-5 kHz share: within 0.5 points.
+- `--endings`: no flags the JS voice doesn't have.
+- **A null test** (new option): the same seeded notes through both
+  engines, subtracted. Kalimba is all sines, so expect well below
+  -40 dB; report the figure and explain anything above.
+- **Nothing else moves:** with the flag off, `measure.mjs` output on a
+  fixed set of loops (include some kalimba loops) is byte-identical to
+  `main`. With it on, loops without kalimba are byte-identical too.
+- Refusals on full and lite unchanged; the balance lock untouched (the
+  generator isn't touched); tests three times.
+
+**Report in the PR:** the equivalence table, the null figures, the
+`.wasm` size and the bytes added to the page, the late and fallback
+counts over a few loops, and anything that made the port harder than
+expected. Since the sandbox can't open workers.dev, list the commit
+preview URL with `?engine=rust` for the brain and Mikey.
+
+## 22. Rust core, step 2: fiddle and pad, and the performance A/B
+
+Start only after item 21 is merged. Same crate, host, flag, split and
+proofs as item 21; this item adds the two voices that cover the hard
+parts, and measures both engines.
+
+- **Fiddle:** the custom `bowed` wave (Web Audio's `PeriodicWave` is
+  band-limited: build a band-limited equivalent from the same harmonics,
+  as Chrome does, and say how), vibrato on detune with its random rate
+  and depth, slurs and slides (`_slur`, `_slide`, including its
+  `SLIDE_CHANCE` draw), and the fixed body filters (`_body('fiddle')`,
+  Web Audio's biquad formulas). Port the body into Rust too, per channel,
+  so the voice is whole for the native and game hosts.
+- **Pad:** both paths, `pad()` and `pad` as a chord voice: two detuned
+  band-limited triangles per note through a lowpass whose frequency
+  ramps.
+- **Random draws:** in the same order and number as today, drawn in JS
+  and sent with the note (item 21's rule). Fiddle has several; get the
+  order right or every later draw in the loop shifts.
+- **Proofs:** item 21's table for fiddle (melody and chords) and pad, at
+  both note lengths, endings, and the null test. Band-limited waves may
+  not null as deep as sines; report the figure and what's left in the
+  residual (aliasing, phase, the wavetable). Nothing else moves, as in
+  item 21.
+- **Performance:** `perf.mjs --ab`, flag off against flag on, on the same
+  loops (pick some with all three ported voices), under the usual
+  throttling. Audio health must not get worse; report main-thread and
+  audio-thread cost, graph churn and memory. This is information for the
+  roadmap, not a gate: the port's case is portability.
+
+**Then stop.** After the merge, the brain verifies, builds a short blind
+X/Y album (the same loops with and without the flag, plus a control
+track), and Mikey listens on his phone. What comes next -- the rest of
+the voices, behind the same flag -- is written after he has heard it.
 
 ## Later, not queued
 

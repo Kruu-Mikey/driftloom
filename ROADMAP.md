@@ -804,7 +804,9 @@ Staged, so nothing is a leap of faith:
 1. The baseline (queue item 10) says how much of the cost is the graph
    and how much is JavaScript. If the graph isn't the problem, stop.
 2. A prototype of a few voices in the worklet, measured against the same
-   voices today with the same harness, and heard side by side.
+   voices today with the same harness, and heard side by side. Queued
+   2026-10-03 as items 21 (the pipeline and kalimba) and 22 (fiddle,
+   pad, the performance A/B).
 3. Voice-by-voice migration behind a flag, each voice proven equivalent
    with the existing `--voice` tone and level probes and `--endings`.
 4. The generator ported last, so share codes stay deterministic across
