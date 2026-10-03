@@ -5,7 +5,7 @@ has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
 **Status, 2026-10-03:** items 0-19 are done (13 stopped at its gate by
-design). Nothing is queued after 19: the brain writes the next item. A new
+design). Next: item 20, the ranking test's second pool. A new
 Claude Code session starts here: read the standing rules and the merge
 policy, then take the next item.
 
@@ -541,6 +541,33 @@ more.
 - **Nothing in the app changes:** `index.html`, the engine and share
   codes untouched; the balance lock doesn't move. Say in the PR whether
   the service worker caches `rank.html` and why.
+
+## 20. Ranking test: one word per map (pool v2)
+
+From the first 20 trials (`docs/MOODS.md`, ranking results): no word fit
+8 times, partly because five random words can bunch on one corner (one
+trial offered tender, golden, misty, serene and peaceful together), and
+fast, tense loops had few words to reach for. So each trial now shows
+**one word from each of the five maps**, and the pool grows to cover both
+ends of every map. All words are from Mikey's list.
+
+- The pool becomes five groups, data at the top of the script:
+  - color (warmth x lift): golden, frosty, tender, happy, joyful,
+    reflective, merry, peaceful
+  - shimmer (edge x height): twinkling, crisp, velvety, booming, soft
+  - air (room x ground): floating, airy, intimate, cozy, spacious,
+    serene, misty, steady
+  - motion (energy x bounce): bouncy, swaying, lively, energetic, still,
+    flowing
+  - flavor (tang x oddness): sour, sweet, spicy, quirky, zany
+- Each trial draws one word per group, least-shown-first within the group
+  (as now), and shows the five shuffled. Group names are never shown.
+- Record the pool version on each trial (`"pool": 2`; trials without it
+  are pool 1) and keep the saved answers: v1 trials stay valid data.
+- New loops continue from where the saved run left off; the seeds and
+  hidden repeats work as before.
+- `tools/ranks.mjs` reports per pool version, and per group.
+- Nothing else in the app changes; the balance lock doesn't move.
 
 ## Later, not queued
 
