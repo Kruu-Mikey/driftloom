@@ -8,3 +8,8 @@ wrangler.jsonc
 docs
 test
 tools
+# The Rust core's source and its CI. The built js/dlcore.wasm ships; the
+# crate it is built from does not.
+core
+.github
+.gitignore

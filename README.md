@@ -164,6 +164,9 @@ js/moods.js       the mood vocabulary: feelings, words, share-code numbers
 js/characters.js  the sixteen profiles, and how a blend of them is mixed
 js/generator.js   the composer: spec -> pattern, and the drift mutations
 js/synth.js       voices and the reverb/echo bus
+js/core.js        the Rust core, main-thread side (?engine=rust)
+js/worklet.js     the Rust core's AudioWorklet host
+js/dlcore.wasm    the Rust core, built from core/ and committed
 js/engine.js      lookahead scheduler
 js/midi.js        standard MIDI file writer
 js/share.js       song and album share codes
@@ -171,6 +174,7 @@ js/cover.js       cover art, from the same numbers as the music
 js/storage.js     localStorage saves, plus backup and restore
 js/ui.js          DOM rendering
 js/main.js        state and wiring
+core/             the Rust core's source (see "The Rust core" below)
 ```
 
 Notes worth knowing if you go digging:
@@ -444,6 +448,11 @@ npm install -g playwright && npx playwright install chromium
 That is a dependency of this one tool. The app still has no build step and
 still runs from a folder.
 
+`--engine rust` plays the voices the Rust core has through it, as
+`?engine=rust` does in the app, for every report here but `--retire`;
+`--null` is the proof that the core is the JavaScript synth (see "The Rust
+core").
+
 ### Budget refusals
 
 ```sh
@@ -583,7 +592,7 @@ deterministic, so rewriting it on unchanged code changes nothing.
 node tools/perf.mjs                          # the whole baseline, about 100 minutes
 node tools/perf.mjs --quick                  # a smoke run, one loop, a few minutes
 node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
-node tools/perf.mjs --query engine=rust      # passed to the page; nothing reads it yet
+node tools/perf.mjs --query engine=rust      # the Rust core's voices, as ?engine=rust
 ```
 
 `measure.mjs` renders offline, faster than real time; this plays the real
@@ -766,6 +775,73 @@ audio path is live, whether the media session was granted, and a count of
 scheduler wake-ups that arrived too late to place a note — which is what a
 stutter looks like from the inside. Play with the screen off for a minute,
 come back, and read `lateTicks` and `worstLateMs`.
+
+`engine` says which synth plays the voices the Rust core has: `js`, or
+`rust` with the notes that reached the core after their start time had
+been rendered (`late`, started at once) and the ones that played in
+JavaScript instead (`fallback`: before the core had loaded, or if it
+failed to). With the flag on, `rust (failed: ...)` means the browser could
+not run the module, and everything plays in JavaScript.
+
+## The Rust core
+
+The synth is moving to Rust (roadmap 16), for portability rather than
+speed: the same core is meant to run the phone app, a native build and
+games. It goes a voice at a time, behind a flag, and so far it has one
+voice, the kalimba (queue item 21).
+
+`?engine=rust` turns it on; it is off by default, and with it off nothing
+about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
+an AudioWorklet (`js/worklet.js`) with one output into each channel it
+serves, so a Rust note takes the same echo, reverb, ducking, mutes and
+master chain as a JavaScript one. JavaScript keeps everything else:
+scheduling, the voice budget (asked exactly as the JavaScript voice asks
+it), every `Math.random` draw, and every other voice. A note travels to the
+worklet with its absolute start time and starts on its exact sample.
+
+The core (`core/`) is a Rust library with no dependencies and nothing
+browser in it: a queue of waiting notes, a fixed pool of voices, and
+`process`, which renders one 128-frame block per channel. Nothing allocates
+after it is built. Its building blocks are a parameter that automates the
+way a Web Audio `AudioParam` does, a sine oscillator that starts the way
+Chromium's does, and FM through the oscillator's frequency, so later voices
+are ports and not research. `cargo test` in `core/` runs its own tests.
+
+The built `.wasm` is committed, so the site keeps no build step:
+
+```sh
+tools/build-core.sh          # build core/ and copy it to js/dlcore.wasm
+tools/build-core.sh --check  # fail if js/dlcore.wasm is not exactly that build
+```
+
+The compiler is pinned in `core/rust-toolchain.toml` and paths are
+remapped, so the build is reproducible, and `.github/workflows/core.yml`
+runs `--check`, the core's tests and the generator's on every pull request.
+The module needs Safari 15 or later (2021): Rust's standard library uses
+WebAssembly features older Safari lacks. Anywhere it cannot run, the synth
+plays in JavaScript.
+
+The JavaScript synth stays the reference, and every ported voice is proven
+against it:
+
+```sh
+node tools/measure.mjs --null                   # the same notes, both engines, subtracted
+node tools/measure.mjs --voice kalimba --engine rust
+node tools/measure.mjs --endings --engine rust
+```
+
+`--null` renders the kalimba as a melody and as a chord voice note by note,
+each started at its own fraction of a sample and point in the render block,
+and then whole kalimba loops through the engine and master chain, through
+both engines, and reports the difference against what the kalimba plays.
+It nulls to about -100 dB. That took matching Chromium where it is not
+the obvious reading of the spec, measured rather than guessed: an
+oscillator whose frequency is steady starts its phase where it would have
+been had the note begun between samples; one whose frequency moves (FM, or
+an automated pitch) reads its first render block's frequencies from the
+block's start, so the kalimba's body sine sounds at its 440 Hz default for
+up to 128 frames before its own pitch arrives. Both are in every JavaScript
+note today, so the core does them too; `core/src/osc.rs` has the details.
 
 ## A note on the tape saturator
 
@@ -1311,6 +1387,7 @@ behind it:
 - `docs/ALBUMS.md` -- listening albums waiting for answers.
 - `docs/perf-baseline.md` -- the live performance baseline and what came
   of it.
+- `core/` -- the Rust core's source; `js/dlcore.wasm` is built from it.
 - `docs/theory-sheets.md` -- music theory notes.
 
 ## License

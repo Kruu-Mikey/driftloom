@@ -76,6 +76,10 @@ driftloom offline audio measurement
   --retire          check that letting a finished voice go changes nothing
   --profile <id>    keep only loops that profile leads, drawing from the
                     same corpus until --n of them are in
+  --engine <e>      'js' or 'rust': which synth plays the voices the Rust
+                    core has (only kalimba so far)              (default js)
+  --null            render the same seeded kalimba notes, and kalimba
+                    loops, through both engines and subtract
   --selftest        check the loudness meter against reference signals
   --help            this
 
@@ -127,6 +131,20 @@ driftloom offline audio measurement
   pan flute grace that swelled to full, held and was cut off 0.4 s later
   -- heard as static under the note it led into -- and it catches it.
 
+  --engine rust plays the core's voices through js/dlcore.wasm in an
+  AudioWorklet, as ?engine=rust does in the app, for every report above
+  but --retire (which is about letting go of Web Audio nodes). Everything
+  else, the voice budget and every random draw included, is unchanged.
+
+  --null is the proof the Rust core is the JavaScript synth: kalimba as a
+  melody and as a chord voice, note by note across its window at two
+  velocities and three lengths, each started at its own fraction of a
+  sample and point in the render block; then whole kalimba loops through
+  the real engine and the whole master chain. Each is rendered with
+  --engine js and --engine rust from the same seed and subtracted. The
+  residual is given against the kalimba's own level: how far below what
+  it plays the difference sits.
+
   Needs Playwright and Chromium, which are a dependency of this tool and
   not of the app:  npm install -g playwright && npx playwright install chromium
 `;
@@ -143,7 +161,7 @@ function parseArgs(argv) {
   const opts = {
     n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
     jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
-    profile: null, endings: false, retire: false,
+    profile: null, endings: false, retire: false, engine: 'js', null: false,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -178,6 +196,13 @@ function parseArgs(argv) {
       case '--selftest': opts.selftest = true; break;
       case '--endings': opts.endings = true; break;
       case '--retire': opts.retire = true; break;
+      case '--null': opts.null = true; break;
+      case '--engine': {
+        const e = value();
+        if (e !== 'js' && e !== 'rust') fail(`--engine is 'js' or 'rust', not '${e}'`);
+        opts.engine = e;
+        break;
+      }
       case '--note': opts.note = Math.max(0.05, number()); break;
       case '--voice':
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
@@ -392,6 +417,29 @@ async function inParallel(tasks, width) {
 }
 `;
 
+// Pasted into every page: a Synth on the engine asked for. The core is
+// loaded before the caller seeds Math.random, because the Synth draws its
+// noise as it is built: on --engine rust, building happens in the same
+// order and with the same draws as on js. \`settle\` waits until the core's
+// worklet has taken every note, before the render starts.
+const ENGINE_HELPERS = `
+async function coreFor(ctx, engine) {
+  return engine === 'rust' ? loadCore(ctx) : null;
+}
+function synthFor(ctx, quality, engine, core) {
+  return engine === 'rust' ? new Synth(ctx, quality, { engine, core }) : new Synth(ctx, quality);
+}
+async function settle(synth) {
+  if (synth.core) await synth.core.flush();
+}
+// After the render: a page holds only so many WebAssembly instances at once.
+async function rendered(ctx, synth) {
+  const buf = await ctx.startRendering();
+  if (synth.core) synth.core.dispose();
+  return buf;
+}
+`;
+
 // -------------------------------------------------------------- the page
 //
 // Everything below runs in the browser, where Web Audio exists. The seven
@@ -428,11 +476,13 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>measure</title>
 <script type="module">
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
+import { loadCore } from '/js/core.js';
 import { newSpec, characterOf, render, metreOf } from '/js/generator.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ${JSON.stringify(LAYERS)};
 ${PAGE_HELPERS}
+${ENGINE_HELPERS}
 ${CORPUS}
 
 const scan = (d) => {
@@ -451,11 +501,12 @@ const scan = (d) => {
 // nowhere else, and keeps everything in front of them -- saturator, tone,
 // highpass, the profile's level trim. Both draw the same random stream, so
 // what differs between them is the chain.
-function renderLoop(spec, seconds, opts, bypass) {
-  Math.random = mulberry32(spec.seed >>> 0 || 1);
+async function renderLoop(spec, seconds, opts, bypass) {
   const channels = bypass ? 1 : 2 + LAYERS.length;
   const ctx = new OfflineAudioContext(channels, Math.ceil(seconds * opts.rate), opts.rate);
-  const synth = new Synth(ctx, opts.quality);
+  const core = await coreFor(ctx, opts.engine);
+  Math.random = mulberry32(spec.seed >>> 0 || 1);
+  const synth = synthFor(ctx, opts.quality, opts.engine, core);
   const engine = new Engine(ctx, synth);
   // The engine's clock is never started here, but it has already opened a
   // Worker; a corpus would otherwise leave one behind per render.
@@ -485,7 +536,8 @@ function renderLoop(spec, seconds, opts, bypass) {
     engine._scheduleStep(engine.step, engine.nextStepTime);
     engine._advance();
   }
-  return ctx.startRendering();
+  await settle(synth);
+  return rendered(ctx, synth);
 }
 
 // What the compressor and the ceiling do to a signal far below either
@@ -652,8 +704,11 @@ const SURVEY_LOOPS = 2000;
 const PROBE_PAGE = `
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { mulberry32 } from '/js/rng.js';
+import { loadCore } from '/js/core.js';
+import { newSpec, render } from '/js/generator.js';
+import { Rng, mulberry32 } from '/js/rng.js';
 ${PAGE_HELPERS}
+${ENGINE_HELPERS}
 
 // Radix-2 FFT, in place.
 function fft(re, im) {
@@ -742,10 +797,12 @@ const STEP = 0.1; // seconds a step, at the 150bpm the one-note pattern runs at
 // channel table, the reverb and echo sends, the bus and the master chain
 // are all out of it. The reverb return is shared between layers and would
 // put one voice's tail inside another voice's reading.
-function renderNote(job, midi, vel, rep, o) {
+async function renderNote(job, midi, vel, rep, o) {
+  const at = o.at ?? 0.05;
+  const ctx = new OfflineAudioContext(1, Math.ceil((at - 0.05 + o.dur + (o.tail ?? 2.2)) * o.rate), o.rate);
+  const core = await coreFor(ctx, o.engine);
   Math.random = mulberry32(seedFor([job.layer, job.voice, midi, vel.toFixed(2), rep].join('|')));
-  const ctx = new OfflineAudioContext(1, Math.ceil((o.dur + (o.tail ?? 2.2)) * o.rate), o.rate);
-  const synth = new Synth(ctx, 'full');
+  const synth = synthFor(ctx, 'full', o.engine, core);
   // The budget is a runtime guard and would only refuse notes here.
   synth._budget = () => true;
   const channel = synth.channels[job.layer].gain;
@@ -768,8 +825,9 @@ function renderNote(job, midi, vel, rep, o) {
     live: { tracks, totalSteps: 1, stepsPerBar: 16 },
     absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
   });
-  engine._scheduleStep(0, 0.05);
-  return ctx.startRendering();
+  engine._scheduleStep(0, at);
+  await settle(synth);
+  return rendered(ctx, synth);
 }
 
 window.probeVoice = async (o) => {
@@ -927,6 +985,117 @@ window.probeRetire = async (o) => {
   return inParallel(tasks, o.width);
 };
 
+// --null: the same notes through both engines, subtracted.
+//
+// Energies are summed over every note (or loop) of a kind, so the figure
+// is the residual over the signal as a whole, and the worst single note is
+// given beside it.
+function nullOf(a, b) {
+  let sig = 0, res = 0, peak = 0, worst = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = a[i] - b[i];
+    sig += a[i] * a[i];
+    res += d * d;
+    if (Math.abs(a[i]) > peak) peak = Math.abs(a[i]);
+    if (Math.abs(d) > worst) worst = Math.abs(d);
+  }
+  return { sig, res, peak, worst };
+}
+
+window.probeNull = async (o) => {
+  const out = { notes: [], loops: [] };
+  // Note by note. Each note starts at its own point: a different fraction
+  // of a sample and a different place in the 128-frame render block, since
+  // both change what Web Audio does with a start time.
+  const tasks = [];
+  let n = 0;
+  for (const job of o.jobs) {
+    for (const vel of o.velocities) {
+      for (const dur of o.lengths) {
+        for (let midi = job.low; midi <= job.high; midi += 3) {
+          const k = n++;
+          const at = (2205 + ((k * 53) % 256) + ((k * 0.618034) % 1)) / o.rate;
+          const opts = { rate: o.rate, dur, tail: 1.6, at };
+          tasks.push(async () => {
+            const js = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'js' })).getChannelData(0);
+            const rust = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'rust' })).getChannelData(0);
+            return { layer: job.layer, vel, dur, midi, at, ...nullOf(js, rust) };
+          });
+        }
+      }
+    }
+  }
+  out.notes = await inParallel(tasks, o.width);
+
+  // Whole loops that play the kalimba, through the real Engine and the whole
+  // master chain: the mix, and the melody and chords taps, dry.
+  const kalimbaIn = (spec) => {
+    const t = render(spec).tracks;
+    return {
+      melody: t.melody.some((e) => e.vel && e.voice === 'kalimba'),
+      chords: t.chords.some((e) => e.vel && e.voice === 'kalimba'),
+    };
+  };
+  const master = new Rng(o.seed);
+  const specs = [];
+  const want = { melody: Math.ceil(o.loops / 2), chords: Math.floor(o.loops / 2) };
+  for (let tries = 0; specs.length < o.loops && tries < 20000; tries++) {
+    const spec = newSpec(master.seed32());
+    const k = kalimbaIn(spec);
+    const layer = k.melody && want.melody ? 'melody' : k.chords && want.chords ? 'chords' : null;
+    if (!layer) continue;
+    want[layer]--;
+    specs.push({ spec, layer });
+  }
+  const renderMix = async (spec, engineName) => {
+    const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
+    const seconds = Math.min(30, Math.max(loopDur * 2, 12));
+    const ctx = new OfflineAudioContext(3, Math.ceil(seconds * o.rate), o.rate);
+    const core = await coreFor(ctx, engineName);
+    Math.random = mulberry32(spec.seed >>> 0 || 1);
+    const synth = synthFor(ctx, 'full', engineName, core);
+    const engine = new Engine(ctx, synth);
+    if (engine.clock.worker) engine.clock.worker.terminate();
+    const merger = ctx.createChannelMerger(3);
+    merger.connect(ctx.destination);
+    synth.ceiling.disconnect();
+    synth.ceiling.connect(merger, 0, 0);
+    synth.channels.melody.gain.connect(merger, 0, 1);
+    synth.channels.chords.gain.connect(merger, 0, 2);
+    engine.load(spec);
+    engine.playing = true;
+    engine.nextStepTime = 0.05;
+    let guard = 0;
+    while (engine.nextStepTime < seconds && guard++ < 200000) {
+      engine._scheduleStep(engine.step, engine.nextStepTime);
+      engine._advance();
+    }
+    const fell = synth.fallbacks;
+    await settle(synth);
+    const buf = await ctx.startRendering();
+    const counts = synth.core ? await synth.core.flush() : null;
+    if (synth.core) synth.core.dispose();
+    return { buf, seconds, fell, late: counts ? counts.late : 0, dropped: counts ? counts.dropped : 0 };
+  };
+  out.loops = await inParallel(specs.map(({ spec, layer }) => async () => {
+    const js = await renderMix(spec, 'js');
+    const rust = await renderMix(spec, 'rust');
+    // The floor: the same loop on the same engine twice. Chromium does not
+    // fix the order it sums a node's inputs in (see the top of this file),
+    // so even that is not bit for bit.
+    const again = await renderMix(spec, 'js');
+    const tap = layer === 'melody' ? 1 : 2;
+    return {
+      name: spec.name, seed: spec.seed, layer, seconds: js.seconds,
+      mix: nullOf(js.buf.getChannelData(0), rust.buf.getChannelData(0)),
+      tap: nullOf(js.buf.getChannelData(tap), rust.buf.getChannelData(tap)),
+      floor: nullOf(js.buf.getChannelData(0), again.buf.getChannelData(0)),
+      fallback: rust.fell, late: rust.late, dropped: rust.dropped,
+    };
+  }), Math.max(1, Math.floor(o.width / 2)));
+  return out;
+};
+
 window.probeEndings = async (o) => {
   const tasks = [];
   for (const job of o.jobs) {
@@ -957,21 +1126,24 @@ window.probeEndings = async (o) => {
 const REFUSAL_PAGE = `
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
+import { loadCore } from '/js/core.js';
 import { newSpec } from '/js/generator.js';
 import { decodeSong } from '/js/share.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 
 const LAYERS = ['drums', 'bass', 'chords', 'melody', 'texture'];
+${ENGINE_HELPERS}
 ${CORPUS}
 
 // Render one loop and count what each layer asked for and lost.
-async function runOne(spec, quality, rate) {
+async function runOne(spec, quality, rate, engineName) {
   const spb = spec.stepsPerBar || 16;
   const seconds = Math.min(60, spec.bars * spb * (60 / spec.bpm / 4) + 3);
+  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
+  const core = await coreFor(ctx, engineName);
   // Drum jitter moves when a note is released, and so what is refused.
   Math.random = mulberry32(spec.seed >>> 0 || 1);
-  const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
-  const synth = new Synth(ctx, quality);
+  const synth = synthFor(ctx, quality, engineName, core);
   const engine = new Engine(ctx, synth);
 
   const asked = {}; const refused = {}; const calls = {}; const callsRefused = {};
@@ -1015,14 +1187,15 @@ async function runOne(spec, quality, rate) {
     engine._scheduleStep(engine.step, engine.nextStepTime);
     engine._advance();
   }
-  await ctx.startRendering();
+  await settle(synth);
+  await rendered(ctx, synth);
   return { asked, refused, calls, callsRefused, seconds };
 }
 
 window.refusalsOne = async (o) => {
   const spec = decodeSong(o.code);
   const out = {};
-  for (const q of ['full', 'lite']) out[q] = await runOne(spec, q, o.rate);
+  for (const q of ['full', 'lite']) out[q] = await runOne(spec, q, o.rate, o.engine);
   out.spec = {
     name: spec.name, bpm: spec.bpm, bars: spec.bars,
     stepsPerBar: spec.stepsPerBar || 16, seed: spec.seed,
@@ -1033,7 +1206,7 @@ window.refusalsOne = async (o) => {
 window.refusalsCorpus = async (o) => {
   const rows = [];
   for (const spec of drawCorpus(o.seed, o.n, o.profile)) {
-    const r = await runOne(spec, o.quality, o.rate);
+    const r = await runOne(spec, o.quality, o.rate, o.engine);
     rows.push({
       name: spec.name, seed: spec.seed,
       asked: r.asked, refused: r.refused,
@@ -1628,6 +1801,39 @@ if (opts.selftest) {
   process.exit(failed ? 1 : 0);
 }
 
+// --null's report.
+function reportNull(data, opts) {
+  const db = (x) => (x > 0 ? 10 * Math.log10(x) : -Infinity);
+  const fmt = (x) => (Number.isFinite(x) ? x.toFixed(1).padStart(7) : '   -inf');
+  const out = ['', 'driftloom: the Rust core against the JavaScript synth, the same notes subtracted',
+    `  ${(opts.rate / 1000).toFixed(1)}k. Residual is the difference's energy against the JavaScript render's, in dB:`,
+    '  how far under what the kalimba plays the difference sits. Worst is the loudest single sample of the',
+    '  difference, in dBFS.', ''];
+  const groups = new Map();
+  for (const r of data.notes) {
+    for (const key of [r.layer, `${r.layer} ${r.dur}s`]) {
+      const g = groups.get(key) || { sig: 0, res: 0, worst: 0, notes: 0, worstNote: -Infinity };
+      g.sig += r.sig; g.res += r.res; g.worst = Math.max(g.worst, r.worst); g.notes++;
+      g.worstNote = Math.max(g.worstNote, db(r.res / r.sig));
+      groups.set(key, g);
+    }
+  }
+  out.push('  notes                       count   residual   worst note   worst sample');
+  for (const [key, g] of groups) {
+    out.push(`    kalimba ${key.padEnd(18)} ${String(g.notes).padStart(5)}    ${fmt(db(g.res / g.sig))} dB  ${fmt(g.worstNote)} dB    ${fmt(20 * Math.log10(g.worst || 1e-12))} dBFS`);
+  }
+  out.push('');
+  out.push('  loops, the whole engine and master chain   residual: kalimba layer    mix  js vs js   worst   late fallback');
+  for (const r of data.loops) {
+    out.push(`    ${(r.name + ' (' + r.layer + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(40)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
+  }
+  out.push('');
+  out.push('  "js vs js" is the same loop rendered twice on the JavaScript synth: the mix never nulls deeper than');
+  out.push('  that, whichever engine plays, because Chromium does not fix the order it sums a node\'s inputs in.');
+  out.push('');
+  return out.join('\n');
+}
+
 function writeJson(data) {
   if (!opts.json) return;
   // JSON has no infinity; a silent note or loop is written as null.
@@ -1662,7 +1868,7 @@ function loadPlaywright() {
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
   '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json',
-  '.wav': 'audio/wav', '.flac': 'audio/flac', '.png': 'image/png',
+  '.wav': 'audio/wav', '.flac': 'audio/flac', '.png': 'image/png', '.wasm': 'application/wasm',
 };
 
 const server = http.createServer((req, res) => {
@@ -1711,7 +1917,7 @@ try {
 const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-const probing = !!opts.voices || opts.endings || opts.retire;
+const probing = !!opts.voices || opts.endings || opts.retire || opts.null;
 const counting = !!opts.refusals;
 const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
 await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
@@ -1734,8 +1940,8 @@ try {
 if (counting) {
   const corpus = opts.refusals === 'corpus';
   const data = corpus
-    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate, profile: opts.profile })
-    : await page.evaluate((o) => window.refusalsOne(o), { code: opts.refusals, rate: opts.rate });
+    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate, profile: opts.profile, engine: opts.engine })
+    : await page.evaluate((o) => window.refusalsOne(o), { code: opts.refusals, rate: opts.rate, engine: opts.engine });
   await browser.close();
   server.close();
   if (pageErrors.length) {
@@ -1771,6 +1977,24 @@ if (opts.retire) {
   process.exit(bad.length || pageErrors.length ? 1 : 0);
 }
 
+if (opts.null) {
+  const jobs = Object.entries(drawnLayers())
+    .filter(([layer, voices]) => voices.includes('kalimba') && PROBE_WINDOWS[layer])
+    .map(([layer]) => ({ layer, voice: 'kalimba', low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] }));
+  const data = await page.evaluate((o) => window.probeNull(o), {
+    jobs, velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6], rate: opts.rate,
+    width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 8)),
+  });
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  writeJson(data);
+  console.log(reportNull(data, opts));
+  process.exit(pageErrors.length ? 1 : 0);
+}
+
 if (opts.endings) {
   const jobs = [];
   for (const [layer, voices] of Object.entries(drawnLayers())) {
@@ -1780,7 +2004,7 @@ if (opts.endings) {
     }
   }
   const rows = await page.evaluate((o) => window.probeEndings(o), {
-    jobs, vel: 0.7, rate: opts.rate, tail: ENDING_TAIL, width: opts.jobs,
+    jobs, vel: 0.7, rate: opts.rate, tail: ENDING_TAIL, width: opts.jobs, engine: opts.engine,
   });
   await browser.close();
   server.close();
@@ -1797,7 +2021,7 @@ if (probing) {
   const survey = surveyVelocities(opts.seed);
   const data = await page.evaluate((o) => window.probeVoice(o), {
     jobs, velocities: PROBE_VELOCITIES, toneVelocity: 0.8,
-    rate: opts.rate, reps: opts.reps, dur: opts.dur, width: opts.jobs,
+    rate: opts.rate, reps: opts.reps, dur: opts.dur, width: opts.jobs, engine: opts.engine,
   });
   await browser.close();
   server.close();

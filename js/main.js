@@ -1,5 +1,6 @@
 import { newSpec, rerollLayer, cloneSpec, render, choirOf, LAYERS, STEPS_PER_BAR } from './generator.js';
 import { Synth } from './synth.js';
+import { ENGINE, loadCore, fetchCore } from './core.js';
 import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
@@ -8,7 +9,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v66';
+const BUILD = 'v67';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
@@ -38,6 +39,8 @@ const state = {
   frameHandle: null,
   lite: false,
   media: null,
+  // The Rust core for this context, once loaded (`?engine=rust`, js/core.js).
+  core: null,
   history: [],            // array of specs (max 5)
   historyIndex: -1,       // current position in history
 };
@@ -56,6 +59,19 @@ function ensureAudio() {
   const Ctx = window.AudioContext || window.webkitAudioContext;
   state.ctx = new Ctx({ latencyHint: 'playback' });
   buildAudio();
+  // The core arrives a moment after the context. Until then the synth plays
+  // its voices in JS, and counts them; a later synth (the quality toggle)
+  // takes it from the start.
+  if (ENGINE === 'rust') {
+    const ctx = state.ctx;
+    loadCore(ctx).then((core) => {
+      if (state.ctx !== ctx) return;
+      state.core = core;
+      if (state.synth) state.synth.attachCore(core);
+    }).catch((err) => {
+      console.warn('Rust core unavailable; playing in JS', err);
+    });
+  }
 }
 
 function buildAudio() {
@@ -66,7 +82,7 @@ function buildAudio() {
   // element in the DOM.
   if (state.media) state.media.dispose();
   if (state.synth) state.synth.dispose();
-  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full');
+  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full', { engine: ENGINE, core: state.core });
   // Route the mix through a media element so the phone gives us lock-screen
   // controls and stops treating us as an idle tab.
   state.media = new MediaBridge(state.ctx);
@@ -699,6 +715,9 @@ function wire() {
     // means a dead service worker -- no offline mode -- is otherwise invisible.
     lines.push(`sw: ${swState}`);
     lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);
+    // Which synth plays the voices the Rust core has: js, or rust with the
+    // notes that arrived late and the ones that fell back to JS.
+    lines.push(`engine: ${state.synth ? state.synth.engineReport() : ENGINE}`);
     // One loop in thirty is a deliberate doubling (roadmap item 12), and
     // "is this one of them?" is otherwise only answerable by ear, which is
     // no use at all when the question is whether it fired.
@@ -706,7 +725,7 @@ function wire() {
     if (state.media) push(state.media.report());
     else lines.push('media: not built yet (press Play)');
     if (state.engine && state.engine.spec) push(state.engine.report());
-    else lines.push('engine: not built yet (press Play)');
+    else lines.push('scheduler: not built yet (press Play)');
     ui.el('diagOut').textContent = lines.join('\n');
   };
 
@@ -888,6 +907,8 @@ function wire() {
 }
 
 wire();
+// Fetched ahead, so the core is ready by the time Play is pressed.
+if (ENGINE === 'rust') fetchCore().catch(() => {});
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   swState = 'registering';

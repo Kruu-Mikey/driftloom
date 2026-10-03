@@ -1,0 +1,32 @@
+# The Rust core, on every PR and every push to main: the committed
+# js/dlcore.wasm must be exactly what its source builds (tools/build-core.sh
+# --check), the core's own tests must pass, and so must the generator's.
+#
+# The toolchain is pinned in core/rust-toolchain.toml; rustup, already on
+# the runner, installs that exact version and its wasm32 target on first
+# use, so nothing here names a version.
+name: core
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The committed .wasm matches its source
+        run: tools/build-core.sh --check
+      - name: Core tests
+        working-directory: core
+        run: cargo test --locked
+      - name: Generator tests
+        run: node test/generator.test.mjs

@@ -4,9 +4,8 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-03:** items 0-20 are done (13 stopped at its gate by
-design). Next: **21 and 22, the Rust core's first steps** (Session 4,
-hands). A new Claude Code session starts here: read the standing rules
+**Status, 2026-10-03:** items 0-21 are done (13 stopped at its gate by
+design). Next: **22, the Rust core's second step** (Session 4, hands). A new Claude Code session starts here: read the standing rules
 and the merge policy, then take the next item.
 
 ## Standing rules, for every item
@@ -974,3 +973,12 @@ Mikey decides this line:
   are marked `"pool": 2`, and `tools/ranks.mjs` reports per pool and per
   group. Check that a fresh trial shows a spread of words, and that your
   earlier answers are still counted.
+- #126, the Rust core's first step (item 21, v67),
+  https://09d9e12a-driftloom.kruu-mikey-thaiculture.workers.dev/?engine=rust:
+  nothing should sound different. Without the flag the app is unchanged;
+  with `?engine=rust` the kalimba comes out of Rust (it nulls against the
+  JavaScript kalimba to about -100 dB). Check on the phone that
+  Diagnostics reads `engine: rust  late: 0  fallback: 0` while a grove
+  loop plays, and that the kalimba is there. If Diagnostics says
+  `rust (failed: ...)`, the phone's browser cannot run the module (it
+  needs Safari 15 or later) and everything played in JavaScript.

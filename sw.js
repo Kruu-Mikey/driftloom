@@ -8,7 +8,7 @@
 // change, together with BUILD in js/main.js, so you can tell at a glance
 // which deploy you are listening to. Bumping it also evicts files that
 // have been deleted from FILES, which the network-first path cannot do.
-const CACHE = 'driftloom-v66';
+const CACHE = 'driftloom-v67';
 // './index.html' is deliberately absent. Cloudflare redirects it to './'
 // with a 307, and the Cache API will not store a redirected response --
 // addAll is atomic, so that one entry failing takes the whole install with
@@ -37,6 +37,10 @@ const FILES = [
   './js/rng.js',
   './js/midi.js',
   './js/storage.js',
+  // The Rust core (`?engine=rust`), so the flag works offline too.
+  './js/core.js',
+  './js/worklet.js',
+  './js/dlcore.wasm',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
