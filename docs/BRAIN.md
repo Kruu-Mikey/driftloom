@@ -314,6 +314,15 @@ and `--check` pass.
 his own words: checks the steering and starts the word study) and
 "Depth two" (goes somewhere / loops / too busy).
 
+**Sessions (Mikey, 2026-10-03).** Every session gets a label, one
+counter for brain and hands: Session 1 is the words brain chat
+(2026-09-28 to 10-03). For each next session, tell Mikey: brain or a new
+hands session, which model, which effort, and its label. Defaults: brain
+chats on Opus 5.5; hands on Sonnet 5.5 at medium effort for items with a
+clear spec, Opus 5.5 at high for hard or judgment-heavy ones (DSP
+parity, first prototypes). Next labels: Session 2, hands, queue item 20;
+Session 3, brain, the Rust port.
+
 **Words session (2026-09-28, in progress):** State checked against GitHub;
 item 18 (#111) verified. Decided this session (details in `docs/MOODS.md`):
 lively joins (178 words); tender/soothing and serene/peaceful told apart;
