@@ -753,7 +753,14 @@ notes than the catalog (mean 2.9% and 3.5% against 1.5%), the same on
 the old code. The fixes above are the likely remedy; re-measure both
 profiles when this item is done.
 
-## 16. A compiled audio engine (Rust) — **L** — *after composition depth and the words settle; its own brain chat*
+## 16. A compiled audio engine (Rust) — **L** — *synth now, generator after the words; its own brain chat*
+
+**Timing, 2026-10-03 (Mikey):** start now. "Settled" never fully arrives
+on a project he'll keep growing. The synth ports first, now: the voices
+are approved, no new instruments are planned, and the words work barely
+touches it. The generator waits until the words' draws stop moving, so
+changes aren't made twice. Word recipes, maps and pools live as data, so
+most later tuning needs no code in either language.
 
 Mikey wants the app light and fast even at full quality ("DHH-wow" smooth
 with a hundred other apps open), and is open to an overhaul. Today every
