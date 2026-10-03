@@ -6,7 +6,8 @@
 // words in the order they were shown and the ones tapped, most like the
 // loop first. Untapped words mean "doesn't fit".
 //
-// Per word: how often it was shown, tapped first, tapped at all and never
+// Per pool version (trials without "pool" are pool 1), and per group of
+// the five maps, per word: how often it was shown, tapped first, tapped at all and never
 // tapped, and its mean place when tapped. Counted over answered trials
 // that are not repeats; skips are counted apart, and a repeat is there only
 // to be compared with its original, below, so it would count one loop
@@ -54,37 +55,73 @@ console.log(`nothing tapped on ${none} of ${answered.length} (${pct(none, answer
 
 // ------------------------------------------------------------------ words
 
-const words = new Map();
-const row = (w) => {
-  if (!words.has(w)) words.set(w, { shown: 0, first: 0, tapped: 0, places: 0 });
-  return words.get(w);
+// The pool-2 groups, as in rank.html (the maps: color, shimmer, air,
+// motion, flavor). Pool 1 had no groups, but every pool-1 word sits in one.
+const GROUPS = {
+  color: ['golden', 'frosty', 'tender', 'happy', 'joyful', 'reflective', 'merry', 'peaceful'],
+  shimmer: ['twinkling', 'crisp', 'velvety', 'booming', 'soft'],
+  air: ['floating', 'airy', 'intimate', 'cozy', 'spacious', 'serene', 'misty', 'steady'],
+  motion: ['bouncy', 'swaying', 'lively', 'energetic', 'still', 'flowing'],
+  flavor: ['sour', 'sweet', 'spicy', 'quirky', 'zany'],
 };
-for (const t of answered) {
-  for (const w of t.words) row(w).shown++;
-  t.taps.forEach((w, i) => {
-    const r = row(w);
-    r.tapped++;
-    r.places += i + 1;
-    if (i === 0) r.first++;
-  });
-}
+const groupOf = (w) => Object.keys(GROUPS).find((g) => GROUPS[g].includes(w)) ?? '?';
 
 const W = 12;
 const C = 9;
-console.log('\n' + 'word'.padEnd(W) + ['shown', 'first', 'tapped', 'never', 'place'].map((h) => h.padStart(C)).join(''));
-const order = [...words.entries()].sort((a, b) => b[1].tapped / b[1].shown - a[1].tapped / a[1].shown
-  || b[1].first / b[1].shown - a[1].first / a[1].shown || a[0].localeCompare(b[0]));
-for (const [w, r] of order) {
-  const cells = [
+
+function table(list, withGroup) {
+  const words = new Map();
+  const row = (w) => {
+    if (!words.has(w)) words.set(w, { shown: 0, first: 0, tapped: 0, places: 0 });
+    return words.get(w);
+  };
+  for (const t of list) {
+    for (const w of t.words) row(w).shown++;
+    t.taps.forEach((w, i) => {
+      const r = row(w);
+      r.tapped++;
+      r.places += i + 1;
+      if (i === 0) r.first++;
+    });
+  }
+  const line = (name, r) => name.padEnd(W) + [
     r.shown,
     `${r.first} ${pct(r.first, r.shown)}`,
     `${r.tapped} ${pct(r.tapped, r.shown)}`,
     `${r.shown - r.tapped} ${pct(r.shown - r.tapped, r.shown)}`,
     r.tapped ? (r.places / r.tapped).toFixed(1) : '-',
-  ];
-  console.log(w.padEnd(W) + cells.map((c) => String(c).padStart(C)).join(''));
+  ].map((c) => String(c).padStart(C)).join('');
+  const rank = (a, b) => b[1].tapped / b[1].shown - a[1].tapped / a[1].shown
+    || b[1].first / b[1].shown - a[1].first / a[1].shown || a[0].localeCompare(b[0]);
+  console.log('word'.padEnd(W) + ['shown', 'first', 'tapped', 'never', 'place'].map((h) => h.padStart(C)).join(''));
+  if (!withGroup) {
+    for (const e of [...words.entries()].sort(rank)) console.log(line(e[0], e[1]));
+    return;
+  }
+  for (const g of [...Object.keys(GROUPS), '?']) {
+    const mine = [...words.entries()].filter(([w]) => groupOf(w) === g).sort(rank);
+    if (!mine.length) continue;
+    const sum = { shown: 0, first: 0, tapped: 0, places: 0 };
+    for (const [, r] of mine) for (const k of Object.keys(sum)) sum[k] += r[k];
+    console.log(`-- ${g}`);
+    console.log(line(`  (all ${g})`, sum));
+    for (const e of mine) console.log(line(`  ${e[0]}`, e[1]));
+  }
 }
-console.log('(place: mean position when tapped, 1 = most like the loop)');
+
+// Trials without a "pool" field are pool 1.
+const pools = [...new Set(answered.map((t) => t.pool ?? 1))].sort();
+for (const v of pools) {
+  const list = answered.filter((t) => (t.pool ?? 1) === v);
+  const nothing = list.filter((t) => !t.taps.length).length;
+  console.log(`\n=== pool ${v}: ${list.length} answered, nothing tapped on ${nothing} (${pct(nothing, list.length)}) ===`);
+  table(list, true);
+}
+if (pools.length > 1) {
+  console.log('\n=== all pools together ===');
+  table(answered, true);
+}
+console.log('(place: mean position when tapped, 1 = most like the loop; groups are the maps color, shimmer, air, motion, flavor)');
 
 // ------------------------------------------------------------------ repeats
 

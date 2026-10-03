@@ -69,13 +69,19 @@ import { getPrefs } from './js/storage.js';
 // The brain's to change. A word added later is shown more often until it
 // has caught up with the rest; a word removed is simply no longer drawn.
 
-const POOL = [
-  'merry', 'tender', 'serene', 'golden', 'twinkling', 'crisp', 'velvety',
-  'sour', 'bouncy', 'floating', 'swaying', 'quirky', 'happy', 'joyful',
-  'peaceful', 'reflective', 'lively', 'cozy', 'airy', 'misty', 'intimate',
-  'spacious',
-];
-const WORDS_PER_TRIAL = 5;
+const POOL_VERSION = 2;
+// One word from each group per trial, so five words never bunch on one
+// corner of the maps. The group names are the maps' (warmth x lift, edge x
+// height, room x ground, energy x bounce, tang x oddness) and are never
+// shown. Pool 1 (22 words, drawn at random) is in the saved answers of
+// trials without a "pool" field.
+const GROUPS = {
+  color: ['golden', 'frosty', 'tender', 'happy', 'joyful', 'reflective', 'merry', 'peaceful'],
+  shimmer: ['twinkling', 'crisp', 'velvety', 'booming', 'soft'],
+  air: ['floating', 'airy', 'intimate', 'cozy', 'spacious', 'serene', 'misty', 'steady'],
+  motion: ['bouncy', 'swaying', 'lively', 'energetic', 'still', 'flowing'],
+  flavor: ['sour', 'sweet', 'spicy', 'quirky', 'zany'],
+};
 // New loops are newSpec(START_SEED), newSpec(START_SEED + 1), ... so the
 // same run of loops comes back on any device.
 const START_SEED = 19000;
@@ -125,18 +131,18 @@ function plan(records) {
     const orig = r.pick(earlier);
     let words = orig.words;
     for (let i = 0; i < 20 && words.join() === orig.words.join(); i++) words = r.shuffle(orig.words);
-    return { trial, seed: orig.seed, code: orig.code, repeatOf: orig.trial, words };
+    return { trial, seed: orig.seed, code: orig.code, repeatOf: orig.trial, words, pool: orig.pool ?? 1 };
   }
 
-  // Balanced: the least-shown words, ties broken at random, then shuffled.
-  const shown = new Map(POOL.map((w) => [w, 0]));
-  for (const x of records) for (const w of x.words) if (shown.has(w)) shown.set(w, shown.get(w) + 1);
-  const least = POOL.map((w) => [w, shown.get(w), r.f()])
-    .sort((a, b) => a[1] - b[1] || a[2] - b[2])
-    .slice(0, WORDS_PER_TRIAL)
-    .map((x) => x[0]);
+  // Balanced: within each group the least-shown word (v1 answers count
+  // too), ties broken at random; then the five shuffled.
+  const shown = new Map();
+  for (const x of records) for (const w of x.words) shown.set(w, (shown.get(w) || 0) + 1);
+  const picks = Object.values(GROUPS).map((g) => g
+    .map((w) => [w, shown.get(w) || 0, r.f()])
+    .sort((a, b) => a[1] - b[1] || a[2] - b[2])[0][0]);
   const seed = START_SEED + records.filter((x) => !x.repeatOf).length;
-  return { trial, seed, code: null, repeatOf: null, words: r.shuffle(least) };
+  return { trial, seed, code: null, repeatOf: null, words: r.shuffle(picks), pool: POOL_VERSION };
 }
 
 // ------------------------------------------------------------------ audio
@@ -193,6 +199,7 @@ function finish(skip) {
     seed: cur.seed,
     code: cur.code,
     repeatOf: cur.repeatOf,
+    pool: cur.pool,
     words: cur.words,
     taps: skip ? [] : cur.taps,
     skip,
