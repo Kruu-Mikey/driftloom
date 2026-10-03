@@ -323,9 +323,12 @@ with each word's region fitted from Mikey's own answers. **American
 English** for the project (docs converted; identifiers left alone).
 Free description and most/least albums were too slow and abstract, so the
 words get a **ranking test** instead: queue item 19 (`rank.html`), for the
-hands. The Moods album is retired; Depth two is still out. Next: Mikey
-runs item 19 with the hands, does a first batch of rankings, exports, and
-the brain reads them with `tools/ranks.mjs`. Candidate words later (he
+hands: merged as #117 (v65), brain-verified (tests pass, `--check`
+holds, app untouched but the stamps; live page matches the repo). It
+lives at https://driftloom.kruu-mikey-thaiculture.workers.dev/rank
+(`/rank.html` redirects there). The Moods album is retired; Depth two is
+still out. Next: Mikey does a first batch of rankings, exports, and the
+brain reads them with `tools/ranks.mjs`. Candidate words later (he
 likes about half).
 
 ## History
