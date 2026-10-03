@@ -29,6 +29,8 @@
 //! returns false. Every voice knows how many it schedules, so this is a
 //! guard and not a policy.
 
+use crate::QUANTUM;
+
 /// The most events one parameter holds. A JavaScript voice schedules at
 /// most five on any one parameter.
 pub const MAX_EVENTS: usize = 8;
@@ -204,17 +206,135 @@ impl Param {
         }
     }
 
-    /// Whether the parameter moves from `t` on: an event at or after it, or
-    /// a target curve, which never arrives. Web Audio renders a parameter
-    /// like that sample by sample for the block starting at `t`, and holds
-    /// one that has nothing left to do at a single value. An oscillator
-    /// starts differently in each case (see `osc`).
-    pub fn moving_from(&self, t: f64) -> bool {
-        match self.list().last() {
-            None => false,
-            Some(last) => last.kind == Kind::Target || last.time >= t,
+    /// The value at every frame of the block that starts at frame `block`.
+    /// The same curve as `value_at`, but each exponential ramp and target
+    /// curve is stepped from frame to frame by a constant factor, as
+    /// Chromium steps them, where `value_at` takes a power or an exponential
+    /// at every frame. In 64-bit floats, a ramp of a hundred thousand frames
+    /// drifts from the closed form by about one part in 10^11.
+    pub fn fill(&self, block: u64, rate: f64, out: &mut [f32; QUANTUM]) {
+        let mut i = 0;
+        while i < QUANTUM {
+            let t = (block + i as u64) as f64 / rate;
+            let (curve, until) = self.curve(t);
+            let mut v = match curve {
+                Curve::Hold(v) => v,
+                Curve::Linear(e) => ramp_at(e, t),
+                Curve::Exponential(e) => ramp_at(e, t),
+                Curve::Target(e) => target_at(e, t),
+            };
+            let step = match curve {
+                Curve::Exponential(e) => exponential_step(e, rate),
+                Curve::Target(e) if e.tau > 0.0 => (-1.0 / (e.tau * rate)).exp(),
+                _ => 1.0,
+            };
+            while i < QUANTUM {
+                let t = (block + i as u64) as f64 / rate;
+                if t >= until {
+                    break;
+                }
+                if let Some(y) = out.get_mut(i) {
+                    *y = match curve {
+                        Curve::Linear(e) => ramp_at(e, t) as f32,
+                        _ => v as f32,
+                    };
+                }
+                v = match curve {
+                    Curve::Exponential(_) => v * step,
+                    Curve::Target(e) => e.value as f64 + (v - e.value as f64) * step,
+                    _ => v,
+                };
+                i += 1;
+            }
         }
     }
+
+    // The curve in force at `t`, and the time it gives way to the next.
+    fn curve(&self, t: f64) -> (Curve<'_>, f64) {
+        let events = self.list();
+        let n = events.iter().take_while(|e| e.time <= t).count();
+        let next = events.get(n);
+        if let Some(r) = next
+            && is_ramp(r)
+            && t >= r.t0
+        {
+            let curve = if r.kind == Kind::Linear {
+                Curve::Linear(r)
+            } else {
+                Curve::Exponential(r)
+            };
+            return (curve, r.time);
+        }
+        // Until the next event, or until a ramp after a target curve takes
+        // over from it.
+        let until = match next {
+            Some(r) if is_ramp(r) => r.t0,
+            Some(e) => e.time,
+            None => f64::INFINITY,
+        };
+        let curve = match n.checked_sub(1).and_then(|i| events.get(i)) {
+            None => Curve::Hold(self.intrinsic as f64),
+            Some(e) if e.kind == Kind::Target => Curve::Target(e),
+            Some(e) => Curve::Hold(e.value as f64),
+        };
+        (curve, until)
+    }
+
+    /// Whether Web Audio renders the parameter sample by sample in the block
+    /// from `t` to `t + block` seconds, rather than holding one value for it
+    /// (Chromium's `HasSampleAccurateValues`). An oscillator starts
+    /// differently in each case (see `osc`). With one event, while it is not
+    /// in the past (or is a target curve, which never arrives). With more,
+    /// until they are all in the past -- and for one block more, the block in
+    /// which Chromium notices and folds them into one held value.
+    pub fn moving_from(&self, t: f64, block: f64) -> bool {
+        let events = self.list();
+        match (events.len(), events.last()) {
+            (_, None) => false,
+            (_, Some(last)) if last.kind == Kind::Target => true,
+            (1, Some(only)) => only.time >= t,
+            (_, Some(last)) => last.time >= t - block,
+        }
+    }
+
+    /// Move every event before `t` to `t`, and work out where the curves
+    /// start again. Chromium does this to the events an oscillator's
+    /// frequency was given, the first time it renders them: in the block the
+    /// oscillator starts in, since it renders nothing before. So an event a
+    /// fraction of a frame before that block -- a note that starts exactly
+    /// on a block -- moves to the block, and a ramp from it starts there. A
+    /// gain or a filter renders every block, and never sees its events late.
+    pub fn clamp_before(&mut self, t: f64) {
+        let len = self.len;
+        let mut moved = false;
+        for e in self.events.iter_mut().take(len) {
+            if e.time < t {
+                e.time = t;
+                moved = true;
+            }
+        }
+        // Only earlier events move, and only up to `t`, so the order holds.
+        if moved {
+            self.resolve();
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Curve<'a> {
+    Hold(f64),
+    Linear(&'a Event),
+    Exponential(&'a Event),
+    Target(&'a Event),
+}
+
+// What an exponential ramp is multiplied by from one frame to the next.
+fn exponential_step(e: &Event, rate: f64) -> f64 {
+    let (v0, v1, span) = (e.v0, e.value as f64, e.time - e.t0);
+    if v0 == 0.0 || v0 * v1 <= 0.0 || span <= 0.0 {
+        return 1.0;
+    }
+    (v1 / v0).powf(1.0 / (span * rate))
 }
 
 fn is_ramp(e: &Event) -> bool {
@@ -345,15 +465,54 @@ mod tests {
     #[test]
     fn moves_while_anything_is_left_to_happen() {
         let mut p = Param::new(440.0);
-        assert!(!p.moving_from(0.0));
+        let b = 0.003;
+        assert!(!p.moving_from(0.0, b));
         p.set_value_at_time(110.0, 1.0);
-        assert!(p.moving_from(0.5));
-        assert!(p.moving_from(1.0));
+        assert!(p.moving_from(0.5, b));
+        assert!(p.moving_from(1.0, b));
         // A note set at 1.0 that first sounds in a block starting just
         // after it: steady there.
-        assert!(!p.moving_from(1.0001));
+        assert!(!p.moving_from(1.0001, b));
+        // Two events: one block more.
+        p.linear_ramp_to_value_at_time(220.0, 1.5, 0.0);
+        assert!(p.moving_from(1.502, b));
+        assert!(!p.moving_from(1.504, b));
         p.set_target_at_time(0.0, 2.0, 0.1);
-        assert!(p.moving_from(9.0));
+        assert!(p.moving_from(9.0, b));
+    }
+
+    #[test]
+    fn a_block_filled_matches_the_curve_frame_by_frame() {
+        let rate = 44100.0;
+        let mut p = Param::new(1.0);
+        p.set_value_at_time(0.0001, 0.001);
+        p.exponential_ramp_to_value_at_time(0.5, 0.003, 0.0);
+        p.linear_ramp_to_value_at_time(0.2, 0.004, 0.0);
+        p.set_target_at_time(0.0001, 0.0045, 0.0007);
+        p.linear_ramp_to_value_at_time(0.3, 0.02, 0.01);
+        for block in 0..8u64 {
+            let mut out = [0.0f32; QUANTUM];
+            p.fill(block * QUANTUM as u64, rate, &mut out);
+            for (i, &y) in out.iter().enumerate() {
+                let t = (block * QUANTUM as u64 + i as u64) as f64 / rate;
+                let want = p.value_at(t);
+                assert!(
+                    (y - want).abs() <= 2e-6 * want.abs().max(1e-4),
+                    "block {block} frame {i}: {y} {want}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn clamping_moves_a_ramps_start_with_its_event() {
+        let mut p = Param::new(440.0);
+        p.set_value_at_time(100.0, 0.99);
+        p.exponential_ramp_to_value_at_time(200.0, 1.1, 0.0);
+        p.clamp_before(1.0);
+        assert_eq!(p.value_at(1.0), 100.0);
+        let want = 100.0 * 2f64.powf(0.05 / 0.1);
+        assert!(close(p.value_at(1.05), want));
     }
 
     #[test]

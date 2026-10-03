@@ -1441,8 +1441,17 @@ export class Synth {
     // Two detuned triangles per note, so this is the same weight class as
     // the fat analogue voices, not the plain plucks.
     const cost = VOICE_COST.pad;
+    // On the Rust core, each note the budget lets through goes there, with
+    // the chord's size for the level; the budget is asked the same way.
+    const core = this.engine === 'rust' && this.core ? this.core.channelOf(out) : -1;
     for (const midi of notes) {
       if (!this._budget(time, true, cost)) return;
+      if (core >= 0) {
+        this.core.note(CORE_VOICES.pad, core, time, midi, dur, vel, 0, [notes.length, NaN, NaN, NaN]);
+        this._release(time, dur + 1.6, cost);
+        continue;
+      }
+      if (this.engine === 'rust') this.fallbacks++;
       const f = midiToFreq(midi);
       const g = ctx.createGain();
       const stopAt = time + dur + 1.6;
@@ -1575,11 +1584,8 @@ export class Synth {
   // with the note. False when the core cannot take the note (not arrived,
   // failed, or not a channel it serves): the JavaScript voice plays it.
   _coreKalimba(midi, time, dur, vel, dest, soft) {
-    const channel = this.core ? this.core.channelOf(dest) : -1;
-    if (channel < 0) {
-      this.fallbacks++;
-      return false;
-    }
+    const channel = this._coreChannel(dest);
+    if (channel < 0) return false;
     let parts = 0;
     if (this._budget(time, soft, 8)) {
       parts |= KALIMBA_STRIKE;
@@ -1590,6 +1596,33 @@ export class Synth {
       this._release(time, 0.25, 3);
     }
     if (parts) this.core.note(CORE_VOICES.kalimba, channel, time, midi, dur, vel, parts);
+    return true;
+  }
+
+  // The core's channel for `dest`, or -1, counted as a fallback: the core
+  // has not arrived, has failed, or does not serve that channel.
+  _coreChannel(dest) {
+    const channel = this.core ? this.core.channelOf(dest) : -1;
+    if (channel < 0) this.fallbacks++;
+    return channel;
+  }
+
+  // The fiddle on the Rust core, once the budget has said yes (it asks once,
+  // as below). Its three Math.random draws -- the vibrato's rate, where the
+  // rate drifts to, and its depth -- are drawn here, in the same order and
+  // only for the same notes as the JavaScript voice draws them, and sent
+  // with the note. It never slides, so there is no SLIDE_CHANCE draw.
+  _coreFiddle(midi, time, dur, vel, dest, opts) {
+    const channel = this._coreChannel(dest);
+    if (channel < 0) return false;
+    let rate = NaN, end = NaN, depth = NaN;
+    if (dur >= VIBRATO_MIN_DUR) {
+      rate = 4.8 + Math.random() * 1.3;
+      end = rate * (0.9 + Math.random() * 0.2);
+      depth = 10 + Math.random() * 10;
+    }
+    this.core.note(CORE_VOICES.fiddle, channel, time, midi, dur, vel, 0, [opts.prev ?? NaN, rate, end, depth]);
+    this._release(time, dur + 0.4, VOICE_COST.fiddle);
     return true;
   }
 
@@ -1682,6 +1715,7 @@ export class Synth {
       // that breathes on the long ones. No bow noise: it read as grit.
       case 'fiddle': {
         if (!this._budget(time, soft, VOICE_COST.fiddle)) return;
+        if (this.engine === 'rust' && this._coreFiddle(midi, time, dur, vel, dest, opts)) return;
         const joined = opts.prev != null;
         const o = ctx.createOscillator();
         o.setPeriodicWave(this.bowed);

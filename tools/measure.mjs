@@ -694,6 +694,8 @@ const PROBE_WINDOWS = {
 };
 const PROBE_VELOCITIES = [0.4, 0.8];
 const PROBE_REFERENCE = { layer: 'melody', voice: 'kalimba' };
+// The voices the Rust core plays (core/src/lib.rs), for --null.
+const CORE_VOICES = ['kalimba', 'fiddle', 'pad'];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
 const FAMILY_LIMIT = 3;
@@ -813,8 +815,8 @@ async function renderNote(job, midi, vel, rep, o) {
   const tracks = { drums: [], bass: [], chords: [], melody: [], texture: [] };
   const dur = o.dur / STEP;
   const vowel = VOWELS[(midi - job.low) % 4];
-  if (job.layer === 'melody') tracks.melody.push({ step: 0, dur, midi, vel, voice: job.voice, vowel });
-  if (job.layer === 'chords') tracks.chords.push({ step: 0, dur, notes: [midi], vel, voice: job.voice, vowel });
+  if (job.layer === 'melody') tracks.melody.push({ step: 0, dur, midi, vel, voice: job.voice, vowel, prev: o.prev });
+  if (job.layer === 'chords') tracks.chords.push({ step: 0, dur, notes: (o.chord || [0]).map((i) => midi + i), vel, voice: job.voice, vowel });
   if (job.layer === 'bass') tracks.bass.push({ step: 0, dur, midi, vel, glide: false, voice: job.voice });
   // Drops and wind take no pitch; a note handed to them is ignored.
   if (job.layer === 'texture') tracks.texture.push({ step: 0, dur, notes: [midi], vel, kind: job.voice });
@@ -1006,46 +1008,64 @@ window.probeNull = async (o) => {
   const out = { notes: [], loops: [] };
   // Note by note. Each note starts at its own point: a different fraction
   // of a sample and a different place in the 128-frame render block, since
-  // both change what Web Audio does with a start time.
+  // both change what Web Audio does with a start time. A melody voice is
+  // also played joined to the note before (a step up, which a fiddle slurs,
+  // and a repeat, which it does not), and a chord voice as a triad too.
   const tasks = [];
   let n = 0;
   for (const job of o.jobs) {
-    for (const vel of o.velocities) {
-      for (const dur of o.lengths) {
-        for (let midi = job.low; midi <= job.high; midi += 3) {
-          const k = n++;
-          const at = (2205 + ((k * 53) % 256) + ((k * 0.618034) % 1)) / o.rate;
-          const opts = { rate: o.rate, dur, tail: 1.6, at };
-          tasks.push(async () => {
-            const js = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'js' })).getChannelData(0);
-            const rust = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'rust' })).getChannelData(0);
-            return { layer: job.layer, vel, dur, midi, at, ...nullOf(js, rust) };
-          });
+    const variants = job.layer === 'melody'
+      ? [{ name: '' }, { name: ', joined', prev: -2 }, { name: ', repeated', prev: 0 }]
+      : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
+    for (const variant of variants) {
+      for (const vel of o.velocities) {
+        for (const dur of o.lengths) {
+          for (let midi = job.low; midi <= job.high; midi += 3) {
+            const k = n++;
+            // Every fifth note a fraction of a frame before a block starts,
+            // so its first frame is the block's: Chromium has rules of its
+            // own for that (core/src/param.rs, clamp_before).
+            const at = k % 5 === 0
+              ? (2304 + 128 * (k % 7) - 0.25 - ((k * 0.618034) % 0.7)) / o.rate
+              : (2205 + ((k * 53) % 256) + ((k * 0.618034) % 1)) / o.rate;
+            const opts = {
+              rate: o.rate, dur, tail: 1.8, at,
+              prev: variant.prev == null ? undefined : midi + variant.prev, chord: variant.chord,
+            };
+            tasks.push(async () => {
+              const js = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'js' })).getChannelData(0);
+              const rust = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'rust' })).getChannelData(0);
+              return { voice: job.voice, layer: job.layer, variant: variant.name, vel, dur, midi, at, ...nullOf(js, rust) };
+            });
+          }
         }
       }
     }
   }
   out.notes = await inParallel(tasks, o.width);
 
-  // Whole loops that play the kalimba, through the real Engine and the whole
-  // master chain: the mix, and the melody and chords taps, dry.
-  const kalimbaIn = (spec) => {
+  // Whole loops that play the core's voices, through the real Engine and the
+  // whole master chain: the mix, and the melody and chords taps, dry. Taken
+  // in turn for each voice, so every one is heard in some loops; a loop
+  // with several counts for each.
+  const asCore = (v) => (v === 'moogpad' ? 'pad' : v);
+  const voicesIn = (spec) => {
     const t = render(spec).tracks;
-    return {
-      melody: t.melody.some((e) => e.vel && e.voice === 'kalimba'),
-      chords: t.chords.some((e) => e.vel && e.voice === 'kalimba'),
-    };
+    const found = new Set();
+    for (const layer of ['melody', 'chords']) {
+      for (const e of t[layer]) if (e.vel && o.voices.includes(asCore(e.voice))) found.add(asCore(e.voice));
+    }
+    return [...found];
   };
   const master = new Rng(o.seed);
   const specs = [];
-  const want = { melody: Math.ceil(o.loops / 2), chords: Math.floor(o.loops / 2) };
-  for (let tries = 0; specs.length < o.loops && tries < 20000; tries++) {
+  const need = new Map(o.voices.map((v) => [v, Math.ceil(o.loops / o.voices.length)]));
+  for (let tries = 0; specs.length < o.loops && tries < 40000; tries++) {
     const spec = newSpec(master.seed32());
-    const k = kalimbaIn(spec);
-    const layer = k.melody && want.melody ? 'melody' : k.chords && want.chords ? 'chords' : null;
-    if (!layer) continue;
-    want[layer]--;
-    specs.push({ spec, layer });
+    const found = voicesIn(spec);
+    if (!found.some((v) => need.get(v) > 0)) continue;
+    for (const v of found) need.set(v, (need.get(v) || 0) - 1);
+    specs.push({ spec, voices: found });
   }
   const renderMix = async (spec, engineName) => {
     const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
@@ -1077,18 +1097,23 @@ window.probeNull = async (o) => {
     if (synth.core) synth.core.dispose();
     return { buf, seconds, fell, late: counts ? counts.late : 0, dropped: counts ? counts.dropped : 0 };
   };
-  out.loops = await inParallel(specs.map(({ spec, layer }) => async () => {
+  out.loops = await inParallel(specs.map(({ spec, voices }) => async () => {
     const js = await renderMix(spec, 'js');
     const rust = await renderMix(spec, 'rust');
     // The floor: the same loop on the same engine twice. Chromium does not
     // fix the order it sums a node's inputs in (see the top of this file),
     // so even that is not bit for bit.
     const again = await renderMix(spec, 'js');
-    const tap = layer === 'melody' ? 1 : 2;
+    const taps = (b) => {
+      const m = b.buf.getChannelData(1), c = b.buf.getChannelData(2);
+      const d = new Float32Array(m.length);
+      for (let i = 0; i < d.length; i++) d[i] = m[i] + c[i];
+      return d;
+    };
     return {
-      name: spec.name, seed: spec.seed, layer, seconds: js.seconds,
+      name: spec.name, seed: spec.seed, voices, seconds: js.seconds,
       mix: nullOf(js.buf.getChannelData(0), rust.buf.getChannelData(0)),
-      tap: nullOf(js.buf.getChannelData(tap), rust.buf.getChannelData(tap)),
+      tap: nullOf(taps(js), taps(rust)),
       floor: nullOf(js.buf.getChannelData(0), again.buf.getChannelData(0)),
       fallback: rust.fell, late: rust.late, dropped: rust.dropped,
     };
@@ -1807,29 +1832,32 @@ function reportNull(data, opts) {
   const fmt = (x) => (Number.isFinite(x) ? x.toFixed(1).padStart(7) : '   -inf');
   const out = ['', 'driftloom: the Rust core against the JavaScript synth, the same notes subtracted',
     `  ${(opts.rate / 1000).toFixed(1)}k. Residual is the difference's energy against the JavaScript render's, in dB:`,
-    '  how far under what the kalimba plays the difference sits. Worst is the loudest single sample of the',
+    '  how far under what the voice plays the difference sits. Worst is the loudest single sample of the',
     '  difference, in dBFS.', ''];
   const groups = new Map();
   for (const r of data.notes) {
-    for (const key of [r.layer, `${r.layer} ${r.dur}s`]) {
+    const name = `${r.voice} ${r.layer}`;
+    for (const key of [name, `${name} ${r.dur}s`, ...(r.variant ? [`${name}${r.variant}`] : [])]) {
       const g = groups.get(key) || { sig: 0, res: 0, worst: 0, notes: 0, worstNote: -Infinity };
       g.sig += r.sig; g.res += r.res; g.worst = Math.max(g.worst, r.worst); g.notes++;
       g.worstNote = Math.max(g.worstNote, db(r.res / r.sig));
       groups.set(key, g);
     }
   }
-  out.push('  notes                       count   residual   worst note   worst sample');
+  out.push('  notes                                count   residual   worst note   worst sample');
   for (const [key, g] of groups) {
-    out.push(`    kalimba ${key.padEnd(18)} ${String(g.notes).padStart(5)}    ${fmt(db(g.res / g.sig))} dB  ${fmt(g.worstNote)} dB    ${fmt(20 * Math.log10(g.worst || 1e-12))} dBFS`);
+    out.push(`    ${key.padEnd(32)} ${String(g.notes).padStart(5)}    ${fmt(db(g.res / g.sig))} dB  ${fmt(g.worstNote)} dB    ${fmt(20 * Math.log10(g.worst || 1e-12))} dBFS`);
   }
   out.push('');
-  out.push('  loops, the whole engine and master chain   residual: kalimba layer    mix  js vs js   worst   late fallback');
+  out.push('  loops, the whole engine and master chain    residual: core layers    mix  js vs js   worst   late fallback');
   for (const r of data.loops) {
-    out.push(`    ${(r.name + ' (' + r.layer + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(40)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
+    out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
   out.push('');
-  out.push('  "js vs js" is the same loop rendered twice on the JavaScript synth: the mix never nulls deeper than');
-  out.push('  that, whichever engine plays, because Chromium does not fix the order it sums a node\'s inputs in.');
+  out.push('  "core layers" is the melody and chords taps together, against their own level: everything else in');
+  out.push('  them is the same on both engines. "js vs js" is the same loop rendered twice on the JavaScript synth:');
+  out.push('  the mix never nulls deeper than that, whichever engine plays, because Chromium does not fix the');
+  out.push('  order it sums a node\'s inputs in.');
   out.push('');
   return out.join('\n');
 }
@@ -1978,12 +2006,19 @@ if (opts.retire) {
 }
 
 if (opts.null) {
-  const jobs = Object.entries(drawnLayers())
-    .filter(([layer, voices]) => voices.includes('kalimba') && PROBE_WINDOWS[layer])
-    .map(([layer]) => ({ layer, voice: 'kalimba', low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] }));
+  // Every voice the core has, in every layer that draws it; moogpad is the
+  // pad reached through voice(). --voice narrows it.
+  const wanted = (opts.voices || CORE_VOICES).map((v) => (v === 'moogpad' ? 'pad' : v));
+  const jobs = [];
+  for (const layer of ['melody', 'chords']) {
+    for (const voice of drawnLayers()[layer] || []) {
+      if (!wanted.includes(voice === 'moogpad' ? 'pad' : voice)) continue;
+      jobs.push({ layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] });
+    }
+  }
   const data = await page.evaluate((o) => window.probeNull(o), {
-    jobs, velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6], rate: opts.rate,
-    width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 8)),
+    jobs, voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
+    rate: opts.rate, width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 12)),
   });
   await browser.close();
   server.close();
