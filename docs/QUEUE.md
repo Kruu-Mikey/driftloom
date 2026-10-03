@@ -4,10 +4,10 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-09-28:** items 0-18 are done (13 stopped at its gate by
-design). Next: item 19, the word-ranking test. A new Claude Code session
-starts here: read the standing rules and the merge policy, then take the
-next item.
+**Status, 2026-10-03:** items 0-19 are done (13 stopped at its gate by
+design). Nothing is queued after 19: the brain writes the next item. A new
+Claude Code session starts here: read the standing rules and the merge
+policy, then take the next item.
 
 ## Standing rules, for every item
 
@@ -778,3 +778,11 @@ Mikey decides this line:
   and the README (the list is in the PR). One thing for Mikey's ears came
   out of it: short loops still take short gaps, a whole bar of silence in
   about one 2- or 4-bar loop in thirteen (see the note above).
+- #117, the word-ranking test (item 19, v65),
+  https://51ca22bb-driftloom.kruu-mikey-thaiculture.workers.dev/rank.html:
+  nothing changes in the app. Open `/rank.html`, tap Start, and rank the
+  five words for each loop, most like it first, stopping when the rest
+  don't fit. Check that the loop starts on its own after Next, that the
+  buttons are easy to hit on the phone, and that Export downloads the file
+  (`node tools/ranks.mjs <file>` reads it). Drift is off on this page so
+  each recorded code is exactly what was heard.
