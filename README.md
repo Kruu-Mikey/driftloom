@@ -599,6 +599,30 @@ rather than the app, so a replacement engine is measured by the same tool.
 The fixed set of loops, how they were chosen and what the first baseline
 found are in [`docs/perf-baseline.md`](docs/perf-baseline.md).
 
+### The word-ranking test
+
+```sh
+node tools/ranks.mjs driftloom-ranks-2026-10-03.jsonl
+```
+
+`rank.html` is a separate page, not linked from the app: open it by URL
+(`/rank.html` on the live site).
+Tap Start and a loop plays, with five words from a pool. Tap them in
+order, most like the loop first, and stop when the rest don't fit; Next
+records the answer and moves on, Skip marks a loop that can't be judged.
+Loops are `newSpec(19000)`, `newSpec(19001)` and on, so a run is the same
+on any device, played through the app's own engine and synth with "Let the
+loop wander" off, at the app's lite or full setting and volume. Words are
+drawn least-shown first, so each is shown about equally often, and about
+one trial in twenty replays an earlier loop with its words reshuffled, to
+check the answers hold. The pool and those figures are data at the top of
+the page's script.
+
+Answers stay in the browser until Export, which downloads them as JSON
+lines (and copies them where the browser allows). `tools/ranks.mjs` prints,
+per word, how often it was shown, tapped first, tapped at all and never
+tapped, and how well the repeats agree with their originals.
+
 ## Track length
 
 Off by default: a loop machine should loop until you say stop. Set it and a

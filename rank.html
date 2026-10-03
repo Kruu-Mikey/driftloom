@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0C1618">
+<title>Driftloom · rank the words</title>
+<!--
+  The word-ranking test (queue item 19). Not linked from the app: open it
+  by URL. Hear a loop, tap the words in order from most like it to least,
+  stop when the rest don't fit. It plays through the app's own generator,
+  engine and synth, so it always tests what the app plays. The answers are
+  kept in this browser; Export hands them over as JSON lines for
+  `node tools/ranks.mjs <file.jsonl>`.
+-->
+<style>
+  body { margin: 0 auto; max-width: 32rem; padding: 1rem; background: #0C1618; color: #e8eeee;
+         font: 18px/1.4 system-ui, sans-serif; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  [hidden] { display: none !important; }
+  p { margin: .5rem 0; }
+  button { font: inherit; color: inherit; background: #1f3236; border: 1px solid #3c5a60;
+           border-radius: .5rem; padding: .6rem 1rem; }
+  button:disabled { opacity: .35; }
+  .big { display: block; width: 100%; margin: .5rem 0; padding: 1rem; font-size: 1.3rem; }
+  .big.tapped { background: #0C1618; }
+  .row { display: flex; gap: .5rem; margin-top: 1rem; }
+  .row button { flex: 1; }
+  #next { background: #2f5a4f; }
+  .dim { color: #8fa6a8; font-size: .9rem; }
+  .foot { margin-top: 2.5rem; display: flex; gap: .5rem; }
+</style>
+</head>
+<body>
+
+<h1>Rank the words</h1>
+<p id="count" class="dim"></p>
+
+<button id="start" class="big">Start</button>
+
+<div id="trial" hidden>
+  <p id="label" class="dim"></p>
+  <div id="words"></div>
+  <p id="taps"></p>
+  <div class="row">
+    <button id="undo">Undo</button>
+    <button id="skip">Skip</button>
+    <button id="next">Next</button>
+  </div>
+</div>
+
+<p id="msg"></p>
+
+<div class="foot">
+  <button id="export">Export</button>
+  <button id="clear">Clear</button>
+</div>
+
+<script type="module">
+import { newSpec } from './js/generator.js';
+import { Synth } from './js/synth.js';
+import { Engine } from './js/engine.js';
+import { Rng } from './js/rng.js';
+import { encodeSong, decodeSong } from './js/share.js';
+import { getPrefs } from './js/storage.js';
+
+// ------------------------------------------------------------------ data
+// The brain's to change. A word added later is shown more often until it
+// has caught up with the rest; a word removed is simply no longer drawn.
+
+const POOL = [
+  'merry', 'tender', 'serene', 'golden', 'twinkling', 'crisp', 'velvety',
+  'sour', 'bouncy', 'floating', 'swaying', 'quirky', 'happy', 'joyful',
+  'peaceful', 'reflective', 'lively', 'cozy', 'airy', 'misty', 'intimate',
+  'spacious',
+];
+const WORDS_PER_TRIAL = 5;
+// New loops are newSpec(START_SEED), newSpec(START_SEED + 1), ... so the
+// same run of loops comes back on any device.
+const START_SEED = 19000;
+// About one trial in this many replays an earlier loop, its words in a new
+// order, unmarked. Only loops at least REPEAT_GAP trials back qualify, so
+// the last answer isn't still in mind.
+const REPEAT_EVERY = 20;
+const REPEAT_GAP = 5;
+
+// ------------------------------------------------------------------ store
+
+const KEY = 'driftloom.ranks.v1';
+
+function load() {
+  try {
+    const list = JSON.parse(localStorage.getItem(KEY) || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function persist() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(records));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+let records = load();
+
+// ------------------------------------------------------------------ trials
+
+// What trial n is: everything follows from n and the answers before it,
+// so stopping halfway through a trial and coming back later gives the same
+// loop and the same words.
+function plan(records) {
+  const trial = records.length + 1;
+  const r = new Rng(START_SEED * 7919 + trial);
+
+  const repeated = new Set(records.map((x) => x.repeatOf).filter(Boolean));
+  const earlier = records.filter((x) => !x.skip && !x.repeatOf && !repeated.has(x.trial)
+    && x.trial <= trial - REPEAT_GAP);
+  if (earlier.length && r.chance(1 / REPEAT_EVERY)) {
+    const orig = r.pick(earlier);
+    let words = orig.words;
+    for (let i = 0; i < 20 && words.join() === orig.words.join(); i++) words = r.shuffle(orig.words);
+    return { trial, seed: orig.seed, code: orig.code, repeatOf: orig.trial, words };
+  }
+
+  // Balanced: the least-shown words, ties broken at random, then shuffled.
+  const shown = new Map(POOL.map((w) => [w, 0]));
+  for (const x of records) for (const w of x.words) if (shown.has(w)) shown.set(w, shown.get(w) + 1);
+  const least = POOL.map((w) => [w, shown.get(w), r.f()])
+    .sort((a, b) => a[1] - b[1] || a[2] - b[2])
+    .slice(0, WORDS_PER_TRIAL)
+    .map((x) => x[0]);
+  const seed = START_SEED + records.filter((x) => !x.repeatOf).length;
+  return { trial, seed, code: null, repeatOf: null, words: r.shuffle(least) };
+}
+
+// ------------------------------------------------------------------ audio
+
+let ctx = null;
+let engine = null;
+let quality = 'full';
+let build = '?';
+let cur = null;
+
+function startAudio() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  ctx = new Ctx({ latencyHint: 'playback' });
+  // The app's own choices on this device: lite or full, and the volume.
+  const prefs = getPrefs();
+  quality = (prefs.lite ?? (navigator.hardwareConcurrency || 4) <= 4) ? 'lite' : 'full';
+  const synth = new Synth(ctx, quality);
+  synth.setVolume(prefs.volume ?? 0.85);
+  engine = new Engine(ctx, synth);
+  // The loop as composed, never wandering, so its code is exactly what was
+  // heard.
+  engine.driftOn = false;
+}
+
+// The build stamp lives in main.js, which starts the whole app when it is
+// imported; sw.js carries the same stamp (they are bumped together), so
+// read it from there.
+async function readBuild() {
+  try {
+    const text = await (await fetch('sw.js', { cache: 'no-store' })).text();
+    const m = text.match(/driftloom-(v\d+)/);
+    if (m) build = m[1];
+  } catch { /* stays '?' */ }
+}
+
+function begin() {
+  const p = plan(records);
+  let spec = null;
+  if (p.code) {
+    try { spec = decodeSong(p.code); } catch { /* fall back to the seed */ }
+  }
+  if (!spec) spec = newSpec(p.seed);
+  engine.stop();
+  engine.load(spec);
+  engine.start();
+  cur = { ...p, code: encodeSong(spec), taps: [], t0: performance.now() };
+  show();
+}
+
+function finish(skip) {
+  records.push({
+    trial: cur.trial,
+    build,
+    seed: cur.seed,
+    code: cur.code,
+    repeatOf: cur.repeatOf,
+    words: cur.words,
+    taps: skip ? [] : cur.taps,
+    skip,
+    seconds: Math.round((performance.now() - cur.t0) / 100) / 10,
+    quality,
+  });
+  say(persist() ? '' : 'Could not save in this browser: export now, or answers will be lost.');
+  begin();
+}
+
+// ------------------------------------------------------------------ page
+
+const $ = (id) => document.getElementById(id);
+
+function say(text) { $('msg').textContent = text; }
+
+function show() {
+  $('count').textContent = `${records.length} done`;
+  if (!cur) return;
+  $('label').textContent = `Loop ${cur.trial}: most like it first, stop when the rest don't fit.`;
+  const box = $('words');
+  box.textContent = '';
+  for (const w of cur.words) {
+    const b = document.createElement('button');
+    const at = cur.taps.indexOf(w);
+    b.className = at < 0 ? 'big' : 'big tapped';
+    b.textContent = at < 0 ? w : `${at + 1}. ${w}`;
+    b.disabled = at >= 0;
+    b.addEventListener('click', () => { cur.taps.push(w); show(); });
+    box.append(b);
+  }
+  $('taps').textContent = cur.taps.length ? cur.taps.join(' › ') : 'Nothing tapped: none fit.';
+  $('undo').disabled = !cur.taps.length;
+}
+
+$('start').addEventListener('click', async () => {
+  $('start').hidden = true;
+  await readBuild();
+  startAudio();
+  $('trial').hidden = false;
+  begin();
+});
+
+$('undo').addEventListener('click', () => { cur.taps.pop(); show(); });
+$('next').addEventListener('click', () => finish(false));
+$('skip').addEventListener('click', () => finish(true));
+
+$('export').addEventListener('click', async () => {
+  if (!records.length) { say('Nothing to export yet.'); return; }
+  const text = records.map((x) => JSON.stringify(x)).join('\n') + '\n';
+  // The download first, while the tap still counts as the user's.
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'application/jsonl' }));
+  a.download = `driftloom-ranks-${new Date().toISOString().slice(0, 10)}.jsonl`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  let copied = false;
+  try { await navigator.clipboard.writeText(text); copied = true; } catch { /* the download has it */ }
+  say(`${records.length} trials ${copied ? 'copied and ' : ''}downloaded.`);
+});
+
+$('clear').addEventListener('click', () => {
+  if (!confirm(`Delete all ${records.length} answers from this browser? Export first if you want them.`)) return;
+  records = [];
+  persist();
+  say('Cleared.');
+  if (engine) begin(); else show();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (ctx && ctx.state === 'suspended') ctx.resume();
+  if (engine) engine.retune();
+});
+
+show();
+</script>
+</body>
+</html>
