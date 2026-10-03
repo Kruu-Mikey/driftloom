@@ -17,7 +17,7 @@ clicks, the saturator, the voice-budget miscount and the melody bug. Both
 now live here.
 
 **`tools/stats.mjs` — generation.** Draws a corpus through `newSpec()` and
-`render()` and reports profile, metre, voice and rhythmic-cell distributions,
+`render()` and reports profile, meter, voice and rhythmic-cell distributions,
 melodic span, note count, duration, velocity and the share of melody notes
 landing off the beat, either overall or bucketed by `feel.lift`. It is what found the vestigial ternary
 that had kept every melody note in the app's history on an even step.
@@ -183,7 +183,7 @@ compositions (`drift`, `orb`, `aperture`) where the gradient ground carries
 most of the frame and the result reads as a background rather than a picture.
 
 **Done when** no cover in a 100-cover contact sheet has more than 70% of its
-pixels within one palette stop of the ground colour.
+pixels within one palette stop of the ground color.
 
 ## 7. Interface: three standalone tickets — **S each**
 
@@ -306,7 +306,7 @@ in steps, and whether a vowel has time to travel is a question about seconds.
 
 The move is one rung along the open/close axis and never across it -- a to
 o or e, o to u or a, u to o, e to a. F1 is the openness formant (a 800,
-o 450, e 400, u 325), so neighbouring rungs glide and the ear hears one
+o 450, e 400, u 325), so neighboring rungs glide and the ear hears one
 vowel changing shape. A jump across the ladder ("eh" straight into "oo") is
 two vowels in succession, which is a word, and words are in *Decided
 against*. A hum has no vowel to go to and opens instead: the same closed
@@ -346,17 +346,17 @@ was given and arrives somewhere else. `tools/stats.mjs` over 4000 loops is
 byte-identical before and after, which is the other half of the claim: no
 draw moved.
 
-## 11. Loudness spread across the catalogue — **closed, the spread is wanted; reopened narrower as 13**
+## 11. Loudness spread across the catalog — **closed, the spread is wanted; reopened narrower as 13**
 
 Measured with `tools/measure.mjs` over thirty loops: peak level runs from
-about 0.17 to about 0.85, roughly 14 dB, with nothing normalising it. A
+about 0.17 to about 0.85, roughly 14 dB, with nothing normalizing it. A
 quiet loop is quiet because its profile is quiet -- the sparse, airy
 palettes land at the bottom of that range and the busy ones at the top --
 and the master chain deliberately does not pull them together.
 
 **This is not filed as a fault.** Quiet tracks are wanted, and so is
-dynamic range across the catalogue; a loop machine whose every loop arrives
-at the same level has had something taken away from it. Normalisation is
+dynamic range across the catalog; a loop machine whose every loop arrives
+at the same level has had something taken away from it. Normalization is
 not the obvious answer and is not being proposed here.
 
 The open question is narrower: **is the spread wider than intended when you
@@ -369,7 +369,7 @@ merely less peaky.
 `tools/measure.mjs` -- it already prints both -- and compare them. If RMS
 spread is much narrower than peak spread, the quiet loops are simply less
 peaky and the perceived range is smaller than the figure suggests, and this
-closes. If the two track each other, the catalogue really does span 14 dB of
+closes. If the two track each other, the catalog really does span 14 dB of
 loudness and the question becomes a real one worth answering.
 
 **First reading, thirty loops:** peak spread 13.4 dB, RMS spread 13.2 dB.
@@ -378,15 +378,15 @@ not merely less peaky, and the perceived range is about what the peak
 figure says. That points at the question being a real one rather than an
 artefact of crest factor -- but one corpus of thirty is a reading, not a
 verdict, and what it cannot say is whether 13 dB is wider than *wanted*.
-That part is a judgement about listening, not a measurement.
+That part is a judgment about listening, not a measurement.
 
 **Somebody has now sat through twenty in a row, and the answer is that the
 spread is intended.** Quiet tracks are wanted and so is dynamic range
-across the catalogue; a loop machine whose every loop arrives at the same
+across the catalog; a loop machine whose every loop arrives at the same
 level has had something taken away from it. Reaching for the volume
 control between two tracks is the cost of that, and it is worth paying.
 
-**So: no normalisation, and nothing to build.** Not a limiter across the
+**So: no normalization, and nothing to build.** Not a limiter across the
 master, not a loudness target, not a per-loop trim written into the spec.
 The 13 dB stands. If this is ever reopened it should be reopened as a
 different question -- something about the *order* loops arrive in, which is
@@ -399,7 +399,7 @@ when the figure moves. A future change that quietly narrowed the spread to
 **Reopened, narrower, as item 13** (2026-09-22). The spread stays wanted.
 Reaching for the volume every other track does not: the aim is loops that
 are dynamic but sensible, still with no limiter, compressor or
-normalisation doing the work.
+normalization doing the work.
 
 ## 12. An occasional choir — **M** — *shipped*
 
@@ -499,7 +499,7 @@ overturn is worth re-measuring before it is thrown away.
 **Cost: +2.3 units a note, 14%,** counted over the melody and keys of
 12,000 loops with the weights read out of `synth.js`. The worst single
 chord attack on a choir loop is 88 units at the 90th percentile against
-125 for the catalogue at large, and 110 at the maximum against 170 -- a
+125 for the catalog at large, and 110 at the maximum against 170 -- a
 choir loop is nowhere near the heaviest thing this app makes. Choir loops
 also *refuse fewer* notes overall than ordinary ones, because a sung chord
 at 16-22 a note is cheaper than the pad or piano it replaced: keys
@@ -528,27 +528,27 @@ need the spectrum.
 the drums: pluck and saw sat 4-6 dB hot, and trimming them at the source
 (#48) took the reaches on the test album from five to none; five more
 leads were trimmed the same way (#53). Since then Mikey reports nothing
-too loud or too quiet, so the catalogue-wide albums 13b-13d, including
+too loud or too quiet, so the catalog-wide albums 13b-13d, including
 "twenty in a row", are not needed for now. The ocarina over drums is on
 watch (ease it back 2-3 dB if it comes up buried). The original item
 follows.
 
 
 Item 11 in the narrower form it asked to be reopened in. The spread across
-the catalogue is still wanted: a hushed loop stays hushed, a busy one stays
+the catalog is still wanted: a hushed loop stays hushed, a busy one stays
 bigger, and nothing pulls them to one level. What is no longer accepted is
 the cost item 11 wrote off as worth paying -- a listener reaching for the
 volume every other track. **Dynamic, but sensible.**
 
 **Not the answer:** a limiter or compressor doing the work, a loudness
-target, normalisation. The master already carries a gentle compressor (3:1
+target, normalization. The master already carries a gentle compressor (3:1
 above -10 dBFS) and a ceiling at -3 dBFS. They stay the backstop they are
 and are not to be leaned on harder. (Measured in #24: they do not "only
 touch the loud end". Web Audio's compressor applies makeup gain, so the
 chain lifts every loop by a flat +3.8 dB and takes back 0-0.9 dB, moving
 the spread by about half a LU.)
 
-**One behaviour for everybody** (decided 2026-09-22). No Room/Car switch, no
+**One behavior for everybody** (decided 2026-09-22). No Room/Car switch, no
 range slider, nothing for the user to scroll past. That also rules out the
 slow leveler: it is defensible as an opt-in for noisy places and nothing
 else, because always on it is the compressor this item exists to avoid.
@@ -557,20 +557,20 @@ jumping out -- and all three listening patterns happen: one loop for an
 hour, new loops back to back, saved albums in order. Ordering therefore
 helps the album case only and cannot be the whole fix.
 
-**The target.** Played back to back the catalogue is one programme, and the
-spread between loops is that programme's loudness range. Online and mobile
+**The target.** Played back to back the catalog is one program, and the
+spread between loops is that program's loudness range. Online and mobile
 content generally sits around -16 to -14 LUFS with a loudness range of
-6-8 LU; this catalogue measures about 13 dB. The authored profile trims are
+6-8 LU; this catalog measures about 13 dB. The authored profile trims are
 4.6 dB and fit inside that band with room to spare, which is the argument of
 this whole item: the accidental spread is the entire problem, and removing
-it lands the catalogue in the band on its own, with no per-loop mechanism at
+it lands the catalog in the band on its own, with no per-loop mechanism at
 all. Two things to establish alongside it -- a house level taken from a loop
 Mikey already likes, and whether the loudest loops are riding the master
 compressor. (They are not -- see below.)
 
 **Measured, #24** (`tools/measure.mjs`, seed 1; the brain reproduced the
 first 12 loops to the decimal). Integrated loudness spans 15.1 LU across
-100 loops, but the middle of the catalogue -- 10th to 95th percentile, as
+100 loops, but the middle of the catalog -- 10th to 95th percentile, as
 LRA takes a range -- is **8.9 LU**, so the band is close and the problem is
 mostly the tails. The authored trims account for about 1.3 LU of it. The
 single biggest factor is **drums**: loops with drums average -23.2 LUFS,
@@ -622,7 +622,7 @@ ears rather than a number anyone guessed.
   across profiles. The question is whether a quiet loop reads as a quiet
   *piece* or as a loop that has merely been turned down -- the first is
   the spread working, the second is the accident. *hushed / fine / loud*.
-- **13d. Twenty in a row.** A shuffled run at the catalogue's natural
+- **13d. Twenty in a row.** A shuffled run at the catalog's natural
   spread, straight through at one volume. Mikey marks every track where he
   would have reached for the volume, and which way. The measured loudness
   of those tracks, and the jump from the track before, turns "too much
@@ -639,11 +639,11 @@ one command.
 - *Per-voice calibration.* A voice that is inherently louder or quieter than
   its family at the same velocity is trimmed at the source. This is
   calibration, the same kind of fix as the `keys` cost weight in #19, and
-  not normalisation.
+  not normalization.
 - *Pull in the tails, leave the middle.* If only the extremes send a hand to
   the volume, narrow the extremes and touch nothing else. Anything per-loop
   is derived from the spec and draws no random numbers, so codes stay stable.
-- *Order, not level.* If the reach comes from big jumps between neighbours
+- *Order, not level.* If the reach comes from big jumps between neighbors
   rather than from any one track, smoothing the shuffle or playlist order
   fixes it without changing a single gain. Item 11 pointed here.
 
@@ -666,9 +666,9 @@ kept as written.
 
 
 The island and sea music of Wind Waker and Spirit Tracks: Celtic-folk
-melody, waltz and jig metres, fiddle, whistle, accordion, guitar, hand
+melody, waltz and jig meters, fiddle, whistle, accordion, guitar, hand
 drums, drones. Mikey brought a set of DeepSeek suggestions to the brain;
-the diagnosis (instruments, metre, ornament) stood, much of the code did
+the diagnosis (instruments, meter, ornament) stood, much of the code did
 not. Decided 2026-09-23, in this order.
 
 **14a. The 6/8 accompaniment.** In 12-step bars the chords borrow the 4/4
@@ -677,7 +677,7 @@ patterns in `CHORD_RHYTHMS`, filtered to `step < 12`. So `offbeat` hits step
 a weak eighth; and `pad` appears to keep its 16-step hold and ring a third
 of a bar into the next chord (to confirm). 55% of glade-led loops are in 12
 steps, so the profile nearest this music plays its tunes over the wrong
-metre most of the time. Fix: a 12-step pattern for every rhythm name, drawn
+meter most of the time. Fix: a 12-step pattern for every rhythm name, drawn
 by the same name -- the choir's relabel-not-redraw trick. Codes may change
 now (testing phase), so this is a preference for a clean A/B, not a rule. Existing 12-step loops will sound different,
 which is the point, so it gets an A/B album. Check the bass for the same
@@ -749,7 +749,7 @@ changes how existing loops sound (fewer refusals), so it gets a refusal
 run on full and lite before and after.
 
 Also measured (#74, #75): on lite, tide and cinder loops lose more melody
-notes than the catalogue (mean 2.9% and 3.5% against 1.5%), the same on
+notes than the catalog (mean 2.9% and 3.5% against 1.5%), the same on
 the old code. The fixes above are the likely remedy; re-measure both
 profiles when this item is done.
 
@@ -868,9 +868,9 @@ From Mikey's mood vocabulary (`docs/MOODS.md`, 178 words). Agreed
   each true of what the loop does. Some loops are **one word, fully
   embraced**: everything about the loop leans into that word.
 - **Words steer, not just describe.** A one-word loop needs generating
-  *towards* its word, so every word gets a recipe in musical terms: which
+  *toward* its word, so every word gets a recipe in musical terms: which
   dials it moves (lift, energy, warmth, tempo, swing, density, register,
-  brightness, space, harmony colour, instrument families, rhythm feel)
+  brightness, space, harmony color, instrument families, rhythm feel)
   and by how much.
 - **Words bend a profile, they don't replace it.** The profile is the
   base; a word pushes it within its character. How each word meets each
@@ -898,8 +898,8 @@ generator carries.
 
 Every listening album so far was assembled by hand in the brain's
 container: filter a corpus, shuffle, encode, round-trip, and work out the
-key. A tool that does it -- by voice, profile, kit, metre, length,
-development or mood, blind or labelled, with the key derivable -- would
+key. A tool that does it -- by voice, profile, kit, meter, length,
+development or mood, blind or labeled, with the key derivable -- would
 make albums quick for any brain session and remove the chance of a
 mistyped code.
 
@@ -916,7 +916,7 @@ while simple loops render exactly as before. `DEPTH` in
 
 Heard (the "Depth" album): development audible and liked at 24 and 32
 bars, weak at 16 until the second pass (A A' B A'' in four-bar phrases).
-His favourite was a simple 24-bar loop. Open:
+His favorite was a simple 24-bar loop. Open:
 - "Depth two" is out for listening (`docs/ALBUMS.md`).
 - Three in four 32-bar loops are micro-loops that never develop; making
   them develop would be a new kind of form. Mikey to decide.
@@ -941,7 +941,7 @@ which fights the use case. A wordless voice also never sounds dated or
 foreign; a synthesised word always does.
 
 **Speech-synthesis dependencies** (Klattsch, Pink Trombone, Qlatt). They
-optimise for intelligibility, which is the opposite of the goal, and each
+optimize for intelligibility, which is the opposite of the goal, and each
 brings a build step or a worklet, breaking "works offline from a folder".
 
 ---

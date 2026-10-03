@@ -1,6 +1,6 @@
 WHAT I CAN READ FROM THE SHEETS (image 2 is the legible one):
 
-Colour legend, top right:  F C G D A E B  -> circle of fifths order.
+Color legend, top right:  F C G D A E B  -> circle of fifths order.
 Gaussian integers (a+bi) map to chords:
 
     0        -> F(#11)maj13 / F
