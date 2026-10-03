@@ -282,9 +282,11 @@ Stated decisions, not inferences. Dated where the date matters.
 
 ## State -- 2026-10-03
 
-`main` at **v65** (#117, the ranking test), deployed; #118-#121 were
-docs. No open PRs. Queue item 20 (Session 2, hands) has no branch or PR
-on GitHub yet.
+`main` at **v66**, deployed. No open PRs. Queue item 20 (Session 2,
+hands), the ranking pool v2, merged as #122 (v66) and brain-verified:
+tests pass three times, `--check` holds (22 of 22), only `rank.html`,
+`tools/ranks.mjs`, the queue and the stamps changed, and the live page
+serves pool 2. Nothing is queued.
 
 As of 2026-09-28: queue items 0-17 done (13
 stopped at its gate, by design); item 18, the housekeeping pass over
