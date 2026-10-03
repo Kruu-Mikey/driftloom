@@ -315,7 +315,12 @@ his own words: checks the steering and starts the word study) and
 no drift in code or deploy. Mikey answered the first round (decisions
 under "The words" above and in `docs/MOODS.md`). Dials okayed; he asked about
 x-y graphs so contrasting words can coexist, and the brain proposed maps
-and clouds (`docs/MOODS.md`). Waiting on him: that proposal; candidate
+and clouds (`docs/MOODS.md`). He likes clouds. Free description
+of tracks felt too abstract, so listening tests for words are now
+**most/least** (which track is most like the word, which least), with
+**odd one out** (three tracks: which differs, and how) to discover dials.
+The Moods album switched to most/least (`docs/ALBUMS.md`). Waiting on him:
+that album, the pairings (option A or B in `docs/MOODS.md`); candidate
 words later (he likes about half). Then the brain queues item
 19's first build, dormant: words as data, heart words as points, the
 honest-share measure. A fresh
