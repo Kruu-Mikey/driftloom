@@ -259,6 +259,18 @@ while still letting words that contrast sit on one loop?
 4. **Steering:** a label becomes a plan -- home words, and words carried
    by one layer or by excursions -- and the generator aims the cloud.
 
+**Pairings are open.** Option B (brain's lean, 2026-09-28) puts more of
+the pilot words on a single map: colour (warmth x lift: golden, sunny,
+tender, misty), shimmer (edge x height: twinkling, sparkling, velvety,
+booming), air (room x ground: floating, airy, cozy, serene), motion
+(energy x bounce: still, flowing, bouncy, bursting), flavour (tang x
+oddness). The pairs are views for placing words by ear; the engine can
+measure on all ten dials, so a word may use any dials it needs.
+
+**Better than hand-drawn regions:** fit each word's region from Mikey's
+listening picks (most/least tests), so the words are defined by what he
+hears rather than by the brain's guesses.
+
 Unproven: whether every dial can be measured per bar and per layer
 (height, bounce, ground and edge look easy; room and tang may be
 loop-wide). First test, no code: plot the clouds of the "Moods" album

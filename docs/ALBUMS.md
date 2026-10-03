@@ -8,10 +8,14 @@ key is derivable from the album code itself (decode it with
 
 Eight short loops (8 bars or fewer), each led at 80%+ by one mood: two
 joyful, two happy, two peaceful, two reflective, shuffled. Key: each
-spec's leading `feelMix` entry. Mikey describes each track in his own
-words (from `docs/MOODS.md` or not). Two uses: does the mood steering
-(item 16) make bright moods sound bright, and which words does he reach
-for (the vocabulary study, roadmap item 19).
+spec's leading `feelMix` entry. Changed 2026-09-28: describing each
+track freely felt too abstract, so the test is now **most and least**.
+Listen to all eight, then for each word give two track numbers, the
+track that is most like it and the one least like it ("none" is fine):
+happy, lively, warm, crisp, floating, bouncy, twinkling, intimate,
+quirky. Uses: whether the mood steering (item 16) makes happy sound happy,
+and Mikey's picks become the first data for the word regions (roadmap 19,
+maps and clouds in `docs/MOODS.md`).
 
 ```
 DLA1-0C2MT-VVFCH-SG020-02C10-J20G0-ECPSD-9MNPG-25BGA-951P0-VENZ6-KD2SK-9S4SR-78CEJ-W0GSZ-R10ZZ-NJE3N-B7Y2P-00000-00002-S040G-G402K-A6YZ8-1VMAF-B7BQ9-E817G-977C9-ZF7NZ-SDD7P-BJRJ0-84TJ3-AP080-J41EX-KJ1SY-S5P9W-00008-00002-00200-0R000-00000-1W288-0C602-V0AE3-NXZ7J-AFNBR-WF688-JGD7N-3V27D-J5GRA-4ZKZY-10D3W-03C0N-60R1G-60780-W5GC3-6SCE5-3SFGB-00000-00001-10M48-41G5B-46C22-HMSPV-AVZVJ-AHAFR-HNEKG-D1RXW-CMSSJ-GTJS0-42P00-RZG40-1307E-DB365-QA4JT-00000-00000-Y1850-8410H-FD9AJ-M6VAF-47D91-R8MJP-CEJ0Z-TWZP3-SZA0V-3CG30-83QA0-4A080-1T1Z2-BS3QT-M3P70-00000-00001-W2G80-G803F-3RV5K-KNN4F-JGG6F-DWJDN-NWY1B-V4XYB-72RFC-MTMT0-G2TW0-2G0G7-140ZD-K2VG8-QWY8R-00000-00006-C0G41-0G86C-EXCWX-DM8QZ-P6RP6-C5210-FQ4G9-64N8K-97Q62-YG401-01MGB-5M0G1-ZYDP2-W7MT4-X0000-00000-0HG62-04206-WVD72-ZMY1W-TMSVF-QVPBP-4GE34-MCDN0-2978M-Q7X7Z-G81G5-0XE0M-W045W-0GBZW-MA2CQ-TSB40-00000-009RK-0
