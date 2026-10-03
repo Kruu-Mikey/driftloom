@@ -3,6 +3,7 @@
 // shared noise buffer, which is what keeps this playable on a cheap phone.
 
 import { midiToFreq } from './theory.js';
+import { CoreHost, CORE_VOICES, KALIMBA_STRIKE, KALIMBA_BODY } from './core.js';
 
 // A voice budget in *cost units*, not a count of voices.
 //
@@ -433,7 +434,10 @@ function recordingContext(ctx, synth) {
 }
 
 export class Synth {
-  constructor(ctx, quality = 'full') {
+  // `engine` is 'js' or 'rust' (the `?engine=rust` flag, js/core.js), and
+  // `core` what loadCore() gave for this context, if it has arrived; one
+  // that arrives later is handed over with attachCore().
+  constructor(ctx, quality = 'full', { engine = 'js', core = null } = {}) {
     this._building = null;
     this._voiceEnd = null;
     // Finished-to-be voices, earliest end first: { end, nodes }.
@@ -454,6 +458,34 @@ export class Synth {
     // The strings of the last strum into each channel, for damp().
     this._strung = new Map();
     this._build();
+    // The Rust core (queue item 21). Built on the real context: an
+    // AudioWorkletNode will not take the recording proxy.
+    this.engine = engine;
+    this._raw = ctx;
+    this.core = null;
+    // Notes for a core voice that played in JS instead: the core had not
+    // arrived, had failed, or does not serve the note's channel.
+    this.fallbacks = 0;
+    if (engine === 'rust' && core) this.attachCore(core);
+  }
+
+  attachCore(core) {
+    if (this.engine !== 'rust' || this.core) return;
+    try {
+      this.core = new CoreHost(this._raw, core, [this.channels.melody.gain, this.channels.chords.gain]);
+    } catch (err) {
+      // No worklet node here: everything stays in JS, counted as fallbacks.
+      console.warn('Rust core unavailable; playing in JS', err);
+    }
+  }
+
+  // For Diagnostics.
+  engineReport() {
+    if (this.engine !== 'rust') return 'js';
+    const c = this.core;
+    if (!c) return `rust (loading)  fallback: ${this.fallbacks}`;
+    if (c.failed) return `rust (failed: ${c.failed})  fallback: ${this.fallbacks}`;
+    return `rust  late: ${c.late}  fallback: ${this.fallbacks}${c.dropped ? `  dropped: ${c.dropped}` : ''}`;
   }
 
   _makeNoise(seconds) {
@@ -914,6 +946,8 @@ export class Synth {
     try { this.echoFb.disconnect(); } catch { /* already detached */ }
     try { this.ceiling.disconnect(); } catch { /* already detached */ }
     try { this.master.disconnect(); } catch { /* already detached */ }
+    // Its notes stop with it, as JS notes do once the graph above is cut.
+    if (this.core) this.core.dispose();
     this._releases = [];
   }
 
@@ -1532,6 +1566,33 @@ export class Synth {
     return trim;
   }
 
+  // The kalimba on the Rust core. The voice budget is asked exactly as the
+  // JavaScript voice below asks it -- the strike for 8, then the body for
+  // 3, each billed on its own -- and the note goes to the core with the
+  // parts that got through, so refusals and every later budget decision
+  // are what they would have been. The kalimba draws no random numbers;
+  // a voice that does draws them here, in the same order, and sends them
+  // with the note. False when the core cannot take the note (not arrived,
+  // failed, or not a channel it serves): the JavaScript voice plays it.
+  _coreKalimba(midi, time, dur, vel, dest, soft) {
+    const channel = this.core ? this.core.channelOf(dest) : -1;
+    if (channel < 0) {
+      this.fallbacks++;
+      return false;
+    }
+    let parts = 0;
+    if (this._budget(time, soft, 8)) {
+      parts |= KALIMBA_STRIKE;
+      this._release(time, Math.min(dur, 1.1) + 1.2, 8);
+    }
+    if (this._budget(time, soft, 3)) {
+      parts |= KALIMBA_BODY;
+      this._release(time, 0.25, 3);
+    }
+    if (parts) this.core.note(CORE_VOICES.kalimba, channel, time, midi, dur, vel, parts);
+    return true;
+  }
+
   voice(name, midi, time, dur, vel, out, opts = {}) {
     const ctx = this.ctx;
     const dest = out || this.channels.melody.gain;
@@ -1919,6 +1980,7 @@ export class Synth {
       // away almost at once, over a soft wooden thump from the box. The
       // shortness is the character -- a tine has almost no sustain.
       case 'kalimba': {
+        if (this.engine === 'rust' && this._coreKalimba(midi, time, dur, vel, dest, soft)) return;
         this.fm(midi, time, Math.min(dur, 1.1), vel, {
           soft,
           out: dest, ratio: 3.7, index: 260, decay: 0.09, attack: 0.002, cost: 8,
