@@ -2,10 +2,11 @@
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
 // here runs. With it on, the synth hands the voices the core has (kalimba,
-// fiddle and pad, so far) to an AudioWorkletNode running js/dlcore.wasm, and keeps
-// everything else: scheduling, the voice budget, every Math.random draw,
-// every other voice, the effects and the master chain. The JavaScript synth
-// stays the reference the core is proven against (tools/measure.mjs --null).
+// fiddle and pad, so far) to an AudioWorkletNode running js/dlcore.wasm,
+// and keeps everything else: scheduling, the voice budget, every
+// Math.random draw, every other voice, the effects and the master chain.
+// The JavaScript synth stays the reference the core is proven against
+// (tools/measure.mjs --null).
 
 export const ENGINE = (() => {
   try {
