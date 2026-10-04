@@ -1,11 +1,12 @@
 // The Rust core, main-thread side (queue item 21, roadmap 16).
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
-// here runs. With it on, the synth hands the voices the core has (only the
-// kalimba, so far) to an AudioWorkletNode running js/dlcore.wasm, and keeps
-// everything else: scheduling, the voice budget, every Math.random draw,
-// every other voice, the effects and the master chain. The JavaScript synth
-// stays the reference the core is proven against (tools/measure.mjs --null).
+// here runs. With it on, the synth hands the voices the core has (kalimba,
+// fiddle and pad, so far) to an AudioWorkletNode running js/dlcore.wasm,
+// and keeps everything else: scheduling, the voice budget, every
+// Math.random draw, every other voice, the effects and the master chain.
+// The JavaScript synth stays the reference the core is proven against
+// (tools/measure.mjs --null).
 
 export const ENGINE = (() => {
   try {
@@ -17,7 +18,7 @@ export const ENGINE = (() => {
 
 // The voices the core plays, by the number it knows them by
 // (core/src/lib.rs), and the parts of a kalimba note (core/src/voice.rs).
-export const CORE_VOICES = { kalimba: 0 };
+export const CORE_VOICES = { kalimba: 0, fiddle: 1, pad: 2 };
 export const KALIMBA_STRIKE = 1;
 export const KALIMBA_BODY = 2;
 
@@ -55,6 +56,8 @@ export async function loadCore(ctx) {
   return { bytes: wasm };
 }
 
+const NO_EXTRA = [NaN, NaN, NaN, NaN];
+
 // One core node for one synth: an output per channel it serves, each
 // connected into that channel's input.
 export class CoreHost {
@@ -82,8 +85,11 @@ export class CoreHost {
     return this.failed ? -1 : this.dests.indexOf(dest);
   }
 
-  note(voice, channel, time, midi, dur, vel, parts) {
-    this.node.port.postMessage({ type: 'note', voice, channel, time, midi, dur, vel, parts });
+  // `extra` is the voice's own four numbers (core/src/lib.rs): for the
+  // fiddle, the note it is joined to and its vibrato; for the pad, how many
+  // notes the chord has. NaN for none.
+  note(voice, channel, time, midi, dur, vel, parts, extra = NO_EXTRA) {
+    this.node.port.postMessage({ type: 'note', voice, channel, time, midi, dur, vel, parts, extra });
   }
 
   // Resolves once the worklet has taken every message sent before it.

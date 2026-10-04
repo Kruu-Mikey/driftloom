@@ -4,9 +4,11 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-03:** items 0-21 are done (13 stopped at its gate by
-design). Next: **22, the Rust core's second step** (Session 4, hands). A new Claude Code session starts here: read the standing rules
-and the merge policy, then take the next item.
+**Status, 2026-10-04:** items 0-22 are done (13 stopped at its gate by
+design). Nothing is queued after 22: the brain verifies it and builds the
+X/Y album, and the next items are written after Mikey has heard it. A new
+Claude Code session starts here: read the standing rules and the merge
+policy, then take the next item once there is one.
 
 ## Standing rules, for every item
 
@@ -982,3 +984,13 @@ Mikey decides this line:
   loop plays, and that the kalimba is there. If Diagnostics says
   `rust (failed: ...)`, the phone's browser cannot run the module (it
   needs Safari 15 or later) and everything played in JavaScript.
+- #127, the Rust core's second step: fiddle and pad (item 22, v68),
+  https://767f07a1-driftloom.kruu-mikey-thaiculture.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the fiddle and the
+  pad come out of Rust as well as the kalimba (they null against the
+  JavaScript voices to about -105 and -117 dB). Play a tide loop (the
+  fiddle) and one with the pad, and check that Diagnostics reads
+  `engine: rust  late: 0`. `fallback` may read 1 or 2 just after a fresh
+  load: the first chord played in JavaScript while the core was still
+  arriving. If Diagnostics says `rust (failed: ...)`, the phone's browser
+  cannot run the module (it needs Safari 15 or later).

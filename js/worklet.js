@@ -47,7 +47,8 @@ class DriftloomCore extends AudioWorkletProcessor {
     switch (m.type) {
       case 'note': {
         if (!core) return;
-        const taken = core.dl_note(m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts);
+        const x = m.extra;
+        const taken = core.dl_note(m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts, x[0], x[1], x[2], x[3]);
         // Rare, so worth a message each: Diagnostics counts them.
         if (taken === LATE || taken === FULL) {
           this.port.postMessage({ type: 'counts', late: core.dl_late(), dropped: core.dl_dropped() });
@@ -56,10 +57,10 @@ class DriftloomCore extends AudioWorkletProcessor {
       }
       case 'dispose':
         // Clear everything, and let go of the instance so its memory can be
-        // reclaimed: a browser
-        // holds only so many WebAssembly memories at once (about 128 in
-        // Chromium), and a page that builds synth after synth -- the
-        // measure harness renders hundreds -- would otherwise run out.
+        // reclaimed: a browser holds only so many WebAssembly memories at
+        // once (about 128 in Chromium), and a page that builds synth after
+        // synth -- the measure harness renders hundreds -- would otherwise
+        // run out.
         if (core) core.dl_clear();
         this.alive = false;
         this.core = null;

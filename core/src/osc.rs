@@ -1,45 +1,42 @@
-//! A sine oscillator that starts, runs and stops the way a Web Audio
-//! `OscillatorNode` does in Chromium, measured rather than read off the
-//! spec. The JavaScript synth is the reference, and these are the places
-//! a plain sine would not null against it:
+//! An oscillator that starts, runs and stops the way a Web Audio
+//! `OscillatorNode` does in Chromium (`oscillator_handler.cc`), checked
+//! against its output. It plays a `Wave`: a `PeriodicWave`, or one of the
+//! built-in shapes, which Chromium builds the same way -- even the sine is
+//! a table of one partial, read like the rest. The JavaScript synth is the
+//! reference, and these are the places a plain oscillator would not null
+//! against it:
 //!
 //! - **Start and stop** land on whole sample frames: the first frame at or
-//!   after the start time, and the stop time likewise. The phase starts at
-//!   zero and moves on after each sample, by the frequency at that sample.
+//!   after the start time, and the stop time likewise. The wave starts at
+//!   the top of its table and moves on after each sample, by the step at
+//!   that sample.
 //! - **The fraction of a frame.** A note rarely starts on a frame. When the
-//!   oscillator's frequency is steady in the render block it starts in
+//!   oscillator's pitch is steady in the render block it starts in
 //!   (nothing automated, nothing connected to it), Chromium starts the
-//!   phase where it would have been at that frame had the note begun
+//!   wave where it would have been at that frame had the note begun
 //!   between frames. Not in the very first block a context renders, and
-//!   not when the frequency moves (below): there the phase starts at zero.
-//! - **The first block of a moving frequency.** When the frequency moves
-//!   in the block the note starts in (something is connected to it, as FM
-//!   is, or it has an automation event at or after the block's start), the
-//!   block reads its frequencies from the start of the
-//!   block rather than from the note's first frame: the note's first
-//!   sample takes the block's first frequency, and so on. So a frequency
-//!   set at the note's start time does not reach it until a block later,
-//!   and the oscillator runs at whatever came before -- an automated
-//!   frequency's intrinsic value, or an FM carrier's own pitch with no
-//!   modulation -- for up to a block. That is in every JavaScript note
-//!   today, so it is here too. From the next block on, frames line up.
+//!   not when the pitch moves (below): there it starts at the top.
+//! - **The first block of a moving pitch.** When the frequency or detune
+//!   moves in the block the note starts in (something is connected to it,
+//!   as FM is, or it has an automation event at or after the block's
+//!   start), the block reads its steps from the start of the block rather
+//!   than from the note's first frame: the note's first sample takes the
+//!   block's first step, and so on. So a frequency set at the note's start
+//!   time does not reach it until a block later, and the oscillator runs
+//!   at whatever came before -- an automated frequency's intrinsic value,
+//!   or an FM carrier's own pitch with no modulation -- for up to a block.
+//!   That is in every JavaScript note today, so it is here too. From the
+//!   next block on, frames line up.
+//! - **Precision.** The place in the table is a 64-bit float; the steps,
+//!   the pitch, the detune and the blend between tables are 32-bit floats,
+//!   worked out in Chromium's order.
 //!
 //! Blocks are Web Audio's render quantum, `QUANTUM` frames, on frame
 //! numbers that are multiples of it: the host hands every block to the
 //! core in order, and these rules are counted from frame 0.
 
 use crate::QUANTUM;
-
-pub struct Sine {
-    /// In cycles, kept in [0, 1).
-    phase: f64,
-    /// The first frame it plays, and the first it no longer does.
-    start: u64,
-    stop: u64,
-    /// The start time, in frames: how far into its first frame the note
-    /// already is decides where a steady frequency's phase starts.
-    at: f64,
-}
+use crate::wave::Wave;
 
 /// The first frame at or after `time` seconds.
 pub fn frame_at(time: f64, rate: f64) -> u64 {
@@ -47,22 +44,44 @@ pub fn frame_at(time: f64, rate: f64) -> u64 {
     if f > 0.0 { f as u64 } else { 0 }
 }
 
-impl Sine {
+/// How a wavetable oscillator's pitch is set for a block: steady (one
+/// frequency and one detune for the whole block, read once), or moving, with
+/// the frequency and the detune in cents at every frame. Either part of a
+/// moving pitch may itself be steady.
+pub enum Pitch<'a> {
+    Steady { freq: f32, detune: f32 },
+    Moving { freq: Part<'a>, detune: Part<'a> },
+}
+
+pub enum Part<'a> {
+    Steady(f32),
+    Moving(&'a [f32; QUANTUM]),
+}
+
+/// The oscillator. It keeps its place in table samples.
+pub struct TableOsc {
+    /// Position in the table, in table samples, in [0, size).
+    index: f64,
+    start: u64,
+    stop: u64,
+    at: f64,
+}
+
+impl TableOsc {
     pub const fn new() -> Self {
-        Sine {
-            phase: 0.0,
+        TableOsc {
+            index: 0.0,
             start: 0,
             stop: 0,
             at: 0.0,
         }
     }
 
-    /// Start at `start` and stop at `stop` seconds.
     pub fn schedule(&mut self, start: f64, stop: f64, rate: f64) {
         self.start = frame_at(start, rate);
         self.stop = frame_at(stop, rate);
         self.at = start * rate;
-        self.phase = 0.0;
+        self.index = 0.0;
     }
 
     pub fn start_frame(&self) -> u64 {
@@ -73,17 +92,14 @@ impl Sine {
         self.stop
     }
 
-    /// Render the block of frames from `block`, given the frequency, in Hz,
-    /// at each of its frames, and whether it moves in this block (only the
-    /// block the note starts in asks). Writes every sample of `out`: the
-    /// sine where it plays, zero elsewhere. Returns the range of `out` it
-    /// played in.
+    /// Render the block from frame `block` into `out` (every sample written,
+    /// zero where it does not play). Returns the range it played in.
     pub fn render(
         &mut self,
         block: u64,
-        freq: &[f32; QUANTUM],
-        moving: bool,
-        rate: f64,
+        wave: &Wave,
+        pitch: &Pitch,
+        rate: f32,
         out: &mut [f32; QUANTUM],
     ) -> (usize, usize) {
         out.fill(0.0);
@@ -95,45 +111,118 @@ impl Sine {
         }
         let first = self.start >= block;
         let (lo, hi) = ((lo - block) as usize, (hi - block) as usize);
-        // Where this block reads its frequencies from: frame for frame, or,
-        // in the first block of a moving frequency, from the block's start.
-        let shift = if first && moving { lo } else { 0 };
-        if first {
-            let lead = if moving || self.start < QUANTUM as u64 {
-                0.0
-            } else {
-                self.start as f64 - self.at
-            };
-            let f = freq.get(lo - shift).copied().unwrap_or(0.0) as f64;
-            self.phase = wrap(lead * f / rate);
-        }
-        let reads = freq.get(lo - shift..hi - shift).unwrap_or(&[]);
-        let writes = out.get_mut(lo..hi).unwrap_or(&mut []);
-        for (y, &f) in writes.iter_mut().zip(reads) {
-            *y = (self.phase * core::f64::consts::TAU).sin() as f32;
-            self.phase = wrap(self.phase + f as f64 / rate);
+        let n = hi - lo;
+        let size = wave.size() as f64;
+        let nyquist = rate / 2.0;
+        let rate_scale = wave.rate_scale();
+        match pitch {
+            Pitch::Steady { freq, detune } => {
+                let f = within(freq * (detune / 1200.0).exp2(), nyquist);
+                let incr = f * rate_scale;
+                if first && self.start >= QUANTUM as u64 {
+                    // The fraction of a frame the note began before its first.
+                    let lead = self.start as f64 - self.at;
+                    self.index = lead * f as f64 * rate_scale as f64;
+                }
+                let pick = wave.pick(f);
+                let mut index = self.index;
+                for y in out.iter_mut().skip(lo).take(n) {
+                    *y = wave.read(index, pick);
+                    index = wrap_to(index + incr as f64, size);
+                }
+                // Chromium moves on by the whole block at once.
+                self.index = wrap_to(self.index + (n as f32 * incr) as f64, size);
+            }
+            Pitch::Moving { freq, detune } => {
+                // The step at every frame, as Chromium works it out: the
+                // frequencies, times 2^(cents/1200), clamped to the Nyquist
+                // frequency, times the table's rate; in 32-bit floats.
+                let mut incr = [0.0f32; QUANTUM];
+                let mut scale = rate_scale;
+                match freq {
+                    Part::Moving(f) => incr = **f,
+                    Part::Steady(f) => scale *= *f,
+                }
+                match detune {
+                    Part::Moving(d) => {
+                        let k = (1.0f64 / 1200.0) as f32;
+                        let moving = matches!(freq, Part::Moving(_));
+                        for (i, c) in incr.iter_mut().zip(d.iter()) {
+                            let m = (c * k).exp2();
+                            *i = if moving { m * *i } else { m };
+                        }
+                    }
+                    Part::Steady(c) => scale *= (c / 1200.0).exp2(),
+                }
+                for i in incr.iter_mut() {
+                    *i = within(*i, nyquist) * scale;
+                }
+                // The first block reads its steps from the block's start;
+                // see the module notes.
+                let shift = if first { lo } else { 0 };
+                let inverse = 1.0 / rate_scale;
+                let steps = incr.get(lo - shift..hi - shift).unwrap_or(&[]);
+                let mut index = self.index;
+                for (y, &step) in out.iter_mut().skip(lo).zip(steps) {
+                    *y = wave.read(index, wave.pick(inverse * step));
+                    index = wrap_to(index + step as f64, size);
+                }
+                self.index = index;
+            }
         }
         (lo, hi)
     }
 }
 
-impl Default for Sine {
+impl Default for TableOsc {
     fn default() -> Self {
         Self::new()
     }
 }
 
-fn wrap(phase: f64) -> f64 {
-    phase - phase.floor()
+/// `f` held within plus or minus `limit`. Not `f32::clamp`, which checks
+/// its bounds and would bring the panic machinery into the `.wasm`.
+fn within(f: f32, limit: f32) -> f32 {
+    f.max(-limit).min(limit)
+}
+
+fn wrap_to(index: f64, size: f64) -> f64 {
+    index - (index / size).floor() * size
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wave::{Fft, Waves};
 
     const RATE: f64 = 44100.0;
 
-    fn run(osc: &mut Sine, freq: impl Fn(u64) -> f32, moving: bool, frames: usize) -> Vec<f32> {
+    // The waves are 1.8 MB, built on a thread with room for them.
+    fn waves() -> Box<Waves> {
+        std::thread::Builder::new()
+            .stack_size(1 << 26)
+            .spawn(|| {
+                let mut w = Box::new(Waves::new());
+                w.build(RATE as f32, &mut Box::new(Fft::new()));
+                w
+            })
+            .and_then(|t| t.join().map_err(|_| std::io::Error::other("panicked")))
+            .expect("waves")
+    }
+
+    // A sine through the table: Chromium's own interpolation error is
+    // about 1e-5 at most, so that is the tolerance here.
+    fn sine(phase: f64) -> f32 {
+        (phase * core::f64::consts::TAU).sin() as f32
+    }
+
+    fn run(
+        osc: &mut TableOsc,
+        w: &Waves,
+        freq: impl Fn(u64) -> f32,
+        moving: bool,
+        frames: usize,
+    ) -> Vec<f32> {
         let mut all = Vec::new();
         let mut block = 0u64;
         while all.len() < frames {
@@ -142,7 +231,18 @@ mod tests {
                 *v = freq(block + i as u64);
             }
             let mut out = [0.0; QUANTUM];
-            osc.render(block, &f, moving, RATE, &mut out);
+            let pitch = if moving {
+                Pitch::Moving {
+                    freq: Part::Moving(&f),
+                    detune: Part::Steady(0.0),
+                }
+            } else {
+                Pitch::Steady {
+                    freq: f[0],
+                    detune: 0.0,
+                }
+            };
+            osc.render(block, &w.sine, &pitch, RATE as f32, &mut out);
             all.extend_from_slice(&out);
             block += QUANTUM as u64;
         }
@@ -151,43 +251,44 @@ mod tests {
 
     #[test]
     fn starts_and_stops_on_the_next_whole_frame() {
-        let mut osc = Sine::new();
+        let w = waves();
+        let mut osc = TableOsc::new();
         // Inside the first block, so no lead.
         osc.schedule(100.37 / RATE, 3000.6 / RATE, RATE);
-        let out = run(&mut osc, |_| 1000.0, false, 4096);
+        let out = run(&mut osc, &w, |_| 1000.0, false, 4096);
         assert_eq!(out[100], 0.0);
-        assert_eq!(out[101], 0.0); // sin(0)
-        let step = (core::f64::consts::TAU * 1000.0 / RATE).sin() as f32;
-        assert!((out[102] - step).abs() < 1e-6);
+        assert!(out[101].abs() < 1e-6); // the top of the table
+        assert!((out[102] - sine(1000.0 / RATE)).abs() < 1e-5);
         assert!(out[3000] != 0.0);
         assert_eq!(out[3001], 0.0);
     }
 
     #[test]
-    fn a_steady_frequency_starts_where_it_would_have_been() {
-        let mut osc = Sine::new();
+    fn a_steady_pitch_starts_where_it_would_have_been() {
+        let w = waves();
+        let mut osc = TableOsc::new();
         osc.schedule(1000.3 / RATE, 1.0, RATE);
-        let out = run(&mut osc, |_| 1000.0, false, 2048);
-        let want = (core::f64::consts::TAU * 1000.0 * 0.7 / RATE).sin() as f32;
-        assert!((out[1001] - want).abs() < 1e-6);
+        let out = run(&mut osc, &w, |_| 1000.0, false, 2048);
+        assert!((out[1001] - sine(1000.0 * 0.7 / RATE)).abs() < 1e-5);
     }
 
     #[test]
-    fn a_moving_frequency_reads_its_first_block_from_the_block_start() {
-        let mut osc = Sine::new();
+    fn a_moving_pitch_reads_its_first_block_from_the_block_start() {
+        let w = waves();
+        let mut osc = TableOsc::new();
         osc.schedule(1000.3 / RATE, 1.0, RATE);
         // 440 until frame 1001, 110 after: the first block (896..1024)
         // reads frames 896.. for its 23 samples, all of them 440.
         let out = run(
             &mut osc,
+            &w,
             |k| if k >= 1001 { 110.0 } else { 440.0 },
             true,
             2048,
         );
         let mut phase = 0.0f64;
         for k in 1001..1100u64 {
-            let want = (phase * core::f64::consts::TAU).sin() as f32;
-            assert!((out[k as usize] - want).abs() < 1e-6, "frame {k}");
+            assert!((out[k as usize] - sine(phase)).abs() < 1e-5, "frame {k}");
             phase += if k < 1024 { 440.0 } else { 110.0 } / RATE;
         }
     }

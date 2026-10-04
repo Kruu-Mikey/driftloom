@@ -16,14 +16,18 @@
 //! Web Audio -- and, where Chromium's rendering differs from a plain
 //! reading of the spec, Chromium -- to the sample.
 
+pub mod filter;
 pub mod osc;
 pub mod param;
 pub mod voice;
+pub mod wave;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-use voice::Kalimba;
+use filter::{Biquad, Kind};
+use voice::{Fiddle, Kalimba, PadNote, Vibrato};
+use wave::{Fft, Waves};
 
 /// Web Audio's render quantum. The core renders in blocks of this many
 /// frames, on frame numbers that are multiples of it, as an AudioWorklet
@@ -66,15 +70,29 @@ pub enum Taken {
     Unknown = 3,
 }
 
-/// The voices the core can play, by number.
+/// The voices the core can play, by number. What each reads from a note's
+/// four extra values (`Core::note`):
+///
+/// - KALIMBA: `parts`, the strike and the body the budget let through.
+/// - FIDDLE: the note it is joined to (NaN if none), then its vibrato's
+///   rate, rate at the end and depth (NaN if the note has none).
+/// - PAD: how many notes the chord has.
 pub const KALIMBA: u32 = 0;
+pub const FIDDLE: u32 = 1;
+pub const PAD: u32 = 2;
+
+enum Voice {
+    Kalimba(Kalimba),
+    Fiddle(Fiddle),
+    Pad(PadNote),
+}
 
 struct Slot {
     busy: bool,
     channel: usize,
     begin: u64,
     end: u64,
-    kalimba: Kalimba,
+    voice: Voice,
 }
 
 impl Slot {
@@ -84,14 +102,24 @@ impl Slot {
             channel: 0,
             begin: 0,
             end: 0,
-            kalimba: Kalimba::new(),
+            voice: Voice::Kalimba(Kalimba::new()),
         }
     }
 }
 
+/// The fiddle's body (`BODIES.fiddle` in synth.js): the violin's wood around
+/// 300 Hz, a bridge hill at 2.7 kHz, the fizz above rolled away. One per
+/// channel, as in JavaScript, running whether or not a note is in it.
+const FIDDLE_BODY: [(Kind, f32, f32, f32); 3] = [
+    (Kind::Peaking, 300.0, 1.2, 5.0),
+    (Kind::Peaking, 2700.0, 0.9, 2.0),
+    (Kind::Lowpass, 4500.0, -3.0, 0.0),
+];
+
 /// A note waiting for its start.
 #[derive(Clone, Copy)]
 struct Waiting {
+    voice: u32,
     channel: u32,
     start: u64,
     time: f64,
@@ -99,9 +127,11 @@ struct Waiting {
     dur: f64,
     vel: f64,
     parts: u32,
+    extra: [f64; 4],
 }
 
 const NOTHING: Waiting = Waiting {
+    voice: 0,
     channel: 0,
     start: 0,
     time: 0.0,
@@ -109,6 +139,7 @@ const NOTHING: Waiting = Waiting {
     dur: 0.0,
     vel: 0.0,
     parts: 0,
+    extra: [0.0; 4],
 };
 
 pub struct Core {
@@ -119,6 +150,11 @@ pub struct Core {
     queue: [Waiting; QUEUE],
     waiting: usize,
     out: [[f32; QUANTUM]; CHANNELS],
+    waves: Waves,
+    fft: Fft,
+    /// Fiddle notes sum here, per channel, then go through the body.
+    fiddles: [[f32; QUANTUM]; CHANNELS],
+    body: [[Biquad; 3]; CHANNELS],
     late: u32,
     dropped: u32,
 }
@@ -135,19 +171,31 @@ impl Core {
             queue: [NOTHING; QUEUE],
             waiting: 0,
             out: [[0.0; QUANTUM]; CHANNELS],
+            waves: Waves::new(),
+            fft: Fft::new(),
+            fiddles: [[0.0; QUANTUM]; CHANNELS],
+            body: [[Biquad::new(); 3]; CHANNELS],
             late: 0,
             dropped: 0,
         }
     }
 
-    /// Set the sample rate and clear everything. Call before the first
-    /// note.
+    /// Set the sample rate, build the wavetables and clear everything.
+    /// Call before the first note.
     pub fn init(&mut self, rate: f64) {
         self.rate = rate;
         self.next = 0;
         self.late = 0;
         self.dropped = 0;
         self.clear();
+        let r = rate as f32;
+        self.waves.build(r, &mut self.fft);
+        for channel in self.body.iter_mut() {
+            for (f, &(kind, freq, q, gain)) in channel.iter_mut().zip(FIDDLE_BODY.iter()) {
+                f.reset();
+                f.set(kind, freq, q, gain, r);
+            }
+        }
     }
 
     /// Let every voice go at once, sounding or waiting: the host is going
@@ -175,10 +223,11 @@ impl Core {
         self.waiting + self.slots.iter().filter(|s| s.busy).count()
     }
 
-    /// A note: `voice` (KALIMBA), into `channel` (MELODY or CHORDS), at
-    /// `time` seconds on the host's clock, with the voice's own `parts`.
-    /// A note whose start has already been rendered starts at once: the
-    /// whole of it, from its first sample, at the start of the next block.
+    /// A note: `voice`, into `channel` (MELODY or CHORDS), at `time`
+    /// seconds on the host's clock, with the voice's own `parts` and
+    /// `extra` values (see the voices, above). A note whose start has
+    /// already been rendered starts at once: the whole of it, from its
+    /// first sample, at the start of the next block.
     #[allow(clippy::too_many_arguments)]
     pub fn note(
         &mut self,
@@ -189,11 +238,9 @@ impl Core {
         dur: f64,
         vel: f64,
         parts: u32,
+        extra: [f64; 4],
     ) -> Taken {
-        if voice != KALIMBA
-            || channel as usize >= CHANNELS
-            || !(time.is_finite() && dur.is_finite())
-        {
+        if voice > PAD || channel as usize >= CHANNELS || !(time.is_finite() && dur.is_finite()) {
             return Taken::Unknown;
         }
         let rate = self.rate;
@@ -209,6 +256,7 @@ impl Core {
             return Taken::Full;
         };
         *gap = Waiting {
+            voice,
             channel,
             start: osc::frame_at(time, rate),
             time,
@@ -216,6 +264,7 @@ impl Core {
             dur,
             vel,
             parts,
+            extra,
         };
         self.waiting += 1;
         taken
@@ -227,12 +276,45 @@ impl Core {
             self.dropped = self.dropped.saturating_add(1);
             return;
         };
-        slot.kalimba
-            .play(w.midi, w.time, w.dur, w.vel, w.parts, self.rate);
+        let rate = self.rate;
+        let [a, b, c, d] = w.extra;
+        let (begin, end) = match w.voice {
+            FIDDLE => {
+                let prev = if a.is_finite() { Some(a) } else { None };
+                let vib = if b.is_finite() && c.is_finite() && d.is_finite() {
+                    Some(Vibrato {
+                        rate: b,
+                        rate_end: c,
+                        depth: d,
+                    })
+                } else {
+                    None
+                };
+                let mut v = Fiddle::new();
+                v.play(w.midi, w.time, w.dur, w.vel, prev, vib, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Fiddle(v);
+                span
+            }
+            PAD => {
+                let mut v = PadNote::new();
+                v.play(w.midi, w.time, w.dur, w.vel, a.max(1.0), rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Pad(v);
+                span
+            }
+            _ => {
+                let mut v = Kalimba::new();
+                v.play(w.midi, w.time, w.dur, w.vel, w.parts, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Kalimba(v);
+                span
+            }
+        };
         slot.channel = w.channel as usize;
-        slot.begin = slot.kalimba.start_frame();
-        slot.end = slot.kalimba.end_frame();
-        slot.busy = slot.end > slot.begin;
+        slot.begin = begin;
+        slot.end = end;
+        slot.busy = end > begin;
     }
 
     /// Render the block of `QUANTUM` frames that starts at frame `block`
@@ -261,16 +343,46 @@ impl Core {
             }
             self.start(w);
         }
+        for bus in self.fiddles.iter_mut() {
+            bus.fill(0.0);
+        }
         let rate = self.rate;
         for slot in self.slots.iter_mut().filter(|s| s.busy) {
             if slot.begin >= end {
                 continue;
             }
-            if let Some(out) = self.out.get_mut(slot.channel) {
-                slot.kalimba.render(block, rate, out);
+            let (Some(out), Some(bus)) = (
+                self.out.get_mut(slot.channel),
+                self.fiddles.get_mut(slot.channel),
+            ) else {
+                continue;
+            };
+            match &mut slot.voice {
+                Voice::Kalimba(v) => v.render(block, rate, &self.waves, out),
+                Voice::Fiddle(v) => v.render(block, rate, &self.waves, bus),
+                Voice::Pad(v) => v.render(block, rate, &self.waves, out),
             }
             if slot.end <= end {
                 slot.busy = false;
+            }
+        }
+        // Every fiddle note in a channel through that channel's body, in
+        // order, every block.
+        for ((out, bus), body) in self
+            .out
+            .iter_mut()
+            .zip(self.fiddles.iter())
+            .zip(self.body.iter_mut())
+        {
+            for (y, &x) in out.iter_mut().zip(bus.iter()) {
+                let mut v = x;
+                for f in body.iter_mut() {
+                    v = f.step(v);
+                }
+                *y += v;
+            }
+            for f in body.iter_mut() {
+                f.flush();
             }
         }
         &self.out
@@ -299,17 +411,27 @@ mod tests {
         melody
     }
 
+    const NO: [f64; 4] = [f64::NAN; 4];
+
+    // The core holds its wavetables, 1.2 MB, so it is built on a thread
+    // with room for it on the stack.
     fn boxed() -> Box<Core> {
-        let mut core = Box::new(Core::new());
-        core.init(RATE);
-        core
+        std::thread::Builder::new()
+            .stack_size(1 << 26)
+            .spawn(|| {
+                let mut core = Box::new(Core::new());
+                core.init(RATE);
+                core
+            })
+            .and_then(|t| t.join().map_err(|_| std::io::Error::other("panicked")))
+            .expect("core")
     }
 
     #[test]
     fn a_kalimba_note_sounds_then_lets_its_voice_go() {
         let mut core = boxed();
         assert_eq!(
-            core.note(KALIMBA, MELODY, 0.1, 69.0, 0.4, 0.8, STRIKE | BODY),
+            core.note(KALIMBA, MELODY, 0.1, 69.0, 0.4, 0.8, STRIKE | BODY, NO),
             Taken::OnTime
         );
         assert_eq!(core.busy(), 1);
@@ -331,8 +453,8 @@ mod tests {
         let mut a = boxed();
         let mut b = boxed();
         for core in [&mut a, &mut b] {
-            core.note(KALIMBA, MELODY, 0.0123, 72.0, 0.3, 0.6, STRIKE | BODY);
-            core.note(KALIMBA, MELODY, 0.2001, 64.0, 1.5, 0.5, STRIKE);
+            core.note(KALIMBA, MELODY, 0.0123, 72.0, 0.3, 0.6, STRIKE | BODY, NO);
+            core.note(KALIMBA, MELODY, 0.2001, 64.0, 1.5, 0.5, STRIKE, NO);
         }
         assert_eq!(render(&mut a, 400), render(&mut b, 400));
     }
@@ -341,8 +463,8 @@ mod tests {
     fn parts_the_budget_refused_stay_silent() {
         let mut both = boxed();
         let mut body = boxed();
-        both.note(KALIMBA, CHORDS, 0.05, 60.0, 0.5, 0.7, STRIKE | BODY);
-        body.note(KALIMBA, CHORDS, 0.05, 60.0, 0.5, 0.7, BODY);
+        both.note(KALIMBA, CHORDS, 0.05, 60.0, 0.5, 0.7, STRIKE | BODY, NO);
+        body.note(KALIMBA, CHORDS, 0.05, 60.0, 0.5, 0.7, BODY, NO);
         let chords = |core: &mut Core| -> f32 {
             let mut e = 0.0;
             for b in 0..200 {
@@ -362,7 +484,7 @@ mod tests {
         let mut core = boxed();
         render(&mut core, 10);
         assert_eq!(
-            core.note(KALIMBA, MELODY, 0.001, 69.0, 0.2, 0.8, STRIKE),
+            core.note(KALIMBA, MELODY, 0.001, 69.0, 0.2, 0.8, STRIKE, NO),
             Taken::Late
         );
         assert_eq!(core.late(), 1);
@@ -385,7 +507,8 @@ mod tests {
                     60.0,
                     0.1,
                     0.5,
-                    BODY
+                    BODY,
+                    NO
                 ),
                 Taken::OnTime
             );
@@ -407,13 +530,14 @@ mod tests {
                     60.0,
                     0.5,
                     0.5,
-                    STRIKE
+                    STRIKE,
+                    NO
                 ),
                 Taken::OnTime
             );
         }
         assert_eq!(
-            core.note(KALIMBA, MELODY, 9.0, 60.0, 0.5, 0.5, STRIKE),
+            core.note(KALIMBA, MELODY, 9.0, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Full
         );
         assert_eq!(core.dropped(), 1);
@@ -423,7 +547,7 @@ mod tests {
     fn a_note_starting_with_every_voice_busy_is_dropped_and_counted() {
         let mut core = boxed();
         for _ in 0..=POOL {
-            core.note(KALIMBA, MELODY, 0.0, 60.0, 0.5, 0.5, STRIKE);
+            core.note(KALIMBA, MELODY, 0.0, 60.0, 0.5, 0.5, STRIKE, NO);
         }
         core.process(0);
         assert_eq!(core.dropped(), 1);
@@ -434,15 +558,15 @@ mod tests {
     fn unknown_voices_and_channels_are_refused() {
         let mut core = boxed();
         assert_eq!(
-            core.note(7, MELODY, 0.1, 60.0, 0.5, 0.5, STRIKE),
+            core.note(7, MELODY, 0.1, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Unknown
         );
         assert_eq!(
-            core.note(KALIMBA, 5, 0.1, 60.0, 0.5, 0.5, STRIKE),
+            core.note(KALIMBA, 5, 0.1, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Unknown
         );
         assert_eq!(
-            core.note(KALIMBA, MELODY, f64::NAN, 60.0, 0.5, 0.5, STRIKE),
+            core.note(KALIMBA, MELODY, f64::NAN, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Unknown
         );
         assert_eq!(core.busy(), 0);
@@ -451,8 +575,8 @@ mod tests {
     #[test]
     fn clear_lets_every_voice_go() {
         let mut core = boxed();
-        core.note(KALIMBA, MELODY, 0.0, 60.0, 0.5, 0.5, STRIKE | BODY);
-        core.note(KALIMBA, CHORDS, 5.0, 60.0, 0.5, 0.5, STRIKE | BODY);
+        core.note(KALIMBA, MELODY, 0.0, 60.0, 0.5, 0.5, STRIKE | BODY, NO);
+        core.note(KALIMBA, CHORDS, 5.0, 60.0, 0.5, 0.5, STRIKE | BODY, NO);
         core.clear();
         assert_eq!(core.busy(), 0);
         let out = core.process(0);

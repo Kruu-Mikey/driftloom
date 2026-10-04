@@ -593,6 +593,7 @@ node tools/perf.mjs                          # the whole baseline, about 100 min
 node tools/perf.mjs --quick                  # a smoke run, one loop, a few minutes
 node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
 node tools/perf.mjs --query engine=rust      # the Rust core's voices, as ?engine=rust
+node tools/perf.mjs --ab-query engine=rust   # each run twice, without the flag and with it
 ```
 
 `measure.mjs` renders offline, faster than real time; this plays the real
@@ -787,8 +788,10 @@ not run the module, and everything plays in JavaScript.
 
 The synth is moving to Rust (roadmap 16), for portability rather than
 speed: the same core is meant to run the phone app, a native build and
-games. It goes a voice at a time, behind a flag, and so far it has one
-voice, the kalimba (queue item 21).
+games. It goes a voice at a time, behind a flag, and so far it has three:
+the kalimba (queue item 21), and the fiddle and the pad (item 22), the two
+that cover the hard parts -- a custom wave, vibrato, slurs, a body of
+filters, and a filter that moves.
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
@@ -802,10 +805,15 @@ worklet with its absolute start time and starts on its exact sample.
 The core (`core/`) is a Rust library with no dependencies and nothing
 browser in it: a queue of waiting notes, a fixed pool of voices, and
 `process`, which renders one 128-frame block per channel. Nothing allocates
-after it is built. Its building blocks are a parameter that automates the
-way a Web Audio `AudioParam` does, a sine oscillator that starts the way
-Chromium's does, and FM through the oscillator's frequency, so later voices
-are ports and not research. `cargo test` in `core/` runs its own tests.
+after it is built. Its building blocks are what every later voice needs, so
+later voices are ports and not research: a parameter that automates the
+way a Web Audio `AudioParam` does (`param.rs`); band-limited wavetables
+built the way Chromium builds a `PeriodicWave` and its own sine and
+triangle (`wave.rs`); an oscillator that reads them, steps, starts and
+stops the way Chromium's does, FM and detune included (`osc.rs`); and a
+biquad filter with Chromium's coefficients (`filter.rs`). The fiddle's body
+is one chain per channel, as in JavaScript. `cargo test` in `core/` runs
+its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -826,22 +834,35 @@ against it:
 
 ```sh
 node tools/measure.mjs --null                   # the same notes, both engines, subtracted
-node tools/measure.mjs --voice kalimba --engine rust
+node tools/measure.mjs --voice kalimba,fiddle,pad --engine rust
 node tools/measure.mjs --endings --engine rust
+node tools/perf.mjs --ab-query engine=rust --code <codes>   # live cost, both engines
 ```
 
-`--null` renders the kalimba as a melody and as a chord voice note by note,
-each started at its own fraction of a sample and point in the render block,
-and then whole kalimba loops through the engine and master chain, through
-both engines, and reports the difference against what the kalimba plays.
-It nulls to about -100 dB. That took matching Chromium where it is not
-the obvious reading of the spec, measured rather than guessed: an
-oscillator whose frequency is steady starts its phase where it would have
-been had the note begun between samples; one whose frequency moves (FM, or
-an automated pitch) reads its first render block's frequencies from the
-block's start, so the kalimba's body sine sounds at its 440 Hz default for
-up to 128 frames before its own pitch arrives. Both are in every JavaScript
-note today, so the core does them too; `core/src/osc.rs` has the details.
+`--null` renders every voice the core has, in every layer that draws it,
+note by note -- each started at its own fraction of a sample and point in
+the render block, some exactly on a block, melody notes free, slurred and
+repeated, chord notes alone and as triads -- and then whole loops that play
+them through the engine and master chain, through both engines, and
+reports the difference against what the voice plays. Notes null to about
+-100 dB and loops to their own floor. That took matching Chromium where it
+is not the obvious reading of the spec, measured and then read in its
+source:
+
+- An oscillator whose pitch is steady starts its wave where it would have
+  been had the note begun between samples; one whose pitch moves (FM, an
+  automated frequency, a vibrato on the detune) reads its first render
+  block's steps from the block's start, so the kalimba's body sine sounds
+  at its 440 Hz default for up to 128 frames before its own pitch arrives,
+  and a fiddle's slur starts a block late.
+- A parameter is first rendered when its node first renders, and any of
+  its events dated before that block move to the block's start: an
+  oscillator's frequency, and a gain that feeds only one (the kalimba's FM
+  depth, the fiddle's vibrato depth), first render when the oscillator
+  starts.
+
+All of this is in every JavaScript note today, so the core does it too;
+`core/src/osc.rs` and `core/src/param.rs` have the details.
 
 ## A note on the tape saturator
 
