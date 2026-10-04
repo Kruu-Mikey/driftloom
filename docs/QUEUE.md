@@ -984,3 +984,13 @@ Mikey decides this line:
   loop plays, and that the kalimba is there. If Diagnostics says
   `rust (failed: ...)`, the phone's browser cannot run the module (it
   needs Safari 15 or later) and everything played in JavaScript.
+- #127, the Rust core's second step: fiddle and pad (item 22, v68),
+  https://767f07a1-driftloom.kruu-mikey-thaiculture.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the fiddle and the
+  pad come out of Rust as well as the kalimba (they null against the
+  JavaScript voices to about -105 and -117 dB). Play a tide loop (the
+  fiddle) and one with the pad, and check that Diagnostics reads
+  `engine: rust  late: 0`. `fallback` may read 1 or 2 just after a fresh
+  load: the first chord played in JavaScript while the core was still
+  arriving. If Diagnostics says `rust (failed: ...)`, the phone's browser
+  cannot run the module (it needs Safari 15 or later).
