@@ -4,9 +4,11 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-03:** items 0-21 are done (13 stopped at its gate by
-design). Next: **22, the Rust core's second step** (Session 4, hands). A new Claude Code session starts here: read the standing rules
-and the merge policy, then take the next item.
+**Status, 2026-10-04:** items 0-22 are done (13 stopped at its gate by
+design). Nothing is queued after 22: the brain verifies it and builds the
+X/Y album, and the next items are written after Mikey has heard it. A new
+Claude Code session starts here: read the standing rules and the merge
+policy, then take the next item once there is one.
 
 ## Standing rules, for every item
 
