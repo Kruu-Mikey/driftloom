@@ -806,7 +806,10 @@ Staged, so nothing is a leap of faith:
 2. A prototype of a few voices in the worklet, measured against the same
    voices today with the same harness, and heard side by side. Queued
    2026-10-03 as items 21 (the pipeline and kalimba) and 22 (fiddle,
-   pad, the performance A/B).
+   pad, the performance A/B); both merged and verified 2026-10-05 (#126,
+   #127): every ported note nulls at float rounding against Chromium's
+   own voice, and the audio thread works 10-20% harder. Waiting on
+   Mikey's phone check.
 3. Voice-by-voice migration behind a flag, each voice proven equivalent
    with the existing `--voice` tone and level probes and `--endings`.
 4. The generator ported last, so share codes stay deterministic across
