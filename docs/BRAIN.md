@@ -282,11 +282,9 @@ Stated decisions, not inferences. Dated where the date matters.
 
 ## State -- 2026-10-03
 
-`main` at **v66**, deployed. No open PRs. Queue item 20 (Session 2,
-hands), the ranking pool v2, merged as #122 (v66) and brain-verified:
-tests pass three times, `--check` holds (22 of 22), only `rank.html`,
-`tools/ranks.mjs`, the queue and the stamps changed, and the live page
-serves pool 2. Queued: items 21-22, the Rust core (below).
+`main` at **v68**, deployed. No open PRs. Nothing is queued. Item 20
+(#122, v66) and items 21-22 (#126 v67, #127 v68, Session 4) are merged
+and brain-verified (below).
 
 As of 2026-09-28: queue items 0-17 done (13
 stopped at its gate, by design); item 18, the housekeeping pass over
@@ -357,6 +355,26 @@ kalimba) and 22 (fiddle and pad, the performance A/B) are written. Next
 label: **Session 4, hands, Opus 5.5 at high effort**, items 21-22. After
 21 merges, the brain checks the `?engine=rust` preview and sends Mikey a
 few kalimba loops to try on his phone; after 22, a blind X/Y album.
+
+**Rust core, items 21-22 verified (brain, 2026-10-05).** On a third
+machine, the pinned toolchain (1.99.0) rebuilt `js/dlcore.wasm`
+byte for byte (41,832 bytes); 32 core tests, the generator tests three
+times and `--check` (22 of 22) pass. `measure.mjs --null` reproduces the
+hands' figures: notes null at -95 to -119 dB, core layers in whole loops
+at -105 to -123 dB, and the mix sits at Chromium's own JS-against-JS
+floor (about -86 dB), with no late notes or fallbacks. The live site
+serves the same `.wasm` (`application/wasm`) and 404s the crate's
+source. Performance, from the hands: audio thread about 10-20% busier
+with Rust, main thread the same or lighter, 4x fewer Web Audio nodes.
+
+**The album is labeled, not blind (a change from the plan):** the engine
+is a URL flag Mikey can see, and Diagnostics names it, so a blind X/Y
+isn't possible without a hidden toggle. On Chromium a blind test would
+find nothing anyway (the residual is float rounding). The open question
+is his phone: on iPhone, the JS voices are rendered by WebKit while the
+core copies Chromium, so the two engines could differ audibly there --
+the case for a hidden toggle and a real blind test. Asked Mikey which
+phone and browser he listens on.
 
 ## History
 
