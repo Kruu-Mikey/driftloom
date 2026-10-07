@@ -376,6 +376,21 @@ core copies Chromium, so the two engines could differ audibly there --
 the case for a hidden toggle and a real blind test. Asked Mikey which
 phone and browser he listens on.
 
+**Rust check heard (2026-10-07):** Mikey played the album with and
+without `?engine=rust` in **Firefox on desktop (Fedora)** and heard no
+difference. That is a cross-engine result: Firefox renders the JS voices
+with its own Web Audio, while the core copies Chromium's, so the two
+engines agreeing there is good evidence the port holds outside Chrome.
+iPhone/WebKit is still unheard; a hidden-toggle blind test stays optional.
+
+**Account move (planned 2026-10-07):** Mikey is moving Driftloom from
+the Kruu-Mikey GitHub and Claude accounts to his nowmichaelclark ones.
+Nothing is queued and no PR is open, so it's a clean point to move.
+After the move, the repo URL, the brain's token and possibly the live
+URL change; the next brain fixes the links (README, this file, the
+Done lines) once Mikey confirms the new addresses. Old preview links in
+QUEUE.md's Done list keep working only if the Cloudflare account stays.
+
 ## History
 
 One line per PR; details are in the PRs, `ROADMAP.md` and the queue's
