@@ -622,3 +622,190 @@ impl Default for PadNote {
         Self::new()
     }
 }
+
+/// Sine: one sine under a linear swell and a release to silence 1 s after
+/// the note (`voice('sine')`).
+pub struct SineNote {
+    osc: TableOsc,
+    pitch: f32,
+    gain: Param,
+}
+
+impl SineNote {
+    pub const fn new() -> Self {
+        SineNote {
+            osc: TableOsc::new(),
+            pitch: 0.0,
+            gain: Param::new(0.0),
+        }
+    }
+
+    pub fn play(&mut self, midi: f64, time: f64, dur: f64, vel: f64, rate: f64) {
+        self.pitch = midi_to_freq(midi) as f32;
+        let stop = time + dur + 1.0;
+        let g = &mut self.gain;
+        g.reset(UNITY);
+        g.set_value_at_time(0.0001, time);
+        g.linear_ramp_to_value_at_time((vel * 0.24) as f32, time + (dur * 0.3).min(0.5), time);
+        release(g, time + dur * 0.7, stop, time);
+        self.osc.schedule(time, stop + 0.01, rate);
+    }
+
+    pub fn start_frame(&self) -> u64 {
+        self.osc.start_frame()
+    }
+
+    pub fn end_frame(&self) -> u64 {
+        self.osc.stop_frame()
+    }
+
+    pub fn render(&mut self, block: u64, rate: f64, waves: &Waves, out: &mut Block) {
+        let pitch = Pitch::Steady {
+            freq: self.pitch,
+            detune: 0.0,
+        };
+        let mut wave = [0.0f32; QUANTUM];
+        let (lo, hi) = self
+            .osc
+            .render(block, &waves.sine, &pitch, rate as f32, &mut wave);
+        let mut gain = [0.0f32; QUANTUM];
+        self.gain.fill(block, rate, &mut gain);
+        for ((y, w), g) in out
+            .iter_mut()
+            .zip(wave.iter())
+            .zip(gain.iter())
+            .take(hi)
+            .skip(lo)
+        {
+            *y += *w * *g;
+        }
+    }
+}
+
+impl Default for SineNote {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// A partial's level in a struck bell (`BELL_PARTIAL_VEL`).
+const BELL_PARTIAL_VEL: f64 = 0.8;
+/// The tubular bell's partials: ratio to the note, and relative level.
+const TUBULAR_PARTIALS: [(f64, f64); 5] = [
+    (1.0, 0.8),
+    (1.19, 0.6),
+    (1.56, 0.4),
+    (2.0, 0.5),
+    (2.71, 0.22),
+];
+/// How many partials the tubular bell has.
+pub const TUBULAR_PARTS: usize = TUBULAR_PARTIALS.len();
+
+/// Tubular: a church or orchestral tubular bell. Five sine partials, each
+/// detuned by up to three cents either way and each dying away at its own
+/// rate, under one envelope that strikes at once and lets go after at least
+/// five seconds.
+pub struct Tubular {
+    oscs: [TableOsc; TUBULAR_PARTS],
+    gains: [Param; TUBULAR_PARTS],
+    pitch: [f32; TUBULAR_PARTS],
+    detune: [f32; TUBULAR_PARTS],
+    envelope: Param,
+}
+
+impl Tubular {
+    pub const fn new() -> Self {
+        Tubular {
+            oscs: [const { TableOsc::new() }; TUBULAR_PARTS],
+            gains: [const { Param::new(0.0) }; TUBULAR_PARTS],
+            pitch: [0.0; TUBULAR_PARTS],
+            detune: [0.0; TUBULAR_PARTS],
+            envelope: Param::new(0.0),
+        }
+    }
+
+    /// `draws` are the five `Math.random` draws JavaScript makes for the
+    /// partials' detunes, in partial order, each in [0, 1): a partial's
+    /// detune is `(draw - 0.5) * 6` cents.
+    pub fn play(
+        &mut self,
+        midi: f64,
+        time: f64,
+        dur: f64,
+        vel: f64,
+        draws: [f64; TUBULAR_PARTS],
+        rate: f64,
+    ) {
+        let f = midi_to_freq(midi);
+        let hold = dur.max(5.0);
+        let stop = time + hold + 1.2;
+        let g = &mut self.envelope;
+        g.reset(UNITY);
+        g.set_value_at_time(0.0001, time);
+        g.exponential_ramp_to_value_at_time((vel * 0.26) as f32, time + 0.004, time);
+        release(g, time + 0.02, stop, time);
+        for (i, &(ratio, amp)) in TUBULAR_PARTIALS.iter().enumerate() {
+            if let (Some(p), Some(d), Some(&draw)) =
+                (self.pitch.get_mut(i), self.detune.get_mut(i), draws.get(i))
+            {
+                *p = (f * ratio) as f32;
+                *d = ((draw - 0.5) * 6.0) as f32;
+            }
+            if let (Some(pg), Some(osc)) = (self.gains.get_mut(i), self.oscs.get_mut(i)) {
+                pg.reset(UNITY);
+                pg.set_value_at_time((BELL_PARTIAL_VEL * amp * 0.62) as f32, time);
+                pg.exponential_ramp_to_value_at_time(
+                    0.0001,
+                    time + hold / (0.5 + ratio * 0.28),
+                    time,
+                );
+                osc.schedule(time, stop + 0.01, rate);
+            }
+        }
+    }
+
+    pub fn start_frame(&self) -> u64 {
+        self.oscs[0].start_frame()
+    }
+
+    pub fn end_frame(&self) -> u64 {
+        self.oscs[0].stop_frame()
+    }
+
+    pub fn render(&mut self, block: u64, rate: f64, waves: &Waves, out: &mut Block) {
+        let r = rate as f32;
+        let mut sum = [0.0f32; QUANTUM];
+        let mut wave = [0.0f32; QUANTUM];
+        let mut gain = [0.0f32; QUANTUM];
+        for ((osc, pg), (&freq, &detune)) in self
+            .oscs
+            .iter_mut()
+            .zip(self.gains.iter())
+            .zip(self.pitch.iter().zip(self.detune.iter()))
+        {
+            let pitch = Pitch::Steady { freq, detune };
+            let (lo, hi) = osc.render(block, &waves.sine, &pitch, r, &mut wave);
+            pg.fill(block, rate, &mut gain);
+            for ((s, w), g) in sum
+                .iter_mut()
+                .zip(wave.iter())
+                .zip(gain.iter())
+                .take(hi)
+                .skip(lo)
+            {
+                *s += *w * *g;
+            }
+        }
+        let mut envelope = [0.0f32; QUANTUM];
+        self.envelope.fill(block, rate, &mut envelope);
+        for ((y, x), g) in out.iter_mut().zip(sum.iter()).zip(envelope.iter()) {
+            *y += *x * *g;
+        }
+    }
+}
+
+impl Default for Tubular {
+    fn default() -> Self {
+        Self::new()
+    }
+}

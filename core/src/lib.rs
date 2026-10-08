@@ -26,7 +26,7 @@ pub mod wave;
 mod wasm;
 
 use filter::{Biquad, Kind};
-use voice::{Fiddle, Kalimba, PadNote, Vibrato};
+use voice::{Fiddle, Fm, FmOptions, Kalimba, PadNote, SineNote, Tubular, Vibrato, midi_to_freq};
 use wave::{Fft, Waves};
 
 /// Web Audio's render quantum. The core renders in blocks of this many
@@ -70,21 +70,47 @@ pub enum Taken {
     Unknown = 3,
 }
 
+/// How many extra values a note carries. Fixed, so a note is a plain value
+/// and nothing allocates: the widest voice (`fm`'s five options, tubular's
+/// five detune draws) needs five, and the rest are for the ones to come.
+pub const EXTRA: usize = 8;
+
 /// The voices the core can play, by number. What each reads from a note's
-/// four extra values (`Core::note`):
+/// extra values (`Core::note`); values a voice does not name are unused:
 ///
 /// - KALIMBA: `parts`, the strike and the body the budget let through.
 /// - FIDDLE: the note it is joined to (NaN if none), then its vibrato's
 ///   rate, rate at the end and depth (NaN if the note has none).
 /// - PAD: how many notes the chord has.
+/// - FM: `fm()`'s options, resolved, in this order: ratio, index, attack,
+///   decay, detune (cents). Every voice that is an `fm()` call -- keys,
+///   bell, celeste, musicbox, rhodes, marimba, harp, piano -- is this.
+/// - SINE: none.
+/// - TUBULAR: the five `Math.random` draws for its partials' detunes, each
+///   in [0, 1), in partial order.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
 pub const PAD: u32 = 2;
+pub const FM: u32 = 3;
+pub const SINE: u32 = 4;
+pub const TUBULAR: u32 = 5;
 
+// A voice lives in a slot of a fixed pool, so its size is the pool's price
+// and boxing it would allocate; the biggest, tubular, sets the slot's size.
+//
+// `repr(u8)` keeps the tag first, with the first voice's tag zero. Without
+// it the compiler hides the other voices' tags in a spare value of a byte
+// inside the biggest one, a free slot is no longer all zeros, and the pool
+// is written into the `.wasm` -- 3 MB, where all zeros cost nothing.
+#[allow(clippy::large_enum_variant)]
+#[repr(u8)]
 enum Voice {
     Kalimba(Kalimba),
     Fiddle(Fiddle),
     Pad(PadNote),
+    Fm(Fm),
+    Sine(SineNote),
+    Tubular(Tubular),
 }
 
 struct Slot {
@@ -127,7 +153,7 @@ struct Waiting {
     dur: f64,
     vel: f64,
     parts: u32,
-    extra: [f64; 4],
+    extra: [f64; EXTRA],
 }
 
 const NOTHING: Waiting = Waiting {
@@ -139,7 +165,7 @@ const NOTHING: Waiting = Waiting {
     dur: 0.0,
     vel: 0.0,
     parts: 0,
-    extra: [0.0; 4],
+    extra: [0.0; EXTRA],
 };
 
 pub struct Core {
@@ -238,9 +264,12 @@ impl Core {
         dur: f64,
         vel: f64,
         parts: u32,
-        extra: [f64; 4],
+        extra: [f64; EXTRA],
     ) -> Taken {
-        if voice > PAD || channel as usize >= CHANNELS || !(time.is_finite() && dur.is_finite()) {
+        if voice > TUBULAR
+            || channel as usize >= CHANNELS
+            || !(time.is_finite() && dur.is_finite() && midi.is_finite() && vel.is_finite())
+        {
             return Taken::Unknown;
         }
         let rate = self.rate;
@@ -277,7 +306,7 @@ impl Core {
             return;
         };
         let rate = self.rate;
-        let [a, b, c, d] = w.extra;
+        let [a, b, c, d, e, ..] = w.extra;
         let (begin, end) = match w.voice {
             FIDDLE => {
                 let prev = if a.is_finite() { Some(a) } else { None };
@@ -301,6 +330,34 @@ impl Core {
                 v.play(w.midi, w.time, w.dur, w.vel, a.max(1.0), rate);
                 let span = (v.start_frame(), v.end_frame());
                 slot.voice = Voice::Pad(v);
+                span
+            }
+            FM => {
+                let options = FmOptions {
+                    ratio: a,
+                    index: b,
+                    attack: c,
+                    decay: d,
+                    detune: e,
+                };
+                let mut v = Fm::new();
+                v.strike(midi_to_freq(w.midi), w.time, w.dur, w.vel, &options, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Fm(v);
+                span
+            }
+            SINE => {
+                let mut v = SineNote::new();
+                v.play(w.midi, w.time, w.dur, w.vel, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Sine(v);
+                span
+            }
+            TUBULAR => {
+                let mut v = Tubular::new();
+                v.play(w.midi, w.time, w.dur, w.vel, [a, b, c, d, e], rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Tubular(v);
                 span
             }
             _ => {
@@ -361,6 +418,9 @@ impl Core {
                 Voice::Kalimba(v) => v.render(block, rate, &self.waves, out),
                 Voice::Fiddle(v) => v.render(block, rate, &self.waves, bus),
                 Voice::Pad(v) => v.render(block, rate, &self.waves, out),
+                Voice::Fm(v) => v.render(block, rate, &self.waves, out),
+                Voice::Sine(v) => v.render(block, rate, &self.waves, out),
+                Voice::Tubular(v) => v.render(block, rate, &self.waves, out),
             }
             if slot.end <= end {
                 slot.busy = false;
@@ -411,7 +471,7 @@ mod tests {
         melody
     }
 
-    const NO: [f64; 4] = [f64::NAN; 4];
+    const NO: [f64; EXTRA] = [f64::NAN; EXTRA];
 
     // The core holds its wavetables, 1.2 MB, so it is built on a thread
     // with room for it on the stack.
@@ -569,6 +629,88 @@ mod tests {
             core.note(KALIMBA, MELODY, f64::NAN, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Unknown
         );
+        assert_eq!(core.busy(), 0);
+    }
+
+    // The options keys passes to `fm()`: ratio, index, attack, decay, detune.
+    const KEYS: [f64; EXTRA] = [2.0, 260.0, 0.006, 0.4, 0.0, f64::NAN, f64::NAN, f64::NAN];
+
+    fn energy(core: &mut Core, channel: usize, seconds: f64) -> (f32, f32) {
+        let (mut peak, mut sum) = (0.0f32, 0.0f32);
+        for b in 0..(seconds * RATE) as usize / QUANTUM {
+            for &x in core.process((b * QUANTUM) as u64)[channel].iter() {
+                peak = peak.max(x.abs());
+                sum += x * x;
+            }
+        }
+        (peak, sum)
+    }
+
+    #[test]
+    fn an_fm_note_sounds_then_lets_its_voice_go() {
+        let mut core = boxed();
+        assert_eq!(
+            core.note(FM, CHORDS, 0.1, 60.0, 0.5, 0.8, 0, KEYS),
+            Taken::OnTime
+        );
+        // In the chords channel, and nothing in the melody one.
+        let mut melody = 0.0f32;
+        let mut chords = 0.0f32;
+        for b in 0..(2.5 * RATE) as usize / QUANTUM {
+            let out = core.process((b * QUANTUM) as u64);
+            melody = out[0].iter().fold(melody, |a, &x| a.max(x.abs()));
+            chords = out[1].iter().fold(chords, |a, &x| a.max(x.abs()));
+        }
+        assert_eq!(melody, 0.0);
+        assert!(chords > 0.05 && chords < 0.3, "peak {chords}");
+        // 0.5 s note, released 1.2 s after: gone by 1.81 s.
+        assert_eq!(core.busy(), 0);
+    }
+
+    #[test]
+    fn fm_options_change_the_note() {
+        let mut keys = boxed();
+        let mut bell = boxed();
+        keys.note(FM, MELODY, 0.05, 72.0, 0.4, 0.7, 0, KEYS);
+        bell.note(
+            FM,
+            MELODY,
+            0.05,
+            72.0,
+            0.4,
+            0.7,
+            0,
+            [3.51, 420.0, 0.006, 0.5, 7.0, f64::NAN, f64::NAN, f64::NAN],
+        );
+        let a = render(&mut keys, 300);
+        let b = render(&mut bell, 300);
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_sine_note_sounds_then_lets_its_voice_go() {
+        let mut core = boxed();
+        core.note(SINE, MELODY, 0.1, 69.0, 0.6, 0.8, 0, NO);
+        let (peak, _) = energy(&mut core, 0, 3.0);
+        // vel * 0.24 at the top of the swell.
+        assert!(peak > 0.15 && peak < 0.2, "peak {peak}");
+        assert_eq!(core.busy(), 0);
+    }
+
+    #[test]
+    fn a_tubular_note_rings_for_at_least_five_seconds() {
+        let mut core = boxed();
+        let mut draws = [f64::NAN; EXTRA];
+        draws[..5].copy_from_slice(&[0.5, 0.0, 1.0, 0.25, 0.75]);
+        core.note(TUBULAR, CHORDS, 0.1, 60.0, 0.4, 0.8, 0, draws);
+        let (peak, _) = energy(&mut core, 1, 4.0);
+        assert!(peak > 0.05 && peak < 0.4, "peak {peak}");
+        assert_eq!(core.busy(), 1, "gone before five seconds");
+        let mut b = (4.0 * RATE) as usize / QUANTUM;
+        while core.busy() > 0 && b < 20 * RATE as usize / QUANTUM {
+            core.process((b * QUANTUM) as u64);
+            b += 1;
+        }
         assert_eq!(core.busy(), 0);
     }
 

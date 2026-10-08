@@ -48,7 +48,10 @@ class DriftloomCore extends AudioWorkletProcessor {
       case 'note': {
         if (!core) return;
         const x = m.extra;
-        const taken = core.dl_note(m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts, x[0], x[1], x[2], x[3]);
+        const taken = core.dl_note(
+          m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts,
+          x[0] ?? NaN, x[1] ?? NaN, x[2] ?? NaN, x[3] ?? NaN, x[4] ?? NaN, x[5] ?? NaN, x[6] ?? NaN, x[7] ?? NaN,
+        );
         // Rare, so worth a message each: Diagnostics counts them.
         if (taken === LATE || taken === FULL) {
           this.port.postMessage({ type: 'counts', late: core.dl_late(), dropped: core.dl_dropped() });
