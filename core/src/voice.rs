@@ -343,12 +343,12 @@ impl Default for Kalimba {
 const FIDDLE_LEVEL: f64 = 0.0736;
 /// A slurred note is not attacked again, beyond the few ms that keep it
 /// from clicking (`SLUR_ATTACK`).
-const SLUR_ATTACK: f64 = 0.012;
+pub(crate) const SLUR_ATTACK: f64 = 0.012;
 /// The widest step a slur glides across, in semitones (`SLIDE_MAX_STEP`).
 const SLUR_MAX_STEP: f64 = 5.0;
 
 /// `speak`: how long a note takes to arrive, by its length.
-fn speak(dur: f64) -> f64 {
+pub(crate) fn speak(dur: f64) -> f64 {
     (0.015 + dur * 0.06).clamp(0.02, 0.1)
 }
 

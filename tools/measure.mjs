@@ -135,6 +135,9 @@ driftloom offline audio measurement
   AudioWorklet, as ?engine=rust does in the app, for every report above
   but --retire (which is about letting go of Web Audio nodes). Everything
   else, the voice budget and every random draw included, is unchanged.
+  Chromium keeps every offline render that loaded the core until the page
+  goes away, so on the core (and for --null) the renders are split across
+  fresh loads of the page, a few hundred notes or a few loops at a time.
 
   --null is the proof the Rust core is the JavaScript synth: kalimba as a
   melody and as a chord voice, note by note across its window at two
@@ -578,7 +581,9 @@ async function chainMakeup(opts) {
 }
 
 window.measure = async (opts) => {
-  const specs = drawCorpus(opts.seed || 1, opts.n, opts.profile);
+  // The whole corpus is drawn, so a slice of it (see inPages) is the same
+  // loops it always was.
+  const specs = drawCorpus(opts.seed || 1, opts.n, opts.profile).slice(opts.from ?? 0, opts.to ?? opts.n);
 
   const tasks = specs.map((spec) => async () => {
     // Render whole passes of whatever this loop is, so a slow twenty-four
@@ -656,7 +661,7 @@ window.measure = async (opts) => {
   });
   // Each loop keeps two renders in flight, so half as many loops at once.
   const rows = await inParallel(tasks, Math.ceil(opts.jobs / (opts.chain ? 2 : 1)));
-  return { rows, chain: opts.chain ? await chainMakeup(opts) : null };
+  return { rows, chain: opts.chain && !opts.from ? await chainMakeup(opts) : null };
 };
 </script>`;
 
@@ -701,6 +706,8 @@ const CORE_VOICES = [
   'keys', 'bell', 'celeste', 'musicbox', 'rhodes', 'marimba', 'harp', 'piano', 'prepared', 'sine', 'tubular',
   // Item 24: the wave-table voices (pluck is the square beep).
   'softpad', 'analogpad', 'analoglead', 'saw', 'pluck', 'moog', 'whistle',
+  // Item 25: the voices with a body of their own, beside the fiddle.
+  'nylon', 'accordion',
 ];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
@@ -834,6 +841,61 @@ async function renderNote(job, midi, vel, rep, o) {
     absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
   });
   engine._scheduleStep(0, at);
+  await settle(synth);
+  return rendered(ctx, synth);
+}
+
+// Two strums of a triad, the second while the first still rings, so that
+// it damps the first one's strings (Synth.damp), for --null. 'ahead': both
+// scheduled before the render, as this harness schedules everything.
+// 'live': the second scheduled while the render is under way, once the
+// first one's strings are sounding, as the app schedules -- the damp lands
+// on a timeline that is already rendering. 'late': no second strum, only
+// its damp, made after its own time has been rendered.
+async function renderStrums(job, midi, vel, o) {
+  const again = Math.max(1, Math.round(o.dur / 2 / STEP));
+  const second = o.at + again * STEP;
+  const ctx = new OfflineAudioContext(1, Math.ceil((second - 0.05 + o.dur + o.tail) * o.rate), o.rate);
+  const core = await coreFor(ctx, o.engine);
+  // Its own stream, taken up again for the second strum: other renders
+  // seed Math.random while this one is suspended.
+  const random = mulberry32(seedFor([job.layer, job.voice, midi, vel.toFixed(2), o.dur, o.strum].join('|')));
+  Math.random = random;
+  const synth = synthFor(ctx, 'full', o.engine, core);
+  synth._budget = () => true;
+  const channel = synth.channels[job.layer].gain;
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(ctx.destination);
+  const notes = [0, 4, 7].map((i) => midi + i);
+  const dur = o.dur / STEP;
+  const tracks = {
+    drums: [], bass: [], melody: [], texture: [],
+    chords: [
+      { step: 0, dur, notes, vel, voice: job.voice, strum: 'down' },
+      { step: again, dur, notes, vel, voice: job.voice, strum: 'up' },
+    ],
+  };
+  const engine = Object.create(Engine.prototype);
+  Object.assign(engine, {
+    ctx, synth,
+    spec: { bpm: 60 / STEP / 4, swing: 0, mutes: {} },
+    live: { tracks, totalSteps: again + 1, stepsPerBar: 16 },
+    absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
+  });
+  engine._scheduleStep(0, o.at);
+  if (o.strum === 'ahead') {
+    engine._scheduleStep(again, second);
+  } else {
+    const live = o.strum === 'live';
+    ctx.suspend(live ? o.at + (again * STEP) / 2 : second + 0.05).then(async () => {
+      Math.random = random;
+      if (live) engine._scheduleStep(again, second);
+      else synth.damp(channel, second);
+      await settle(synth);
+      ctx.resume();
+    });
+  }
   await settle(synth);
   return rendered(ctx, synth);
 }
@@ -1018,16 +1080,28 @@ window.probeNull = async (o) => {
   // also played joined to the note before (a step up, which a fiddle slurs,
   // and a repeat, which it does not), and a chord voice as a triad too.
   const tasks = [];
+  // A note's start comes from its place in the whole run, so a batch (see
+  // inPages) walks every job and renders only its own: the same notes start
+  // at the same points however the run is split. Strums count apart, so the
+  // other voices' notes start where they always have.
   let n = 0;
-  for (const job of o.jobs) {
+  let m = 0;
+  for (const [j, job] of o.jobs.entries()) {
     const variants = job.layer === 'melody'
       ? [{ name: '' }, { name: ', joined', prev: -2 }, { name: ', repeated', prev: 0 }]
       : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
+    // A strummed voice, strummed twice: the second strum damps the first.
+    if (job.layer === 'chords' && job.voice === 'nylon') {
+      for (const strum of ['ahead', 'live', 'late']) variants.push({ name: ', strummed ' + strum, strum });
+    }
     for (const variant of variants) {
       for (const vel of o.velocities) {
         for (const dur of o.lengths) {
+          // A strum is damped halfway through the note: not a grace's length.
+          if (variant.strum && dur < 0.4) continue;
           for (let midi = job.low; midi <= job.high; midi += 3) {
-            const k = n++;
+            const k = variant.strum ? m++ : n++;
+            if (o.only && !o.only.includes(j)) continue;
             // Every fifth note a fraction of a frame before a block starts,
             // so its first frame is the block's: Chromium has rules of its
             // own for that (core/src/param.rs, clamp_before).
@@ -1038,9 +1112,12 @@ window.probeNull = async (o) => {
               rate: o.rate, dur, tail: 1.8, at,
               prev: variant.prev == null ? undefined : midi + variant.prev, chord: variant.chord,
             };
+            const render = variant.strum
+              ? (engine) => renderStrums(job, midi, vel, { ...opts, strum: variant.strum, engine })
+              : (engine) => renderNote(job, midi, vel, 0, { ...opts, engine });
             tasks.push(async () => {
-              const js = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'js' })).getChannelData(0);
-              const rust = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'rust' })).getChannelData(0);
+              const js = (await render('js')).getChannelData(0);
+              const rust = (await render('rust')).getChannelData(0);
               return { voice: job.voice, layer: job.layer, variant: variant.name, vel, dur, midi, at, ...nullOf(js, rust) };
             });
           }
@@ -1049,6 +1126,8 @@ window.probeNull = async (o) => {
     }
   }
   out.notes = await inParallel(tasks, o.width);
+  // A batch of notes only (see inPages): the loops come in batches of their own.
+  if ((o.to ?? o.loops) <= (o.from ?? 0)) return out;
 
   // Whole loops that play the core's voices, through the real Engine and the
   // whole master chain: the mix, and the melody and chords taps, dry. Taken
@@ -1103,7 +1182,7 @@ window.probeNull = async (o) => {
     if (synth.core) synth.core.dispose();
     return { buf, seconds, fell, late: counts ? counts.late : 0, dropped: counts ? counts.dropped : 0 };
   };
-  out.loops = await inParallel(specs.map(({ spec, voices }) => async () => {
+  out.loops = await inParallel(specs.slice(o.from ?? 0, o.to ?? specs.length).map(({ spec, voices }) => async () => {
     const js = await renderMix(spec, 'js');
     const rust = await renderMix(spec, 'rust');
     // The floor: the same loop on the same engine twice. Chromium does not
@@ -1236,7 +1315,7 @@ window.refusalsOne = async (o) => {
 
 window.refusalsCorpus = async (o) => {
   const rows = [];
-  for (const spec of drawCorpus(o.seed, o.n, o.profile)) {
+  for (const spec of drawCorpus(o.seed, o.n, o.profile).slice(o.from ?? 0, o.to ?? o.n)) {
     const r = await runOne(spec, o.quality, o.rate, o.engine);
     rows.push({
       name: spec.name, seed: spec.seed,
@@ -1954,27 +2033,72 @@ page.on('pageerror', (e) => pageErrors.push(e.message));
 const probing = !!opts.voices || opts.endings || opts.retire || opts.null;
 const counting = !!opts.refusals;
 const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
-await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
+
+// A renderer that dies -- killed by the kernel for its memory, most likely
+// -- leaves page.evaluate waiting for ever. Say so and stop instead
+// (Playwright takes its browser down as the process exits).
+page.on('crash', () => {
+  console.error('measure: the page crashed (out of memory?) before the run finished; nothing was measured.');
+  process.exit(1);
+});
 
 const ready = counting
   ? () => typeof window.refusalsOne === 'function'
   : probing
     ? () => typeof window.probeVoice === 'function'
     : () => typeof window.measure === 'function';
-try {
-  await page.waitForFunction(ready, null, { timeout: 15000 });
-} catch {
-  await browser.close();
-  server.close();
-  console.error('measure: the page never finished loading the app modules.');
-  if (pageErrors.length) console.error(`  ${pageErrors.join('\n  ')}`);
-  process.exit(1);
+async function load() {
+  await page.goto(`http://127.0.0.1:${opts.port}/${pageName}.html`);
+  try {
+    await page.waitForFunction(ready, null, { timeout: 15000 });
+  } catch {
+    await browser.close();
+    server.close();
+    console.error('measure: the page never finished loading the app modules.');
+    if (pageErrors.length) console.error(`  ${pageErrors.join('\n  ')}`);
+    process.exit(1);
+  }
+}
+await load();
+
+// Chromium never frees an OfflineAudioContext once a worklet module has
+// been added to it, garbage collection or not: every render on the Rust
+// core keeps its whole graph and its rendered buffer until the page goes
+// away -- about 1.6 MB a 0.4 s note, tens of MB a loop. (The core's own
+// memory is let go: the worklet drops its instance on 'dispose'.) Two
+// thousand notes ran the renderer out of memory. So a run that loads the
+// core is split into batches, each on a fresh load of the page, which
+// frees everything the last one held; one on the JavaScript synth alone
+// leaks nothing and runs on one page, as it always has. Every render seeds
+// its own random stream, and each note starts where it would unbatched, so
+// batching changes no figure beyond the last-bit noise described at the top
+// of this file.
+const rusty = opts.engine === 'rust' || opts.null;
+async function inPages(name, parts) {
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    if (i > 0) await load();
+    out.push(await page.evaluate(([fn, o]) => window[fn](o), [name, parts[i]]));
+  }
+  return out;
+}
+// `list` in batches of `size` on the core, whole otherwise.
+function batches(list, size) {
+  if (!rusty) return [list];
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out.length ? out : [list];
+}
+// The same, for a count of loops: [from, to) ranges.
+function ranges(n, size) {
+  return batches(Array.from({ length: n }, (_, i) => i), size).map((b) => ({ from: b[0] ?? 0, to: (b[b.length - 1] ?? -1) + 1 }));
 }
 
 if (counting) {
   const corpus = opts.refusals === 'corpus';
+  const o = { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate, profile: opts.profile, engine: opts.engine };
   const data = corpus
-    ? await page.evaluate((o) => window.refusalsCorpus(o), { n: opts.n, seed: opts.seed, quality: opts.quality, rate: opts.rate, profile: opts.profile, engine: opts.engine })
+    ? (await inPages('refusalsCorpus', ranges(opts.n, 20).map((r) => ({ ...o, ...r })))).flat()
     : await page.evaluate((o) => window.refusalsOne(o), { code: opts.refusals, rate: opts.rate, engine: opts.engine });
   await browser.close();
   server.close();
@@ -2022,10 +2146,18 @@ if (opts.null) {
       jobs.push({ layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] });
     }
   }
-  const data = await page.evaluate((o) => window.probeNull(o), {
-    jobs, voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
+  const o = {
+    voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
     rate: opts.rate, width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 12)),
-  });
+  };
+  // A voice in a layer a page (about 160 notes on each engine), then the
+  // loops four a page.
+  const parts = [
+    ...batches(jobs.map((_, j) => j), 1).map((only) => ({ ...o, jobs, only, from: 0, to: 0 })),
+    ...ranges(o.loops, 4).map((r) => ({ ...o, jobs: [], ...r })),
+  ];
+  const got = await inPages('probeNull', parts);
+  const data = { notes: got.flatMap((g) => g.notes), loops: got.flatMap((g) => g.loops) };
   await browser.close();
   server.close();
   if (pageErrors.length) {
@@ -2044,9 +2176,9 @@ if (opts.endings) {
       jobs.push({ layer, voice, midi: ENDING_MIDI[layer], low: ENDING_MIDI[layer], lengths: endingLengths(layer) });
     }
   }
-  const rows = await page.evaluate((o) => window.probeEndings(o), {
-    jobs, vel: 0.7, rate: opts.rate, tail: ENDING_TAIL, width: opts.jobs, engine: opts.engine,
-  });
+  const o = { vel: 0.7, rate: opts.rate, tail: ENDING_TAIL, width: opts.jobs, engine: opts.engine };
+  // About 100 notes a page on the core.
+  const rows = (await inPages('probeEndings', batches(jobs, 25).map((b) => ({ ...o, jobs: b })))).flat();
   await browser.close();
   server.close();
   if (pageErrors.length) {
@@ -2060,10 +2192,13 @@ if (opts.endings) {
 if (probing) {
   const { jobs, all } = probeJobs(opts.voices, drawnLayers());
   const survey = surveyVelocities(opts.seed);
-  const data = await page.evaluate((o) => window.probeVoice(o), {
-    jobs, velocities: PROBE_VELOCITIES, toneVelocity: 0.8,
+  const o = {
+    velocities: PROBE_VELOCITIES, toneVelocity: 0.8,
     rate: opts.rate, reps: opts.reps, dur: opts.dur, width: opts.jobs, engine: opts.engine,
-  });
+  };
+  // A voice in a layer a page on the core: 150 notes.
+  const got = await inPages('probeVoice', batches(jobs, 1).map((b) => ({ ...o, jobs: b })));
+  const data = { rows: got.flatMap((g) => g.rows), gains: got[0].gains };
   await browser.close();
   server.close();
   if (pageErrors.length) {
@@ -2074,7 +2209,11 @@ if (probing) {
   process.exit(0);
 }
 
-const { rows, chain } = await page.evaluate((o) => window.measure(o), opts);
+// Four loops a page on the core: a 7-channel render of up to 70 s is
+// 86 MB.
+const got = await inPages('measure', ranges(opts.n, 4).map((r) => ({ ...opts, ...r })));
+const rows = got.flatMap((g) => g.rows);
+const { chain } = got[0];
 await browser.close();
 server.close();
 

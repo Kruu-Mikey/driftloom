@@ -357,7 +357,9 @@ still runs from a folder.
 `--engine rust` plays the voices the Rust core has through it, as
 `?engine=rust` does in the app, for every report here but `--retire`;
 `--null` is the proof that the core is the JavaScript synth (see "The Rust
-core").
+core"). Chromium keeps every offline render that loaded the core's worklet
+until the page goes away, so on the core these runs are split across fresh
+loads of the page; a renderer that crashes stops the run with a message.
 
 ### Budget refusals
 
@@ -694,10 +696,13 @@ not run the module, and everything plays in JavaScript.
 
 The synth is moving to Rust (roadmap 16), for portability rather than
 speed: the same core is meant to run the phone app, a native build and
-games. It goes a voice at a time, behind a flag, and so far it has three:
-the kalimba (queue item 21), and the fiddle and the pad (item 22), the two
-that cover the hard parts -- a custom wave, vibrato, slurs, a body of
-filters, and a filter that moves.
+games. It goes a voice at a time, behind a flag: the kalimba (queue item
+21); the fiddle and the pad (item 22), the two that cover the hard parts --
+a custom wave, vibrato, slurs, a body of filters, and a filter that moves;
+every `fm()` voice, sine and tubular (item 23); the wave-table voices
+(item 24); and the accordion and the nylon guitar (item 25). Bass,
+textures, drums, the breathy and struck voices and the sung ones still play
+in JavaScript.
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
@@ -717,8 +722,12 @@ way a Web Audio `AudioParam` does (`param.rs`); band-limited wavetables
 built the way Chromium builds a `PeriodicWave` and its own sine and
 triangle (`wave.rs`); an oscillator that reads them, steps, starts and
 stops the way Chromium's does, FM and detune included (`osc.rs`); and a
-biquad filter with Chromium's coefficients (`filter.rs`). The fiddle's body
-is one chain per channel, as in JavaScript. `cargo test` in `core/` runs
+biquad filter with Chromium's coefficients (`filter.rs`). The bodies of the
+fiddle, nylon and accordion (`folk.rs`) are one chain per kind and channel,
+as `_body()` builds them in JavaScript; a body with nothing in it and
+nothing ringing is skipped. A new strum damps the last strum's nylon
+strings in the core as `damp()` does in JavaScript, whether they are
+already sounding or still waiting to start. `cargo test` in `core/` runs
 its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
@@ -750,7 +759,10 @@ note by note -- each started at its own fraction of a sample and point in
 the render block, some exactly on a block, melody notes free, slurred and
 repeated, chord notes alone and as triads -- and then whole loops that play
 them through the engine and master chain, through both engines, and
-reports the difference against what the voice plays. Notes null to about
+reports the difference against what the voice plays. Nylon is also
+strummed twice, the second strum damping the first: both scheduled before
+the render, the second scheduled mid-render (as the app does), and a damp
+that comes after its time. Notes null to about
 -100 dB and loops to their own floor. That took matching Chromium where it
 is not the obvious reading of the spec, measured and then read in its
 source:
@@ -766,6 +778,16 @@ source:
   oscillator's frequency, and a gain that feeds only one (the kalimba's FM
   depth, the fiddle's vibrato depth), first render when the oscillator
   starts.
+- A `setTargetAtTime` starts from the value the parameter had at the frame
+  before its first, not at its own time: the last sample rendered, which is
+  carried from block to block. A nylon string's attack is an exponential
+  ramp that hands straight over to a target, and where the ramp ends inside
+  the last frame of a block the target starts a frame's worth of attack
+  low, a few percent (inside a block Chromium clips the ramp to its end
+  value). An event added after its time has been rendered -- a damp that
+  arrives late -- moves to the start of the next block. The voices ported
+  before nylon keep the spec's start (none hands a curve straight to a
+  target), so their renders did not move.
 
 All of this is in every JavaScript note today, so the core does it too;
 `core/src/osc.rs` and `core/src/param.rs` have the details.

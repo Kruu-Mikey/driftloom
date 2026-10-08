@@ -58,6 +58,9 @@ class DriftloomCore extends AudioWorkletProcessor {
         }
         return;
       }
+      case 'damp':
+        if (core) core.dl_damp(m.channel, m.time);
+        return;
       case 'dispose':
         // Clear everything, and let go of the instance so its memory can be
         // reclaimed: a browser holds only so many WebAssembly memories at
