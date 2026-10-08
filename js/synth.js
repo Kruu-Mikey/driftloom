@@ -616,6 +616,10 @@ export class Synth {
       if (s.until > time) s.gain.setTargetAtTime(0.0001, time, NYLON_DAMP);
     }
     this._strung.set(dest, []);
+    // And the strings the core is playing. Not a note, so not a fallback
+    // when the core does not serve the channel: its strings are all here.
+    const channel = this.engine === 'rust' && this.core ? this.core.channelOf(dest) : -1;
+    if (channel >= 0) this.core.damp(channel, time);
   }
 
   // Slid attacks (roadmap item 9 v2).
@@ -1794,6 +1798,14 @@ export class Synth {
       // register stop, not more accordion.
       case 'accordion': {
         if (!this._budget(time, soft, VOICE_COST.accordion)) return;
+        // On the core, the second reed's one draw is made here, where the
+        // loop below makes it, and sent with the note.
+        if (this.engine === 'rust' && this.core && this.core.channelOf(dest) >= 0) {
+          this._coreNote(CORE_VOICES.accordion, dest, time, midi, dur, vel, [opts.prev ?? NaN, Math.random()]);
+          this._release(time, dur + 0.35, VOICE_COST.accordion);
+          return;
+        }
+        if (this.engine === 'rust') this.fallbacks++;
         const g = ctx.createGain();
         // A chord is several notes at once through the engine's spread, so
         // the two layers take separate levels; see ACCORDION_LEVEL.
@@ -1822,6 +1834,10 @@ export class Synth {
       // plucked string does, and is damped where the note ends.
       case 'nylon': {
         if (!this._budget(time, soft, VOICE_COST.nylon)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.nylon, dest, time, midi, dur, vel, [opts.strum ? 1 : 0])) {
+          this._release(time, dur + 0.4, VOICE_COST.nylon);
+          return;
+        }
         const level = vel * NYLON_LEVEL;
         const ring = NYLON_MELLOW.tau * Math.pow(261.6 / f, 0.35);
         const body = this._body('nylon', dest);

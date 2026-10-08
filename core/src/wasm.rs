@@ -63,6 +63,12 @@ pub extern "C" fn dl_note(
     ) as u32
 }
 
+/// A new strum into `channel` at `time`; see `Core::damp`.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_damp(channel: u32, time: f64) {
+    core().damp(channel, time);
+}
+
 /// Render the block that starts at frame `block` and return where its
 /// samples are.
 #[unsafe(no_mangle)]

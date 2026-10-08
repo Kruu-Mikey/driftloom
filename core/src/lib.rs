@@ -17,6 +17,7 @@
 //! reading of the spec, Chromium -- to the sample.
 
 pub mod filter;
+pub mod folk;
 pub mod lead;
 pub mod osc;
 pub mod param;
@@ -26,7 +27,7 @@ pub mod wave;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
-use filter::{Biquad, Kind};
+use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
 use voice::{Fiddle, Fm, FmOptions, Kalimba, PadNote, SineNote, Tubular, Vibrato, midi_to_freq};
 use wave::{Fft, Waves};
@@ -93,6 +94,10 @@ pub const EXTRA: usize = 8;
 /// - SOFTPAD, ANALOGPAD, ANALOGLEAD, SAWPLUCK, BEEP, MOOG: none.
 /// - WHISTLE: where its slide comes from in Hz (NaN if it does not slide),
 ///   then how long the slide takes to arrive, in seconds.
+/// - NYLON: whether it is a string of a strum (1) or not (0 or NaN): the
+///   next strum into its channel damps it (`Core::damp`).
+/// - ACCORDION: the note it is joined to (NaN if none), then the
+///   `Math.random` draw that sets how late its second reed comes in.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
 pub const PAD: u32 = 2;
@@ -106,6 +111,11 @@ pub const SAWPLUCK: u32 = 9;
 pub const BEEP: u32 = 10;
 pub const MOOG: u32 = 11;
 pub const WHISTLE: u32 = 12;
+pub const NYLON: u32 = 13;
+pub const ACCORDION: u32 = 14;
+
+// `process` hands each voice the bus of its body by these places.
+const _: () = assert!(folk::FIDDLE == 0 && folk::NYLON == 1 && folk::ACCORDION == 2 && folk::KINDS == 3);
 
 // A voice lives in a slot of a fixed pool, so its size is the pool's price
 // and boxing it would allocate; the biggest, tubular, sets the slot's size.
@@ -125,6 +135,8 @@ enum Voice {
     Tubular(Tubular),
     Tone(Tone),
     Lead(Lead),
+    Nylon(Nylon),
+    Accordion(Accordion),
 }
 
 struct Slot {
@@ -132,6 +144,11 @@ struct Slot {
     channel: usize,
     begin: u64,
     end: u64,
+    /// A strummed nylon string: which strum into its channel it belongs
+    /// to, and when its note ends (`Core::damp`).
+    strummed: bool,
+    strum: u32,
+    until: f64,
     voice: Voice,
 }
 
@@ -142,19 +159,13 @@ impl Slot {
             channel: 0,
             begin: 0,
             end: 0,
+            strummed: false,
+            strum: 0,
+            until: 0.0,
             voice: Voice::Kalimba(Kalimba::new()),
         }
     }
 }
-
-/// The fiddle's body (`BODIES.fiddle` in synth.js): the violin's wood around
-/// 300 Hz, a bridge hill at 2.7 kHz, the fizz above rolled away. One per
-/// channel, as in JavaScript, running whether or not a note is in it.
-const FIDDLE_BODY: [(Kind, f32, f32, f32); 3] = [
-    (Kind::Peaking, 300.0, 1.2, 5.0),
-    (Kind::Peaking, 2700.0, 0.9, 2.0),
-    (Kind::Lowpass, 4500.0, -3.0, 0.0),
-];
 
 /// A note waiting for its start.
 #[derive(Clone, Copy)]
@@ -168,6 +179,15 @@ struct Waiting {
     vel: f64,
     parts: u32,
     extra: [f64; EXTRA],
+    /// When the note ends, on the time it was asked for (a late note's
+    /// start moves; this does not).
+    until: f64,
+    /// A strummed nylon string's strum (see `Slot`), and the time the next
+    /// strum damps it, if it has come before the note started.
+    strummed: bool,
+    strum: u32,
+    damped: bool,
+    damp: f64,
 }
 
 const NOTHING: Waiting = Waiting {
@@ -180,6 +200,11 @@ const NOTHING: Waiting = Waiting {
     vel: 0.0,
     parts: 0,
     extra: [0.0; EXTRA],
+    until: 0.0,
+    strummed: false,
+    strum: 0,
+    damped: false,
+    damp: 0.0,
 };
 
 pub struct Core {
@@ -192,9 +217,12 @@ pub struct Core {
     out: [[f32; QUANTUM]; CHANNELS],
     waves: Waves,
     fft: Fft,
-    /// Fiddle notes sum here, per channel, then go through the body.
-    fiddles: [[f32; QUANTUM]; CHANNELS],
-    body: [[Biquad; 3]; CHANNELS],
+    /// The voices with a body sum here, per channel and kind of body, then
+    /// go through it.
+    buses: [[[f32; QUANTUM]; folk::KINDS]; CHANNELS],
+    bodies: [[Body; folk::KINDS]; CHANNELS],
+    /// Which strum each channel is on (`Core::damp`).
+    strums: [u32; CHANNELS],
     late: u32,
     dropped: u32,
 }
@@ -213,8 +241,9 @@ impl Core {
             out: [[0.0; QUANTUM]; CHANNELS],
             waves: Waves::new(),
             fft: Fft::new(),
-            fiddles: [[0.0; QUANTUM]; CHANNELS],
-            body: [[Biquad::new(); 3]; CHANNELS],
+            buses: [[[0.0; QUANTUM]; folk::KINDS]; CHANNELS],
+            bodies: [const { [const { Body::new() }; folk::KINDS] }; CHANNELS],
+            strums: [0; CHANNELS],
             late: 0,
             dropped: 0,
         }
@@ -230,12 +259,12 @@ impl Core {
         self.clear();
         let r = rate as f32;
         self.waves.build(r, &mut self.fft);
-        for channel in self.body.iter_mut() {
-            for (f, &(kind, freq, q, gain)) in channel.iter_mut().zip(FIDDLE_BODY.iter()) {
-                f.reset();
-                f.set(kind, freq, q, gain, r);
+        for channel in self.bodies.iter_mut() {
+            for (kind, body) in channel.iter_mut().enumerate() {
+                body.set(kind, r);
             }
         }
+        self.strums = [0; CHANNELS];
     }
 
     /// Let every voice go at once, sounding or waiting: the host is going
@@ -280,13 +309,16 @@ impl Core {
         parts: u32,
         extra: [f64; EXTRA],
     ) -> Taken {
-        if voice > WHISTLE
+        if voice > ACCORDION
             || channel as usize >= CHANNELS
             || !(time.is_finite() && dur.is_finite() && midi.is_finite() && vel.is_finite())
         {
             return Taken::Unknown;
         }
         let rate = self.rate;
+        let until = time + dur;
+        let strummed = voice == NYLON && extra[0] > 0.0;
+        let strum = self.strums.get(channel as usize).copied().unwrap_or(0);
         let mut time = time;
         let mut taken = Taken::OnTime;
         if osc::frame_at(time, rate) < self.next {
@@ -308,9 +340,58 @@ impl Core {
             vel,
             parts,
             extra,
+            until,
+            strummed,
+            strum,
+            damped: false,
+            damp: 0.0,
         };
         self.waiting += 1;
         taken
+    }
+
+    /// A new strum into `channel` at `time` (`damp()` in synth.js): the
+    /// strings of the strum before it that are still held -- every nylon
+    /// note marked as a strum's since the last damp into the channel, whose
+    /// note ends after `time` -- let go at `time` on their own release,
+    /// `setTargetAtTime(0.0001, time, 0.08)` added to both their gains.
+    ///
+    /// Web Audio adds that event to a timeline that may already be
+    /// rendering. Chromium renders an event added ahead of the clock exactly
+    /// as one scheduled with the note, so a string already sounding takes it
+    /// as it is, and a string still waiting takes it when it starts. One
+    /// whose time has already been rendered is not caught up: Chromium
+    /// moves an event added in the past to the start of the next block it
+    /// renders (`ClampNewEventsToCurrentTime`), and the curve starts there,
+    /// from the last value it rendered.
+    pub fn damp(&mut self, channel: u32, time: f64) {
+        let Some(serial) = self.strums.get_mut(channel as usize) else {
+            return;
+        };
+        let strum = *serial;
+        *serial = serial.wrapping_add(1);
+        if !time.is_finite() {
+            return;
+        }
+        for w in self.queue.iter_mut().take(self.waiting) {
+            if w.strummed && w.channel == channel && w.strum == strum && w.until > time {
+                w.damped = true;
+                w.damp = time;
+            }
+        }
+        let now = self.next as f64 / self.rate;
+        let at = if time < now { now } else { time };
+        for slot in self.slots.iter_mut() {
+            if slot.busy
+                && slot.strummed
+                && slot.channel == channel as usize
+                && slot.strum == strum
+                && slot.until > time
+                && let Voice::Nylon(v) = &mut slot.voice
+            {
+                v.damp(at);
+            }
+        }
     }
 
     // A waiting note's start has come: give it a voice.
@@ -404,6 +485,32 @@ impl Core {
                 slot.voice = Voice::Lead(v);
                 span
             }
+            NYLON => {
+                let mut v = Nylon::new();
+                v.play(w.midi, w.time, w.dur, w.vel, rate);
+                if w.damped {
+                    v.damp(w.damp);
+                }
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Nylon(v);
+                span
+            }
+            ACCORDION => {
+                let mut v = Accordion::new();
+                v.play(
+                    w.midi,
+                    w.time,
+                    w.dur,
+                    w.vel,
+                    w.channel == CHORDS,
+                    a.is_finite(),
+                    b,
+                    rate,
+                );
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Accordion(v);
+                span
+            }
             _ => {
                 let mut v = Kalimba::new();
                 v.play(w.midi, w.time, w.dur, w.vel, w.parts, rate);
@@ -413,6 +520,9 @@ impl Core {
             }
         };
         slot.channel = w.channel as usize;
+        slot.strummed = w.strummed;
+        slot.strum = w.strum;
+        slot.until = w.until;
         slot.begin = begin;
         slot.end = end;
         slot.busy = end > begin;
@@ -444,7 +554,7 @@ impl Core {
             }
             self.start(w);
         }
-        for bus in self.fiddles.iter_mut() {
+        for bus in self.buses.iter_mut().flatten() {
             bus.fill(0.0);
         }
         let rate = self.rate;
@@ -452,15 +562,17 @@ impl Core {
             if slot.begin >= end {
                 continue;
             }
-            let (Some(out), Some(bus)) = (
+            let (Some(out), Some([fiddles, nylons, accordions])) = (
                 self.out.get_mut(slot.channel),
-                self.fiddles.get_mut(slot.channel),
+                self.buses.get_mut(slot.channel),
             ) else {
                 continue;
             };
             match &mut slot.voice {
                 Voice::Kalimba(v) => v.render(block, rate, &self.waves, out),
-                Voice::Fiddle(v) => v.render(block, rate, &self.waves, bus),
+                Voice::Fiddle(v) => v.render(block, rate, &self.waves, fiddles),
+                Voice::Nylon(v) => v.render(block, rate, &self.waves, nylons),
+                Voice::Accordion(v) => v.render(block, rate, &self.waves, accordions),
                 Voice::Pad(v) => v.render(block, rate, &self.waves, out),
                 Voice::Fm(v) => v.render(block, rate, &self.waves, out),
                 Voice::Sine(v) => v.render(block, rate, &self.waves, out),
@@ -472,23 +584,15 @@ impl Core {
                 slot.busy = false;
             }
         }
-        // Every fiddle note in a channel through that channel's body, in
-        // order, every block.
-        for ((out, bus), body) in self
+        // Every note with a body, through its channel's body of its kind.
+        for ((out, buses), bodies) in self
             .out
             .iter_mut()
-            .zip(self.fiddles.iter())
-            .zip(self.body.iter_mut())
+            .zip(self.buses.iter())
+            .zip(self.bodies.iter_mut())
         {
-            for (y, &x) in out.iter_mut().zip(bus.iter()) {
-                let mut v = x;
-                for f in body.iter_mut() {
-                    v = f.step(v);
-                }
-                *y += v;
-            }
-            for f in body.iter_mut() {
-                f.flush();
+            for (bus, body) in buses.iter().zip(bodies.iter_mut()) {
+                body.run(bus, out);
             }
         }
         &self.out

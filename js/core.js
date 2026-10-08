@@ -2,7 +2,8 @@
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
 // here runs. With it on, the synth hands the voices the core has (kalimba,
-// fiddle, pad, every fm() voice, sine, tubular, the wave-table voices, so far) to an
+// fiddle, pad, every fm() voice, sine, tubular, the wave-table voices,
+// nylon and accordion, so far) to an
 // AudioWorkletNode running js/dlcore.wasm,
 // and keeps everything else: scheduling, the voice budget, every
 // Math.random draw, every other voice, the effects and the master chain.
@@ -22,6 +23,7 @@ export const ENGINE = (() => {
 export const CORE_VOICES = {
   kalimba: 0, fiddle: 1, pad: 2, fm: 3, sine: 4, tubular: 5,
   softpad: 6, analogpad: 7, analoglead: 8, sawpluck: 9, beep: 10, moog: 11, whistle: 12,
+  nylon: 13, accordion: 14,
 };
 export const KALIMBA_STRIKE = 1;
 export const KALIMBA_BODY = 2;
@@ -97,6 +99,12 @@ export class CoreHost {
   // draws.
   note(voice, channel, time, midi, dur, vel, parts, extra = NO_EXTRA) {
     this.node.port.postMessage({ type: 'note', voice, channel, time, midi, dur, vel, parts, extra });
+  }
+
+  // A new strum into `channel` at `time`: the last strum's nylon strings
+  // still held let go (Synth.damp, Core::damp).
+  damp(channel, time) {
+    this.node.port.postMessage({ type: 'damp', channel, time });
   }
 
   // Resolves once the worklet has taken every message sent before it.

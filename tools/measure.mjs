@@ -706,6 +706,8 @@ const CORE_VOICES = [
   'keys', 'bell', 'celeste', 'musicbox', 'rhodes', 'marimba', 'harp', 'piano', 'prepared', 'sine', 'tubular',
   // Item 24: the wave-table voices (pluck is the square beep).
   'softpad', 'analogpad', 'analoglead', 'saw', 'pluck', 'moog', 'whistle',
+  // Item 25: the voices with a body of their own, beside the fiddle.
+  'nylon', 'accordion',
 ];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
@@ -839,6 +841,61 @@ async function renderNote(job, midi, vel, rep, o) {
     absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
   });
   engine._scheduleStep(0, at);
+  await settle(synth);
+  return rendered(ctx, synth);
+}
+
+// Two strums of a triad, the second while the first still rings, so that
+// it damps the first one's strings (Synth.damp), for --null. 'ahead': both
+// scheduled before the render, as this harness schedules everything.
+// 'live': the second scheduled while the render is under way, once the
+// first one's strings are sounding, as the app schedules -- the damp lands
+// on a timeline that is already rendering. 'late': no second strum, only
+// its damp, made after its own time has been rendered.
+async function renderStrums(job, midi, vel, o) {
+  const again = Math.max(1, Math.round(o.dur / 2 / STEP));
+  const second = o.at + again * STEP;
+  const ctx = new OfflineAudioContext(1, Math.ceil((second - 0.05 + o.dur + o.tail) * o.rate), o.rate);
+  const core = await coreFor(ctx, o.engine);
+  // Its own stream, taken up again for the second strum: other renders
+  // seed Math.random while this one is suspended.
+  const random = mulberry32(seedFor([job.layer, job.voice, midi, vel.toFixed(2), o.dur, o.strum].join('|')));
+  Math.random = random;
+  const synth = synthFor(ctx, 'full', o.engine, core);
+  synth._budget = () => true;
+  const channel = synth.channels[job.layer].gain;
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(ctx.destination);
+  const notes = [0, 4, 7].map((i) => midi + i);
+  const dur = o.dur / STEP;
+  const tracks = {
+    drums: [], bass: [], melody: [], texture: [],
+    chords: [
+      { step: 0, dur, notes, vel, voice: job.voice, strum: 'down' },
+      { step: again, dur, notes, vel, voice: job.voice, strum: 'up' },
+    ],
+  };
+  const engine = Object.create(Engine.prototype);
+  Object.assign(engine, {
+    ctx, synth,
+    spec: { bpm: 60 / STEP / 4, swing: 0, mutes: {} },
+    live: { tracks, totalSteps: again + 1, stepsPerBar: 16 },
+    absStep: 0, pumpAmount: 0, tailsDucked: false, visualQueue: [],
+  });
+  engine._scheduleStep(0, o.at);
+  if (o.strum === 'ahead') {
+    engine._scheduleStep(again, second);
+  } else {
+    const live = o.strum === 'live';
+    ctx.suspend(live ? o.at + (again * STEP) / 2 : second + 0.05).then(async () => {
+      Math.random = random;
+      if (live) engine._scheduleStep(again, second);
+      else synth.damp(channel, second);
+      await settle(synth);
+      ctx.resume();
+    });
+  }
   await settle(synth);
   return rendered(ctx, synth);
 }
@@ -1025,17 +1082,25 @@ window.probeNull = async (o) => {
   const tasks = [];
   // A note's start comes from its place in the whole run, so a batch (see
   // inPages) walks every job and renders only its own: the same notes start
-  // at the same points however the run is split.
+  // at the same points however the run is split. Strums count apart, so the
+  // other voices' notes start where they always have.
   let n = 0;
+  let m = 0;
   for (const [j, job] of o.jobs.entries()) {
     const variants = job.layer === 'melody'
       ? [{ name: '' }, { name: ', joined', prev: -2 }, { name: ', repeated', prev: 0 }]
       : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
+    // A strummed voice, strummed twice: the second strum damps the first.
+    if (job.layer === 'chords' && job.voice === 'nylon') {
+      for (const strum of ['ahead', 'live', 'late']) variants.push({ name: ', strummed ' + strum, strum });
+    }
     for (const variant of variants) {
       for (const vel of o.velocities) {
         for (const dur of o.lengths) {
+          // A strum is damped halfway through the note: not a grace's length.
+          if (variant.strum && dur < 0.4) continue;
           for (let midi = job.low; midi <= job.high; midi += 3) {
-            const k = n++;
+            const k = variant.strum ? m++ : n++;
             if (o.only && !o.only.includes(j)) continue;
             // Every fifth note a fraction of a frame before a block starts,
             // so its first frame is the block's: Chromium has rules of its
@@ -1047,9 +1112,12 @@ window.probeNull = async (o) => {
               rate: o.rate, dur, tail: 1.8, at,
               prev: variant.prev == null ? undefined : midi + variant.prev, chord: variant.chord,
             };
+            const render = variant.strum
+              ? (engine) => renderStrums(job, midi, vel, { ...opts, strum: variant.strum, engine })
+              : (engine) => renderNote(job, midi, vel, 0, { ...opts, engine });
             tasks.push(async () => {
-              const js = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'js' })).getChannelData(0);
-              const rust = (await renderNote(job, midi, vel, 0, { ...opts, engine: 'rust' })).getChannelData(0);
+              const js = (await render('js')).getChannelData(0);
+              const rust = (await render('rust')).getChannelData(0);
               return { voice: job.voice, layer: job.layer, variant: variant.name, vel, dur, midi, at, ...nullOf(js, rust) };
             });
           }

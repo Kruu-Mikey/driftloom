@@ -130,6 +130,12 @@ impl Biquad {
         y
     }
 
+    /// Whether the filter is still: nothing in its memory, so zeros in give
+    /// zeros out.
+    pub fn at_rest(&self) -> bool {
+        self.x1 == 0.0 && self.x2 == 0.0 && self.y1 == 0.0 && self.y2 == 0.0
+    }
+
     /// At the end of every block, as Chromium does: state too small for a
     /// 32-bit float goes to zero.
     pub fn flush(&mut self) {

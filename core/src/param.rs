@@ -23,6 +23,22 @@
 //! - An exponential ramp from or to zero, or across zero, holds V0 until it
 //!   ends and then jumps to V1, as the spec says.
 //!
+//! One place Chromium renders the spec its own way, followed when the
+//! parameter knows its sample rate (`reset_at`): where a target curve
+//! starts. Chromium starts it from the value the parameter had at the frame
+//! before its first frame -- the last sample it rendered, carried from
+//! block to block -- not from the curve before it at the target's own
+//! time. After another target curve, or a linear ramp still under way at
+//! that frame, the two differ by a fraction of a frame of that curve; and
+//! after an exponential ramp that ends inside the last frame of a render
+//! block, where a nylon string's attack hands over to its decay, by up to
+//! a frame of the attack, a few percent. Inside a block Chromium clips an
+//! exponential ramp's last value to its end value, so there the curve
+//! starts from V1 as the spec has it (`audio_param_handler.cc`,
+//! `ProcessSetTarget` and `ProcessExponentialRamp`). The voices ported
+//! before the nylon guitar keep the spec's start: none of them hands one
+//! curve straight to a target, and their renders stay as they were.
+//!
 //! Values are 32-bit floats, as an `AudioParam`'s are. Times are seconds on
 //! the host's clock, in 64-bit floats. A parameter holds a fixed number of
 //! events and never allocates; one added past that is dropped and the call
@@ -73,6 +89,9 @@ pub struct Param {
     intrinsic: f32,
     events: [Event; MAX_EVENTS],
     len: usize,
+    /// The sample rate, when target curves start where Chromium starts
+    /// them (above); zero for the spec's start.
+    rate: f64,
 }
 
 impl Param {
@@ -81,6 +100,7 @@ impl Param {
             intrinsic,
             events: [EMPTY; MAX_EVENTS],
             len: 0,
+            rate: 0.0,
         }
     }
 
@@ -89,6 +109,14 @@ impl Param {
     pub fn reset(&mut self, intrinsic: f32) {
         self.intrinsic = intrinsic;
         self.len = 0;
+        self.rate = 0.0;
+    }
+
+    /// The same, for a parameter rendered at `rate` whose target curves
+    /// start where Chromium starts them (see the module notes).
+    pub fn reset_at(&mut self, intrinsic: f32, rate: f64) {
+        self.reset(intrinsic);
+        self.rate = rate;
     }
 
     pub fn set_value_at_time(&mut self, value: f32, time: f64) -> bool {
@@ -153,6 +181,7 @@ impl Param {
     // worked out again, front to back, whenever the list changes.
     fn resolve(&mut self) {
         let intrinsic = self.intrinsic as f64;
+        let rate = self.rate;
         let mut prev: Option<Event> = None;
         let len = self.len;
         for e in self.events.iter_mut().take(len) {
@@ -177,6 +206,7 @@ impl Param {
                     e.t0 = e.time;
                     e.v0 = match prev {
                         None => intrinsic,
+                        Some(p) if rate > 0.0 => chromium_start(&p, e.time, rate),
                         Some(p) if p.kind == Kind::Target => target_at(&p, e.time),
                         Some(p) => p.value as f64,
                     };
@@ -356,6 +386,32 @@ fn ramp_at(e: &Event, t: f64) -> f64 {
                 v0 * (v1 / v0).powf(x)
             }
         }
+    }
+}
+
+// Where Chromium starts a target curve at `time` that follows `p`: the
+// value at the frame before the curve's first (see the module notes).
+fn chromium_start(p: &Event, time: f64, rate: f64) -> f64 {
+    let at = time * rate;
+    let first = at.ceil();
+    let before = (first - 1.0) / rate;
+    let block = first > 0.0 && (first as u64).is_multiple_of(QUANTUM as u64);
+    // A target exactly on a frame finds the event before it still current
+    // there, and Chromium runs that event once more, for no frames: a ramp
+    // hands over its end value, and a target curve at the start of a block
+    // takes one more step.
+    let exact = at == first;
+    // Still under way at that frame, and so not yet at its end value.
+    let running = p.time > before && before >= p.t0;
+    match p.kind {
+        Kind::Target if before >= p.time => {
+            target_at(p, if exact && block { first / rate } else { before })
+        }
+        Kind::Target => p.v0,
+        _ if exact => p.value as f64,
+        Kind::Linear if running => ramp_at(p, before),
+        Kind::Exponential if running && block => ramp_at(p, before),
+        _ => p.value as f64,
     }
 }
 

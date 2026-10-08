@@ -191,8 +191,8 @@ impl Default for Wave {
 }
 
 /// The waves the voices play: Web Audio's sine (a `PeriodicWave` of one
-/// partial, read like any other), the fiddle's `bowed` wave and the built-in
-/// triangle.
+/// partial, read like any other), the folk voices' own waves and the
+/// built-in triangle, sawtooth and square.
 pub struct Waves {
     pub sine: Wave,
     pub bowed: Wave,
@@ -205,6 +205,10 @@ pub struct Waves {
     pub lead_saw: Wave,
     pub lead_moog: Wave,
     pub lead_analog: Wave,
+    /// The accordion's `reed` and the nylon guitar's two plucks.
+    pub reed: Wave,
+    pub nylon_mellow: Wave,
+    pub nylon_bright: Wave,
 }
 
 /// The lead waves' slopes, and how many partials they have.
@@ -218,6 +222,19 @@ const LEAD_PARTIALS: usize = 64;
 const BOWED_SLOPE: f64 = 2.2;
 const BOWED_PARTIALS: usize = 64;
 
+/// The accordion's `reed` wave (`_makeWave(REED_SLOPE, REED_EVEN)`): partial
+/// n at 1/n^2, the even ones at 0.6 of that, 64 of them.
+const REED_SLOPE: f64 = 2.0;
+const REED_EVEN: f64 = 0.6;
+
+/// The nylon guitar's two waves (`_makePluck`): partial n at 1/n^slope times
+/// sin(n pi at), the comb of a string plucked a fifth of the way along; 64
+/// of them. `NYLON_MELLOW.slope`, `NYLON_BRIGHT.slope`, `NYLON_PLUCK_AT`.
+const NYLON_MELLOW_SLOPE: f64 = 2.4;
+const NYLON_BRIGHT_SLOPE: f64 = 1.4;
+const NYLON_PLUCK_AT: f64 = 0.2;
+const FOLK_PARTIALS: usize = 64;
+
 impl Waves {
     pub const fn new() -> Self {
         Waves {
@@ -229,6 +246,9 @@ impl Waves {
             lead_saw: Wave::new(),
             lead_moog: Wave::new(),
             lead_analog: Wave::new(),
+            reed: Wave::new(),
+            nylon_mellow: Wave::new(),
+            nylon_bright: Wave::new(),
         }
     }
 
@@ -273,6 +293,24 @@ impl Waves {
                 *im = (1.0 / (n as f64).powf(slope)) as f32;
             }
             wave.build(rate, &real[..=LEAD_PARTIALS], &imag[..=LEAD_PARTIALS], fft);
+        }
+        imag.fill(0.0);
+        for (n, im) in imag.iter_mut().enumerate().take(FOLK_PARTIALS + 1).skip(1) {
+            let even = if n.is_multiple_of(2) { REED_EVEN } else { 1.0 };
+            *im = (even / (n as f64).powf(REED_SLOPE)) as f32;
+        }
+        self.reed
+            .build(rate, &real[..=FOLK_PARTIALS], &imag[..=FOLK_PARTIALS], fft);
+        // `Math.sin(n * Math.PI * at)`, multiplied in that order.
+        for (wave, slope) in [
+            (&mut self.nylon_mellow, NYLON_MELLOW_SLOPE),
+            (&mut self.nylon_bright, NYLON_BRIGHT_SLOPE),
+        ] {
+            for (n, im) in imag.iter_mut().enumerate().take(FOLK_PARTIALS + 1).skip(1) {
+                let k = n as f64;
+                *im = ((k * PI * NYLON_PLUCK_AT).sin() / k.powf(slope)) as f32;
+            }
+            wave.build(rate, &real[..=FOLK_PARTIALS], &imag[..=FOLK_PARTIALS], fft);
         }
     }
 }
