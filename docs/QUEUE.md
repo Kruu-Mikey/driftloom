@@ -948,6 +948,37 @@ textures are ported without the click.
   usual throttling): audio health must not get worse; report audio- and
   main-thread cost, graph churn and memory, as item 22 did.
 
+## 27c. Three small fixes from the brain's check of 26b and 27 (before item 28)
+
+Found 2026-10-09 by the brain's review and reruns. One PR, a version
+bump (the first changes what the app plays).
+
+- **26b's setter and late notes (JavaScript, flag off and on).** The
+  Web Audio `value` setter is `setValueAtTime(value, currentTime)`. For
+  a note built after its own start time (the engine plays notes up to
+  about 0.25 s late, e.g. after a hidden tab or a stall), that event
+  lands *after* the note's envelope events: the gain jumps back to its
+  first value when the envelope has already moved on (most are 0.0001,
+  which would cut the note; the kick's click would hold at `v * 0.28`).
+  Offline renders never build a note late, so 26b's proofs couldn't see
+  it. Reproduce first (a note built behind `currentTime`, in an offline
+  render through `suspend()`, before and after 26b), then fix every
+  setter 26b added: e.g. `setValueAtTime(x, Math.min(time,
+  ctx.currentTime))`, which is 26b's fix when on time and a no-op when
+  late. Check the core does what the fixed JavaScript does for a late
+  note (it starts late notes at once).
+- **The jingle's draws on a fallback (flag on).** `_coreDrum` draws the
+  jingle's five zil detunes before `_coreNoiseChannel` can refuse; on a
+  fallback the JavaScript jingle draws them again, 12 draws where the
+  rule is 7. Check the channel first, or hand the JS path the drawn
+  values. Check the other drums for the same pattern.
+- **Pan flute grace notes (flag on).** `--null --voice panflute` on v75:
+  the 0.1 s and "repeated" rows show a worst sample of -68.5 dBFS (worst
+  note -80.8 dB); in the brain's check of item 26 (v72) the same rows
+  were -125 dBFS. Something in 26b or 27a moved it, likely the air
+  gain's new first value or the frame-based event compare. Find which,
+  make it null again, and say why the other voices didn't move.
+
 ## 28. Rust core, step 8: the sung voices (vowel, hum, choir)
 
 The hardest voices, last. Each singer's detune is a ramp, then a jitter
@@ -965,6 +996,8 @@ drifts; a lowpass; and a breath through a bandpass.
   case closely; a single misplaced draw shifts every later note.
 - The `glottal` wave, `_formantTrim` (computed in JavaScript and sent,
   or ported: say which), choir's three singers into one tract.
+
+Start from 27c's fixed code.
 
 **After item 28, stop.** Every voice plays from Rust behind the flag.
 The brain verifies, Mikey listens to one labeled album across the new
