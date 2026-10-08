@@ -1184,3 +1184,12 @@ Mikey decides this line:
   load: the first chord played in JavaScript while the core was still
   arriving. If Diagnostics says `rust (failed: ...)`, the phone's browser
   cannot run the module (it needs Safari 15 or later).
+- #133, the Rust core's third step: the FM voices, sine and tubular (item 23, v69),
+  https://23327644-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust`, keys, bell, celeste,
+  music box, Rhodes, marimba, harp, piano, sine and the tubular bell (and
+  prepared piano's two strikes; its knock is still JavaScript) come out of
+  Rust; they null against the JavaScript voices to between -88 and -121 dB.
+  Play a loop with keys or a bell and one with tubular bells, and check
+  Diagnostics reads `engine: rust  late: 0`; `fallback` still counts bass,
+  texture and drum notes, which move in later items.
