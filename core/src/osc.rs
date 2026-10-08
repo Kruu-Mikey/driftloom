@@ -7,9 +7,12 @@
 //! against it:
 //!
 //! - **Start and stop** land on whole sample frames: the first frame at or
-//!   after the start time, and the stop time likewise. The wave starts at
-//!   the top of its table and moves on after each sample, by the step at
-//!   that sample.
+//!   after the start time, and the stop time likewise, each rounded to
+//!   1/1024 of a frame first (`frame_at`). So a start a hair past a frame
+//!   is on that frame, and a stop a hair past one stops there. A start on
+//!   a frame but after it writes nothing there; the wave begins on the
+//!   next. The wave starts at the top of its table and moves on after each
+//!   sample, by the step at that sample.
 //! - **The fraction of a frame.** A note rarely starts on a frame. When the
 //!   oscillator's pitch is steady in the render block it starts in
 //!   (nothing automated, nothing connected to it), Chromium starts the
@@ -38,9 +41,18 @@
 use crate::QUANTUM;
 use crate::wave::Wave;
 
-/// The first frame at or after `time` seconds.
+/// `TimeToSampleFrame`'s first step: the time in frames, to 1/1024 of one.
+pub fn frames(time: f64, rate: f64) -> f64 {
+    (time * rate * 1024.0).round() / 1024.0
+}
+
+/// The first frame at or after `time` seconds, as Chromium schedules every
+/// source, oscillators and buffer sources alike
+/// (`AudioScheduledSourceHandler::UpdateSchedulingInfo`): the time is
+/// rounded to 1/1024 of a frame first, so a time a hair past a frame is
+/// that frame.
 pub fn frame_at(time: f64, rate: f64) -> u64 {
-    let f = (time * rate).ceil();
+    let f = frames(time, rate).ceil();
     if f > 0.0 { f as u64 } else { 0 }
 }
 
@@ -88,6 +100,16 @@ impl TableOsc {
         self.start
     }
 
+    /// Where a steady wave starts, in the block it starts in: where it
+    /// would have been at its first sample had it begun on its start time,
+    /// between frames. Not in the very first block a context renders.
+    fn lead(&mut self, f: f32, rate_scale: f32) {
+        if self.start >= QUANTUM as u64 {
+            let first = self.start + u64::from(self.at > self.start as f64);
+            self.index = (first as f64 - self.at) * f as f64 * rate_scale as f64;
+        }
+    }
+
     pub fn stop_frame(&self) -> u64 {
         self.stop
     }
@@ -104,25 +126,34 @@ impl TableOsc {
     ) -> (usize, usize) {
         out.fill(0.0);
         let end = block + QUANTUM as u64;
-        let lo = self.start.max(block);
+        let first = self.start >= block && self.start < end;
+        // A start a hair past its frame (see `frame_at`) starts on that
+        // frame but writes nothing there: the wave begins on the next.
+        let skip = u64::from(first && self.at > self.start as f64);
+        let lo = self.start.max(block) + skip;
         let hi = self.stop.min(end);
-        if lo >= hi {
-            return (0, 0);
-        }
-        let first = self.start >= block;
-        let (lo, hi) = ((lo - block) as usize, (hi - block) as usize);
-        let n = hi - lo;
         let size = wave.size() as f64;
         let nyquist = rate / 2.0;
         let rate_scale = wave.rate_scale();
+        if lo >= hi {
+            // Started on a block's last frame, a hair past it: Chromium
+            // still sets the wave's place in this block, at its pitch here.
+            if skip == 1
+                && lo == end
+                && let Pitch::Steady { freq, detune } = pitch
+            {
+                self.lead(within(freq * (detune / 1200.0).exp2(), nyquist), rate_scale);
+            }
+            return (0, 0);
+        }
+        let (lo, hi) = ((lo - block) as usize, (hi - block) as usize);
+        let n = hi - lo;
         match pitch {
             Pitch::Steady { freq, detune } => {
                 let f = within(freq * (detune / 1200.0).exp2(), nyquist);
                 let incr = f * rate_scale;
-                if first && self.start >= QUANTUM as u64 {
-                    // The fraction of a frame the note began before its first.
-                    let lead = self.start as f64 - self.at;
-                    self.index = lead * f as f64 * rate_scale as f64;
+                if first {
+                    self.lead(f, rate_scale);
                 }
                 let pick = wave.pick(f);
                 let mut index = self.index;
@@ -261,6 +292,41 @@ mod tests {
         assert!((out[102] - sine(1000.0 / RATE)).abs() < 1e-5);
         assert!(out[3000] != 0.0);
         assert_eq!(out[3001], 0.0);
+    }
+
+    #[test]
+    fn a_hair_past_a_frame_is_that_frame() {
+        let w = waves();
+        let mut osc = TableOsc::new();
+        // Starts on frame 1000 but plays from 1001, as it would have from
+        // 1000.0003; stops on frame 3000, which it does not play.
+        osc.schedule(1000.0003 / RATE, 3000.0003 / RATE, RATE);
+        assert_eq!(osc.start_frame(), 1000);
+        assert_eq!(osc.stop_frame(), 3000);
+        let out = run(&mut osc, &w, |_| 1000.0, false, 4096);
+        assert_eq!(out[1000], 0.0);
+        assert!((out[1001] - sine(1000.0 * 0.9997 / RATE)).abs() < 1e-5);
+        assert!(out[2999] != 0.0);
+        assert_eq!(out[3000], 0.0);
+    }
+
+    #[test]
+    fn a_start_on_a_blocks_last_frame_takes_that_blocks_pitch() {
+        let w = waves();
+        let mut osc = TableOsc::new();
+        // Frame 1023 is the last of the block 896..1024: the note starts
+        // there and sounds from 1024, from where 1000 Hz (that block's
+        // pitch, not the next one's) would have put it.
+        osc.schedule(1023.0003 / RATE, 1.0, RATE);
+        let out = run(
+            &mut osc,
+            &w,
+            |k| if k >= 1024 { 2000.0 } else { 1000.0 },
+            false,
+            2048,
+        );
+        assert_eq!(out[1023], 0.0);
+        assert!((out[1024] - sine(1000.0 * 0.9997 / RATE)).abs() < 1e-5);
     }
 
     #[test]

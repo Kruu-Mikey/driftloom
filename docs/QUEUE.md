@@ -4,7 +4,7 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-08:** items 0-27 are done (13 stopped at its gate by
+**Status, 2026-10-09:** items 0-27c are done (13 stopped at its gate by
 design). Next: **item 28, the sung voices, the last of the Rust port**; it
 names its session's model in `docs/BRAIN.md` (State). A new Claude Code
 session starts here: read the standing rules and the merge policy, then
@@ -1344,3 +1344,13 @@ Mikey decides this line:
   the main thread 9-13% lighter, and no Web Audio nodes are made at all (110
   a second before); no late ticks or device fill-ins either way. Only the
   sung voices still play in JavaScript. Core memory 10.4 MB.
+- #143, three small fixes before the sung voices (item 27c, v76),
+  https://e6fb9fa3-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing to listen for. With `?engine=rust`, a note that starts or stops a
+  hair past a whole sample (one time in about two thousand) now plays
+  exactly as JavaScript plays it; before, the core could play its breath or
+  noise a sample late for the whole note (the pan flute's -68.5 dBFS in the
+  brain's check; snares and hats too, when they landed there). Also: the
+  first-value fix from 26b no longer uses the `value` setter, which a
+  browser could apply after a late note's envelope (Chromium doesn't), and
+  a jingle the core can't take no longer draws its zils twice.
