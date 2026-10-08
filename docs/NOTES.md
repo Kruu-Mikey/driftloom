@@ -700,9 +700,10 @@ games. It goes a voice at a time, behind a flag: the kalimba (queue item
 21); the fiddle and the pad (item 22), the two that cover the hard parts --
 a custom wave, vibrato, slurs, a body of filters, and a filter that moves;
 every `fm()` voice, sine and tubular (item 23); the wave-table voices
-(item 24); and the accordion and the nylon guitar (item 25). Bass,
-textures, drums, the breathy and struck voices and the sung ones still play
-in JavaScript.
+(item 24); the accordion and the nylon guitar (item 25); and the stab,
+ocarina, flute, pan flute, prepared's knock and temple bell, on the noise
+and the bandpass (item 26). Bass, textures, drums and the sung voices
+still play in JavaScript.
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
@@ -727,8 +728,12 @@ fiddle, nylon and accordion (`folk.rs`) are one chain per kind and channel,
 as `_body()` builds them in JavaScript; a body with nothing in it and
 nothing ringing is skipped. A new strum damps the last strum's nylon
 strings in the core as `damp()` does in JavaScript, whether they are
-already sounding or still waiting to start. `cargo test` in `core/` runs
-its own tests.
+already sounding or still waiting to start. The noise every breath and
+strike plays is the synth's own -- drawn from `Math.random` as it is built
+-- so JavaScript hands its samples to the core once per synth (`noise.rs`,
+up to two seconds at 96 kHz; a faster context keeps its noise voices in
+JavaScript), and a source plays it the way Chromium plays an
+`AudioBufferSourceNode`. `cargo test` in `core/` runs its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -763,7 +768,9 @@ reports the difference against what the voice plays. Nylon is also
 strummed twice, the second strum damping the first: both scheduled before
 the render, the second scheduled mid-render (as the app does), and a damp
 that comes after its time. Notes null to about
--100 dB and loops to their own floor. That took matching Chromium where it
+-100 dB and loops to their own floor. Before the voices that play the
+noise, the noise source is proven alone: the hat's graph -- a grain through
+a highpass under a gain -- on the melody channel. That took matching Chromium where it
 is not the obvious reading of the spec, measured and then read in its
 source:
 
@@ -788,6 +795,18 @@ source:
   arrives late -- moves to the start of the next block. The voices ported
   before nylon keep the spec's start (none hands a curve straight to a
   target), so their renders did not move.
+- A buffer source schedules itself on Chromium's `TimeToSampleFrame`,
+  which rounds the time to 1/1024 of a frame before taking the ceiling, so
+  a strike at 11.3 s (498330.00000000006 frames at 44.1 kHz) starts on
+  frame 498330. Oscillators take the plain ceiling, 498331, and a gain's
+  events compare in frames too, so that one frame of noise plays through
+  gains still at their default of 1: a click in every JavaScript temple
+  bell struck at such a time, which the core now makes as well. The source
+  reads from a whole frame (the offset rounded to the nearest), steps by a
+  32-bit playback rate, and ends a grain at its offset plus its duration
+  in buffer frames, rounded to the nearest; checked sample for sample
+  against Chromium 141, the harness's. (Newer Chromium keeps the offset's
+  fraction.)
 
 All of this is in every JavaScript note today, so the core does it too;
 `core/src/osc.rs` and `core/src/param.rs` have the details.

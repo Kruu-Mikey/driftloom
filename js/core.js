@@ -3,7 +3,8 @@
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
 // here runs. With it on, the synth hands the voices the core has (kalimba,
 // fiddle, pad, every fm() voice, sine, tubular, the wave-table voices,
-// nylon and accordion, so far) to an
+// nylon, accordion, stab, ocarina, flute, pan flute, prepared's knock and the
+// temple bell, so far) to an
 // AudioWorkletNode running js/dlcore.wasm,
 // and keeps everything else: scheduling, the voice budget, every
 // Math.random draw, every other voice, the effects and the master chain.
@@ -24,7 +25,11 @@ export const CORE_VOICES = {
   kalimba: 0, fiddle: 1, pad: 2, fm: 3, sine: 4, tubular: 5,
   softpad: 6, analogpad: 7, analoglead: 8, sawpluck: 9, beep: 10, moog: 11, whistle: 12,
   nylon: 13, accordion: 14,
+  stab: 15, ocarina: 16, flute: 17, panflute: 18, knock: 19, templebell: 20, hat: 21,
 };
+// The longest noise the core holds (NOISE_MAX, core/src/noise.rs): two
+// seconds at 96 kHz.
+export const CORE_NOISE_MAX = 192000;
 export const KALIMBA_STRIKE = 1;
 export const KALIMBA_BODY = 2;
 
@@ -62,16 +67,19 @@ export async function loadCore(ctx) {
   return { bytes: wasm };
 }
 
-// A note carries up to eight of its voice's own values (EXTRA in
+// A note carries up to twelve of its voice's own values (EXTRA in
 // core/src/lib.rs); what it leaves out reaches the core as NaN.
 const NO_EXTRA = [];
 
 // One core node for one synth: an output per channel it serves, each
 // connected into that channel's input.
+// `noise` is the synth's noise samples, handed to the core once.
 export class CoreHost {
-  constructor(ctx, core, dests) {
+  constructor(ctx, core, dests, noise = null) {
     this.ctx = ctx;
     this.dests = dests;
+    // Whether the core has the noise its noise voices play.
+    this.noise = !!noise && noise.length <= CORE_NOISE_MAX;
     this.late = 0;
     this.dropped = 0;
     this.failed = null;
@@ -82,7 +90,7 @@ export class CoreHost {
       numberOfOutputs: dests.length,
       outputChannelCount: dests.map(() => 1),
       // Copied, not moved: the page keeps its copy for the next synth.
-      processorOptions: { bytes: core.bytes },
+      processorOptions: { bytes: core.bytes, noise: this.noise ? noise : null },
     });
     dests.forEach((dest, i) => this.node.connect(dest, i));
     this.node.port.onmessage = (e) => this._receive(e.data);

@@ -207,6 +207,8 @@ pub struct Waves {
     pub lead_analog: Wave,
     /// The accordion's `reed` and the nylon guitar's two plucks.
     pub reed: Wave,
+    /// The pan flute's `pipe`.
+    pub pipe: Wave,
     pub nylon_mellow: Wave,
     pub nylon_bright: Wave,
 }
@@ -226,6 +228,10 @@ const BOWED_PARTIALS: usize = 64;
 /// n at 1/n^2, the even ones at 0.6 of that, 64 of them.
 const REED_SLOPE: f64 = 2.0;
 const REED_EVEN: f64 = 0.6;
+
+/// The pan flute's `pipe` wave (`_makeWave(PIPE_SLOPE, 0)`): the odd
+/// partials at 1/n^2.5, no even ones, 64 of them.
+const PIPE_SLOPE: f64 = 2.5;
 
 /// The nylon guitar's two waves (`_makePluck`): partial n at 1/n^slope times
 /// sin(n pi at), the comb of a string plucked a fifth of the way along; 64
@@ -247,6 +253,7 @@ impl Waves {
             lead_moog: Wave::new(),
             lead_analog: Wave::new(),
             reed: Wave::new(),
+            pipe: Wave::new(),
             nylon_mellow: Wave::new(),
             nylon_bright: Wave::new(),
         }
@@ -300,6 +307,12 @@ impl Waves {
             *im = (even / (n as f64).powf(REED_SLOPE)) as f32;
         }
         self.reed
+            .build(rate, &real[..=FOLK_PARTIALS], &imag[..=FOLK_PARTIALS], fft);
+        for (n, im) in imag.iter_mut().enumerate().take(FOLK_PARTIALS + 1).skip(1) {
+            let odd = if n.is_multiple_of(2) { 0.0 } else { 1.0 };
+            *im = (odd / (n as f64).powf(PIPE_SLOPE)) as f32;
+        }
+        self.pipe
             .build(rate, &real[..=FOLK_PARTIALS], &imag[..=FOLK_PARTIALS], fft);
         // `Math.sin(n * Math.PI * at)`, multiplied in that order.
         for (wave, slope) in [

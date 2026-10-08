@@ -1215,3 +1215,12 @@ Mikey decides this line:
   slides are the thing to listen for) and one with a pad, and check
   Diagnostics reads `engine: rust  late: 0`. The core's memory is now about
   7 MB, up from 4.
+- #136, the Rust core's fifth step: accordion and nylon (item 25, v71),
+  https://58895670-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the accordion and the
+  nylon guitar come out of Rust, through their bodies (accordion -115 to
+  -117 dB, nylon about -100 dB against the JavaScript voices). Play a loop
+  with the accordion (glade, tide) and one with strummed nylon chords
+  (cinder, wayfare): each strum should still stop the last chord's strings.
+  Also in it: the measure harness no longer runs out of memory on
+  `--engine rust`. Core memory about 9 MB.

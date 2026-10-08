@@ -2,7 +2,8 @@
 //! in Chromium (`biquad.cc`): the Audio EQ Cookbook's coefficients worked
 //! out in 64-bit floats from the node's 32-bit parameters, run in 64-bit
 //! floats, with each output rounded to a 32-bit float before it is fed
-//! back. A lowpass's Q is in dB, as Web Audio has it.
+//! back. A lowpass's and a highpass's Q is in dB, as Web Audio has them; a
+//! bandpass's is linear.
 //!
 //! When a parameter moves, Chromium works the coefficients out again for
 //! every sample; `set` caches the last ones, so a filter whose parameters
@@ -11,6 +12,8 @@
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
     Lowpass,
+    Highpass,
+    Bandpass,
     Peaking,
 }
 
@@ -83,6 +86,46 @@ impl Biquad {
                         1.0 - alpha,
                     )
                 } else {
+                    (0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+                }
+            }
+            Kind::Highpass => {
+                if w >= 1.0 {
+                    // The z-transform is 0.
+                    (0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+                } else if w > 0.0 {
+                    let resonance = 10f64.powf(q as f64 / 20.0);
+                    let theta = core::f64::consts::PI * w;
+                    let alpha = theta.sin() / (2.0 * resonance);
+                    let cosw = theta.cos();
+                    let beta = (1.0 + cosw) / 2.0;
+                    (
+                        beta,
+                        -2.0 * beta,
+                        beta,
+                        1.0 + alpha,
+                        -2.0 * cosw,
+                        1.0 - alpha,
+                    )
+                } else {
+                    // At zero the poles and zeros meet: the z-transform is 1.
+                    (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+                }
+            }
+            Kind::Bandpass => {
+                let q = (q as f64).max(0.0);
+                if w > 0.0 && w < 1.0 {
+                    if q > 0.0 {
+                        let w0 = core::f64::consts::PI * w;
+                        let alpha = w0.sin() / (2.0 * q);
+                        let k = w0.cos();
+                        (alpha, 0.0, -alpha, 1.0 + alpha, -2.0 * k, 1.0 - alpha)
+                    } else {
+                        // The limit as Q goes to 0 is 1.
+                        (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+                    }
+                } else {
+                    // At 0 and at the Nyquist frequency it passes nothing.
                     (0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
                 }
             }
