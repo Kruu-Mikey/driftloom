@@ -417,7 +417,7 @@ impl Lead {
         // Feeding only the detune, the depth is first rendered when the
         // note starts: its events are clamped to that block.
         if starts_in(self.lfo.start_frame(), block) {
-            self.depth.clamp_before(block as f64 / rate);
+            self.depth.clamp_before(block, rate);
         }
         let mut depth = [0.0f32; QUANTUM];
         self.depth.fill(block, rate, &mut depth);

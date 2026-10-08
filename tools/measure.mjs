@@ -728,9 +728,13 @@ const CORE_VOICES = [
   'nylon', 'accordion',
   // Item 26: the bandpass, and the noise (prepared's knock is in now too).
   'stab', 'ocarina', 'flute', 'panflute', 'templebell',
+  // Item 27: the bass (rhodesbass is an fm() call), and the textures (bell
+  // and chime are).
+  'sub', 'round', 'fifths', 'pluckbass', 'moogbass', 'rhodesbass',
+  'swell', 'drop', 'chime', 'wind', 'waves',
 ];
 // Those that play the noise: --null proves the source on its own first.
-const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared'];
+const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared', 'pluckbass', 'drop', 'wind', 'waves'];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
 const FAMILY_LIMIT = 3;
@@ -852,11 +856,11 @@ async function renderNote(job, midi, vel, rep, o) {
   const vowel = VOWELS[(midi - job.low) % 4];
   if (job.layer === 'melody') tracks.melody.push({ step: 0, dur, midi, vel, voice: job.voice, vowel, prev: o.prev });
   if (job.layer === 'chords') tracks.chords.push({ step: 0, dur, notes: (o.chord || [0]).map((i) => midi + i), vel, voice: job.voice, vowel });
-  if (job.layer === 'bass') tracks.bass.push({ step: 0, dur, midi, vel, glide: false, voice: job.voice });
+  if (job.layer === 'bass') tracks.bass.push({ step: 0, dur, midi, vel, glide: !!o.glide, voice: job.voice, chug: !!o.chug });
   // A roll takes no humanizing jitter, so the hit lands where it is put.
   if (job.layer === 'drums') tracks.drums.push({ step: 0, inst: job.voice, vel, roll: true });
   // Drops and wind take no pitch; a note handed to them is ignored.
-  if (job.layer === 'texture') tracks.texture.push({ step: 0, dur, notes: [midi], vel, kind: job.voice });
+  if (job.layer === 'texture') tracks.texture.push({ step: 0, dur, notes: [midi], vel, kind: job.voice, band: o.band });
   const engine = Object.create(Engine.prototype);
   Object.assign(engine, {
     ctx, synth,
@@ -1171,9 +1175,15 @@ window.probeNull = async (o) => {
   let n = 0;
   let m = 0;
   for (const [j, job] of o.jobs.entries()) {
+    // A bass note may glide in, or chug (a short bounce); a wind texture may
+    // name its band. Neither layer has chords.
     const variants = job.layer === 'melody'
       ? [{ name: '' }, { name: ', joined', prev: -2 }, { name: ', repeated', prev: 0 }]
-      : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
+      : job.layer === 'bass'
+        ? [{ name: '' }, { name: ', glide', glide: true }, { name: ', chug', chug: true }]
+        : job.layer === 'texture'
+          ? [{ name: '' }, ...(job.voice === 'wind' ? [{ name: ', band 480', band: 480 }] : [])]
+          : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
     // A strummed voice, strummed twice: the second strum damps the first.
     if (job.layer === 'chords' && job.voice === 'nylon') {
       for (const strum of ['ahead', 'live', 'late']) variants.push({ name: ', strummed ' + strum, strum });
@@ -1195,6 +1205,7 @@ window.probeNull = async (o) => {
             const opts = {
               rate: o.rate, dur, tail: 1.8, at,
               prev: variant.prev == null ? undefined : midi + variant.prev, chord: variant.chord,
+              glide: variant.glide, chug: variant.chug, band: variant.band,
             };
             const render = variant.strum
               ? (engine) => renderStrums(job, midi, vel, { ...opts, strum: variant.strum, engine })
@@ -1214,15 +1225,20 @@ window.probeNull = async (o) => {
   if ((o.to ?? o.loops) <= (o.from ?? 0)) return out;
 
   // Whole loops that play the core's voices, through the real Engine and the
-  // whole master chain: the mix, and the melody and chords taps, dry. Taken
+  // whole master chain: the mix, and the melody, chords, bass and texture taps, dry. Taken
   // in turn for each voice, so every one is heard in some loops; a loop
   // with several counts for each.
   const asCore = (v) => (v === 'moogpad' ? 'pad' : v);
+  // The channels the core plays into, tapped dry.
+  const CORE_TAPS = ['melody', 'chords', 'bass', 'texture'];
   const voicesIn = (spec) => {
     const t = render(spec).tracks;
     const found = new Set();
-    for (const layer of ['melody', 'chords']) {
-      for (const e of t[layer]) if (e.vel && o.voices.includes(asCore(e.voice))) found.add(asCore(e.voice));
+    for (const layer of ['melody', 'chords', 'bass', 'texture']) {
+      for (const e of t[layer]) {
+        const name = asCore(layer === 'texture' ? e.kind : e.voice);
+        if (e.vel && o.voices.includes(name)) found.add(name);
+      }
     }
     return [...found];
   };
@@ -1239,18 +1255,17 @@ window.probeNull = async (o) => {
   const renderMix = async (spec, engineName) => {
     const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
     const seconds = Math.min(30, Math.max(loopDur * 2, 12));
-    const ctx = new OfflineAudioContext(3, Math.ceil(seconds * o.rate), o.rate);
+    const ctx = new OfflineAudioContext(CORE_TAPS.length + 1, Math.ceil(seconds * o.rate), o.rate);
     const core = await coreFor(ctx, engineName);
     Math.random = mulberry32(spec.seed >>> 0 || 1);
     const synth = synthFor(ctx, 'full', engineName, core);
     const engine = new Engine(ctx, synth);
     if (engine.clock.worker) engine.clock.worker.terminate();
-    const merger = ctx.createChannelMerger(3);
+    const merger = ctx.createChannelMerger(CORE_TAPS.length + 1);
     merger.connect(ctx.destination);
     synth.ceiling.disconnect();
     synth.ceiling.connect(merger, 0, 0);
-    synth.channels.melody.gain.connect(merger, 0, 1);
-    synth.channels.chords.gain.connect(merger, 0, 2);
+    CORE_TAPS.forEach((name, n) => synth.channels[name].gain.connect(merger, 0, n + 1));
     engine.load(spec);
     engine.playing = true;
     engine.nextStepTime = 0.05;
@@ -1274,9 +1289,11 @@ window.probeNull = async (o) => {
     // so even that is not bit for bit.
     const again = await renderMix(spec, 'js');
     const taps = (b) => {
-      const m = b.buf.getChannelData(1), c = b.buf.getChannelData(2);
-      const d = new Float32Array(m.length);
-      for (let i = 0; i < d.length; i++) d[i] = m[i] + c[i];
+      const d = new Float32Array(b.buf.length);
+      for (let n = 1; n <= CORE_TAPS.length; n++) {
+        const c = b.buf.getChannelData(n);
+        for (let i = 0; i < d.length; i++) d[i] += c[i];
+      }
       return d;
     };
     return {
@@ -2112,7 +2129,7 @@ function reportNull(data, opts) {
     out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
   out.push('');
-  out.push('  "core layers" is the melody and chords taps together, against their own level: everything else in');
+  out.push('  "core layers" is the melody, chords, bass and texture taps together, against their own level: everything else in');
   out.push('  them is the same on both engines. "js vs js" is the same loop rendered twice on the JavaScript synth:');
   out.push('  the mix never nulls deeper than that, whichever engine plays, because Chromium does not fix the');
   out.push('  order it sums a node\'s inputs in.');
@@ -2371,7 +2388,7 @@ if (opts.null) {
   // pad reached through voice(). --voice narrows it.
   const wanted = (opts.voices || CORE_VOICES).map((v) => (v === 'moogpad' ? 'pad' : v));
   const jobs = [];
-  for (const layer of ['melody', 'chords']) {
+  for (const layer of ['melody', 'chords', 'bass', 'texture']) {
     for (const voice of drawnLayers()[layer] || []) {
       if (!wanted.includes(voice === 'moogpad' ? 'pad' : voice)) continue;
       jobs.push({ layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] });

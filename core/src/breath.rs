@@ -35,7 +35,7 @@ fn breath_rate(draw: f64) -> f64 {
 /// drawn place, `dur + 0.05` long; `rate_draw` and `offset_draw` are its two
 /// draws, in that order.
 #[allow(clippy::too_many_arguments)]
-fn noise_grain(
+pub(crate) fn noise_grain(
     src: &mut NoiseSource,
     time: f64,
     dur: f64,
@@ -263,7 +263,7 @@ impl Wind {
         // Feeding only the detune, the depth is first rendered when the
         // note starts.
         if starts_in(self.lfo.start_frame(), block) {
-            self.depth.clamp_before(block as f64 / rate);
+            self.depth.clamp_before(block, rate);
         }
         let mut depth = [0.0f32; QUANTUM];
         self.depth.fill(block, rate, &mut depth);
@@ -442,7 +442,7 @@ impl Panflute {
             let mut sine = [0.0f32; QUANTUM];
             let (lo, hi) = self.lfo.render(block, &waves.sine, &steady, r, &mut sine);
             if starts_in(self.lfo.start_frame(), block) {
-                self.depth.clamp_before(block as f64 / rate);
+                self.depth.clamp_before(block, rate);
             }
             let mut depth = [0.0f32; QUANTUM];
             self.depth.fill(block, rate, &mut depth);

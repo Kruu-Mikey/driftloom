@@ -16,6 +16,7 @@
 //! Web Audio -- and, where Chromium's rendering differs from a plain
 //! reading of the spec, Chromium -- to the sample.
 
+pub mod bass;
 pub mod breath;
 pub mod filter;
 pub mod folk;
@@ -23,16 +24,19 @@ pub mod lead;
 pub mod noise;
 pub mod osc;
 pub mod param;
+pub mod texture;
 pub mod voice;
 pub mod wave;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+use bass::Bass;
 use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
 use noise::Noise;
+use texture::Texture;
 use voice::{Fiddle, Fm, FmOptions, Kalimba, PadNote, SineNote, Tubular, Vibrato, midi_to_freq};
 use wave::{Fft, Waves};
 
@@ -44,9 +48,13 @@ pub const QUANTUM: usize = 128;
 /// The channels the core plays into, in the order of its outputs. Each is
 /// one of the synth's per-layer channels, so a note from here takes the
 /// same echo, reverb, ducking and master chain as one built in JavaScript.
-pub const CHANNELS: usize = 2;
+/// All five of them (queue item 27).
+pub const CHANNELS: usize = 5;
 pub const MELODY: u32 = 0;
 pub const CHORDS: u32 = 1;
+pub const BASS_CHANNEL: u32 = 2;
+pub const TEXTURE_CHANNEL: u32 = 3;
+pub const DRUMS_CHANNEL: u32 = 4;
 
 /// Voices sounding at once. The JavaScript voice budget decides what plays,
 /// and it cannot fill this: its whole ceiling is 260 units and the cheapest
@@ -63,6 +71,16 @@ pub const POOL: usize = 256;
 /// dropped, and counted. All zeros until used, like the voices, so neither
 /// costs anything in the `.wasm`.
 pub const QUEUE: usize = 4096;
+
+/// Whether a note of this voice plays the noise, so the core must have it.
+fn plays_noise(voice: u32, parts: u32) -> bool {
+    match voice {
+        STAB..=HAT => voice != STAB,
+        BASS => parts & bass::KIND == bass::PLUCKBASS,
+        TEXTURE => texture::uses_noise(parts),
+        _ => false,
+    }
+}
 
 /// What the core says to a note.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -113,9 +131,17 @@ pub const EXTRA: usize = 12;
 ///   strike's rate and offset draws.
 /// - HAT: `parts` is which (`breath::HAT`, `OPEN_HAT`, `SHAKER`); its
 ///   noise's rate and offset draws.
+/// - BASS: `parts` is the voice (`bass::SUB` and the rest) with the flags
+///   `bass::GLIDE` and `CHUG`; the pluck's click's rate and offset draws.
+///   Every bass voice but `rhodesbass`, which is an FM note.
+/// - TEXTURE: `parts` is which (`texture::SWELL` and the rest). The drop's
+///   rate, offset and band draws; the wind's slow sine's rate draw, then
+///   its band in Hz (NaN for the usual one); the waves' rate and offset
+///   draws. `bell` and `chime` are FM notes.
 ///
-/// The noise voices -- the last six -- need the noise (`Core::noise`); a
-/// core without it drops them, and the host plays them in JavaScript.
+/// The noise voices -- those from the ocarina on, the pluck, the drop, the
+/// wind and the waves -- need the noise (`Core::noise`); a core without it
+/// drops them, and the host plays them in JavaScript.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
 pub const PAD: u32 = 2;
@@ -138,6 +164,10 @@ pub const PANFLUTE: u32 = 18;
 pub const KNOCK: u32 = 19;
 pub const TEMPLEBELL: u32 = 20;
 pub const HAT: u32 = 21;
+pub const BASS: u32 = 22;
+pub const TEXTURE: u32 = 23;
+/// The last voice there is.
+const LAST: u32 = TEXTURE;
 
 // `process` hands each voice the bus of its body by these places.
 const _: () =
@@ -168,6 +198,8 @@ enum Voice {
     Panflute(Panflute),
     Struck(Struck),
     TempleBell(TempleBell),
+    Bass(Bass),
+    Texture(Texture),
 }
 
 struct Slot {
@@ -351,8 +383,8 @@ impl Core {
         parts: u32,
         extra: [f64; EXTRA],
     ) -> Taken {
-        if voice > HAT
-            || (voice > STAB && !self.noise.ready())
+        if voice > LAST
+            || (plays_noise(voice, parts) && !self.noise.ready())
             || channel as usize >= CHANNELS
             || !(time.is_finite() && dur.is_finite() && midi.is_finite() && vel.is_finite())
         {
@@ -628,6 +660,20 @@ impl Core {
                 slot.voice = Voice::TempleBell(v);
                 span
             }
+            BASS => {
+                let mut v = Bass::new();
+                v.play(w.parts, w.midi, w.time, w.dur, w.vel, (a, b), noise, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Bass(v);
+                span
+            }
+            TEXTURE => {
+                let mut v = Texture::new();
+                v.play(w.parts, w.midi, w.time, w.dur, w.vel, [a, b, c], noise, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Texture(v);
+                span
+            }
             _ => {
                 let mut v = Kalimba::new();
                 v.play(w.midi, w.time, w.dur, w.vel, w.parts, rate);
@@ -695,6 +741,10 @@ impl Core {
                 Voice::Panflute(v) => v.render(block, rate, &self.waves, self.noise.samples(), out),
                 Voice::Struck(v) => v.render(block, rate, self.noise.samples(), out),
                 Voice::TempleBell(v) => {
+                    v.render(block, rate, &self.waves, self.noise.samples(), out)
+                }
+                Voice::Bass(v) => v.render(block, rate, &self.waves, self.noise.samples(), out),
+                Voice::Texture(v) => {
                     v.render(block, rate, &self.waves, self.noise.samples(), out)
                 }
                 Voice::Pad(v) => v.render(block, rate, &self.waves, out),

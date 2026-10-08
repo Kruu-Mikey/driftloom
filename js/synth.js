@@ -3,7 +3,7 @@
 // shared noise buffer, which is what keeps this playable on a cheap phone.
 
 import { midiToFreq } from './theory.js';
-import { CoreHost, CORE_VOICES, KALIMBA_STRIKE, KALIMBA_BODY } from './core.js';
+import { CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, BASS_GLIDE, BASS_CHUG, KALIMBA_STRIKE, KALIMBA_BODY } from './core.js';
 
 // A voice budget in *cost units*, not a count of voices.
 //
@@ -472,7 +472,9 @@ export class Synth {
   attachCore(core) {
     if (this.engine !== 'rust' || this.core) return;
     try {
-      this.core = new CoreHost(this._raw, core, [this.channels.melody.gain, this.channels.chords.gain],
+      const c = this.channels;
+      this.core = new CoreHost(this._raw, core,
+        [c.melody.gain, c.chords.gain, c.bass.gain, c.texture.gain, c.drums.gain],
         this.noise.getChannelData(0));
     } catch (err) {
       // No worklet node here: everything stays in JS, counted as fallbacks.
@@ -1273,6 +1275,33 @@ export class Synth {
     const out = this.channels.bass.gain;
     const f = midiToFreq(midi);
     const stop = time + dur + 0.4;
+    // The budget holds a bass note for 0.8 s past its end: the longest tail
+    // here, the fifths voice's, which stops at stop + 0.4. Every other
+    // voice stops at dur + 0.4 (rhodesbass aside, which decays in fm()). A
+    // chug, a short note on every eighth, was charged for twice as long as
+    // it sounds -- about four notes at once, some 35 units on pluckbass --
+    // and on lite that came out of the tune: wayfare's chug loops lost
+    // melody notes twice as often as its others. A chug note is held as
+    // long as it sounds. Every other bass note keeps the old hold, so no
+    // loop that was already here refuses anything differently.
+    const exact = chug && voice !== 'fifths' && voice !== 'rhodesbass';
+    const hold = dur + (exact ? 0.4 : 0.8);
+
+    // On the Rust core: every voice but rhodesbass, which is an fm() call
+    // below and goes there itself. The core has the trims. The pluck's
+    // click draws its noise's rate and offset, which go with the note.
+    if (this.engine === 'rust' && voice !== 'rhodesbass') {
+      const pluck = voice === 'pluckbass';
+      const channel = pluck ? this._coreNoiseChannel(out) : this._coreChannel(out);
+      if (channel >= 0) {
+        const parts = (BASS_KINDS[voice] ?? 0) | (glide ? BASS_GLIDE : 0) | (chug ? BASS_CHUG : 0);
+        this.core.note(CORE_VOICES.bass, channel, time, midi, dur, vel, parts,
+          pluck ? [Math.random(), Math.random()] : []);
+        this._release(time, hold, cost);
+        return;
+      }
+    }
+
     // Measured trims. Sustained low voices build up far more energy than
     // short ones, so a single channel fader either leaves the sustained
     // ones booming or buries the plucked ones.
@@ -1401,17 +1430,7 @@ export class Synth {
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
     }
-    // The budget holds a bass note for 0.8 s past its end: the longest tail
-    // here, the fifths voice's, which stops at stop + 0.4. Every other
-    // voice stops at dur + 0.4 (rhodesbass aside, which decays in fm()). A
-    // chug, a short note on every eighth, was charged for twice as long as
-    // it sounds -- about four notes at once, some 35 units on pluckbass --
-    // and on lite that came out of the tune: wayfare's chug loops lost
-    // melody notes twice as often as its others. A chug note is held as
-    // long as it sounds. Every other bass note keeps the old hold, so no
-    // loop that was already here refuses anything differently.
-    const exact = chug && voice !== 'fifths' && voice !== 'rhodesbass';
-    this._release(time, dur + (exact ? 0.4 : 0.8), cost);
+    this._release(time, hold, cost);
   }
 
   // ------------------------------------------------------------- tuned
@@ -1647,10 +1666,10 @@ export class Synth {
   // A note for the core, once the budget has said yes: false when it cannot
   // take it (counted as a fallback), and the JavaScript voice plays it.
   // `extra` is the voice's own values (core/src/lib.rs).
-  _coreNote(voice, dest, time, midi, dur, vel, extra) {
+  _coreNote(voice, dest, time, midi, dur, vel, extra, parts = 0) {
     const channel = this._coreChannel(dest);
     if (channel < 0) return false;
-    this.core.note(voice, channel, time, midi, dur, vel, 0, extra);
+    this.core.note(voice, channel, time, midi, dur, vel, parts, extra);
     return true;
   }
 
@@ -2705,6 +2724,10 @@ export class Synth {
     if (kind === 'swell') {
       for (const midi of notes) {
         if (!this._budget(time, soft)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.texture, out, time, midi, dur, vel, [], TEXTURE_KINDS.swell)) {
+          this._release(time, dur + 0.2);
+          continue;
+        }
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = midiToFreq(midi);
@@ -2723,6 +2746,16 @@ export class Synth {
       this.fm(notes[0], time, dur, vel, { out, ratio: 2.76, index: 230, decay: 1.6, attack: 0.004, cost: VOICE_COST.chime });
     } else if (kind === 'drop') {
       if (!this._budget(time, soft)) return;
+      // On the core: the noise's rate and offset, then the band, as below.
+      if (this.engine === 'rust') {
+        const channel = this._coreNoiseChannel(out);
+        if (channel >= 0) {
+          const draws = [Math.random(), Math.random(), Math.random()];
+          this.core.note(CORE_VOICES.texture, channel, time, 0, dur, vel, TEXTURE_KINDS.drop, draws);
+          this._release(time, 0.15);
+          return;
+        }
+      }
       const src = this._noiseSource(time, 0.12);
       const bp = ctx.createBiquadFilter();
       bp.type = 'bandpass';
@@ -2737,6 +2770,17 @@ export class Synth {
       this._release(time, 0.15);
     } else if (kind === 'wind') {
       if (!this._budget(time, soft)) return;
+      // On the core: the slow sine's rate draw, and the loop's band if it
+      // names one (the core has the usual one).
+      if (this.engine === 'rust') {
+        const channel = this._coreNoiseChannel(out);
+        if (channel >= 0) {
+          this.core.note(CORE_VOICES.texture, channel, time, 0, dur, vel, TEXTURE_KINDS.wind,
+            [Math.random(), opts.band || NaN]);
+          this._release(time, dur + 1);
+          return;
+        }
+      }
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       src.loop = true;
@@ -2765,6 +2809,16 @@ export class Synth {
       this._release(time, dur + 1);
     } else if (kind === 'waves') {
       if (!this._budget(time, soft, VOICE_COST.waves)) return;
+      // On the core: the rate draw, then the offset's.
+      if (this.engine === 'rust') {
+        const channel = this._coreNoiseChannel(out);
+        if (channel >= 0) {
+          this.core.note(CORE_VOICES.texture, channel, time, 0, dur, vel, TEXTURE_KINDS.waves,
+            [Math.random(), Math.random()]);
+          this._release(time, dur + 0.1, VOICE_COST.waves);
+          return;
+        }
+      }
       const src = ctx.createBufferSource();
       src.buffer = this.noise;
       src.loop = true;

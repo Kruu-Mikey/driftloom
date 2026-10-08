@@ -23,6 +23,9 @@
 //! - An exponential ramp from or to zero, or across zero, holds V0 until it
 //!   ends and then jumps to V1, as the spec says.
 //!
+//! - Event times are compared in frames, as Chromium does (`time * rate <=
+//!   frame`), so an event a hair after a whole frame has not come by it.
+//!
 //! One place Chromium renders the spec its own way, followed when the
 //! parameter knows its sample rate (`reset_at`): where a target curve
 //! starts. Chromium starts it from the value the parameter had at the frame
@@ -247,7 +250,7 @@ impl Param {
         while i < QUANTUM {
             let frame = (block + i as u64) as f64;
             let t = frame / rate;
-            let (curve, until) = self.curve(t, frame);
+            let (curve, until) = self.curve(frame, rate);
             let mut v = match curve {
                 Curve::Hold(v) => v,
                 Curve::Linear(e) => ramp_at(e, t),
@@ -262,7 +265,7 @@ impl Param {
             while i < QUANTUM {
                 let frame = (block + i as u64) as f64;
                 let t = frame / rate;
-                if self.reached(until, t, frame) {
+                if reached(until, frame, rate) {
                     break;
                 }
                 if let Some(y) = out.get_mut(i) {
@@ -281,31 +284,18 @@ impl Param {
         }
     }
 
-    // Whether `time` has come by the frame `frame`, at time `t`. Chromium
-    // asks it in frames -- `time * rate <= frame` -- and a parameter that
-    // follows Chromium does too: 11.3 s is 498330.00000000006 frames at
-    // 44.1 kHz, after frame 498330, though 498330 / 44100 is 11.3. A buffer
-    // source can start on that frame, where its gain has not yet moved.
-    fn reached(&self, time: f64, t: f64, frame: f64) -> bool {
-        if self.rate > 0.0 {
-            time * self.rate <= frame
-        } else {
-            time <= t
-        }
-    }
-
     // The curve in force at frame `frame`, time `t`, and the time it gives
     // way to the next.
-    fn curve(&self, t: f64, frame: f64) -> (Curve<'_>, f64) {
+    fn curve(&self, frame: f64, rate: f64) -> (Curve<'_>, f64) {
         let events = self.list();
         let n = events
             .iter()
-            .take_while(|e| self.reached(e.time, t, frame))
+            .take_while(|e| reached(e.time, frame, rate))
             .count();
         let next = events.get(n);
         if let Some(r) = next
             && is_ramp(r)
-            && self.reached(r.t0, t, frame)
+            && reached(r.t0, frame, rate)
         {
             let curve = if r.kind == Kind::Linear {
                 Curve::Linear(r)
@@ -353,12 +343,20 @@ impl Param {
     /// fraction of a frame before that block -- a note that starts exactly
     /// on a block -- moves to the block, and a ramp from it starts there. A
     /// gain or a filter renders every block, and never sees its events late.
-    pub fn clamp_before(&mut self, t: f64) {
+    pub fn clamp_before(&mut self, block: u64, rate: f64) {
+        let t = block as f64 / rate;
+        // The block's first frame must have come by the new time, in frames
+        // (`reached`): `t * rate` can land a hair above the frame it came
+        // from, so the time is stepped down to the last that has not.
+        let mut at = t;
+        while at * rate > block as f64 && at > 0.0 {
+            at = f64::from_bits(at.to_bits() - 1);
+        }
         let len = self.len;
         let mut moved = false;
         for e in self.events.iter_mut().take(len) {
             if e.time < t {
-                e.time = t;
+                e.time = at;
                 moved = true;
             }
         }
@@ -367,6 +365,17 @@ impl Param {
             self.resolve();
         }
     }
+}
+
+// Whether `time` has come by the frame `frame`. Chromium asks it in frames
+// -- `time * rate <= frame` -- and so does every parameter here: 11.3 s is
+// 498330.00000000006 frames at 44.1 kHz, after frame 498330, though
+// 498330 / 44100 is 11.3. A buffer source can start on that frame, where
+// its gain has not yet moved; and an oscillator reads its first block's
+// steps from the frames before it starts, where a frequency set at the
+// note's time has not yet arrived (`osc`).
+fn reached(time: f64, frame: f64, rate: f64) -> bool {
+    time * rate <= frame
 }
 
 #[derive(Clone, Copy)]
@@ -445,6 +454,32 @@ fn target_at(e: &Event, t: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_event_a_hair_after_a_frame_has_not_come_by_that_frame() {
+        // 11.3 s at 44.1 kHz is 498330.00000000006 frames: frame 498330 is
+        // still before the event, as in Chromium, though 498330 / 44100 is
+        // 11.3. 498330 is not a multiple of 128; its block starts at 498304.
+        let mut p = Param::new(1.0);
+        p.set_value_at_time(0.5, 11.3);
+        let mut out = [0.0; QUANTUM];
+        p.fill(498304, 44100.0, &mut out);
+        assert_eq!(out[498330 - 498304], 1.0);
+        assert_eq!(out[498331 - 498304], 0.5);
+    }
+
+    #[test]
+    fn a_clamped_event_has_come_by_its_block() {
+        // The block that starts at frame 3328 is at 0.07546485260770976 s,
+        // which is 3328.0000000000005 frames: an event clamped to it must
+        // still have come by that block's first frame.
+        let mut p = Param::new(1.0);
+        p.set_value_at_time(0.5, 0.05);
+        p.clamp_before(3328, 44100.0);
+        let mut out = [0.0; QUANTUM];
+        p.fill(3328, 44100.0, &mut out);
+        assert_eq!(out[0], 0.5);
+    }
 
     fn close(a: f32, b: f64) -> bool {
         ((a as f64) - b).abs() <= 1e-6 * b.abs().max(1e-3)
@@ -584,7 +619,7 @@ mod tests {
         let mut p = Param::new(440.0);
         p.set_value_at_time(100.0, 0.99);
         p.exponential_ramp_to_value_at_time(200.0, 1.1, 0.0);
-        p.clamp_before(1.0);
+        p.clamp_before(100, 100.0);
         assert_eq!(p.value_at(1.0), 100.0);
         let want = 100.0 * 2f64.powf(0.05 / 0.1);
         assert!(close(p.value_at(1.05), want));
