@@ -469,6 +469,29 @@ sessions:
 - **Listening is batched:** one labeled album after item 28 across the
   new voices, unless a null comes out shallow enough to be worth
   hearing sooner.
+**Session 6 (hands, Sonnet 5.5, high) merged items 23 (#133, v69) and
+24 (#134, v70); brain-verified 2026-10-08.** A Sonnet subagent read
+both diffs against the briefs: no bugs; flag-off paths, draw order and
+count (tubular's five, whistle's slide), budget costs and fallbacks
+unchanged; voice constants live in Rust; the 0.2 s filter tail (a fix
+the hands found: the core freed the voice before the resonant lowpass
+had rung out) only on filtered voices. A Haiku subagent reran: generator
+tests three times pass, `--check` holds (22 of 22), and `--null` over
+all 18 ported voices reproduces the hands' figures (single notes -85 to
+-121 dB worst note; loops at the JS-against-JS floor, late 0). The
+`.wasm` byte check and `cargo test` could not run here: **this
+container's proxy refuses `static.rust-lang.org`** (policy, not a
+glitch), so the pinned 1.99.0 toolchain can't be installed; GitHub
+Actions' `core` job ran both, green on #133 and #134, and that is the
+independent machine for now. Found while verifying: the Rust per-voice
+probe over many voices runs Chromium out of memory and hangs -- a
+harness fix put in front of item 25. Haiku 5.5's first job: accurate
+and candid (it reported the toolchain failure and the stall plainly),
+but slow (about 100 minutes, mostly the stall); fine for reruns.
+Wasm 55,229 bytes; core memory 7.08 MB (the hands' figure).
+
+**Next: Session 7, hands, Opus 5.5, high effort: items 25-26.**
+
 Not started, for Mikey's own time: the word rankings, Depth two, the
 open decisions above, the iPhone check.
 

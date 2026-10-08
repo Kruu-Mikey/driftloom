@@ -813,6 +813,19 @@ in total (standing rule).
 
 ## 25. Rust core, step 5: accordion and nylon, the shared bodies
 
+**First, a harness fix (brain, 2026-10-08).** `measure.mjs --voice
+<the 18 voices of items 23-24> --engine rust --note 0.4` runs Chromium
+out of memory: the renderer was killed by the kernel at 5.7 GB, after
+which the tool waits forever with no output (seen twice). The same probe
+on `--engine js`, and on one voice with `--engine rust`, completes; the
+`--null` run over the same voices completes too. Suspect: each offline
+render builds a core (7.1 MB since item 24) whose memory is never
+released. Find where; make the harness release it, and fail loudly when
+the page crashes instead of hanging. Then say whether the app can leak
+the same way (the synth rebuilt on a quality change, the recording
+context, export): `dispose()` sets `alive` false so `process` returns
+false, but check it happens.
+
 The core has one body (the fiddle's, per channel). Generalize it to a
 body per kind and channel, as `_body()` does in JavaScript, with the
 `BODIES` table: nylon and accordion (peaking and lowpass, kinds the core
