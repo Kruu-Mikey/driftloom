@@ -626,7 +626,7 @@ Two decisions worth recording:
   and a Fletcher-16 checksum catches transposed characters -- which is
   exactly the mistake people make copying one out by hand.
 
-Generation is quantised to the same 1/255 grid the encoding uses. These
+Generation is quantized to the same 1/255 grid the encoding uses. These
 weights feed weighted random picks, so a rounding difference of 0.004 is
 enough to pick a different scale, and snapping generation to the grid makes
 a code lossless by construction. Verified over 25,000 round-trips, edited
@@ -652,7 +652,7 @@ A cover is now built the way a picture is:
   areas are deliberately left empty.
 - A **crop** that sometimes pushes into the detail, so covers do not all
   read at the same distance.
-- **Geometry** set against the organic parts, and a posterising pass that
+- **Geometry** set against the organic parts, and a posterizing pass that
   turns smooth gradients into something graphic.
 
 Tied to the music throughout: energy becomes turbulence, warmth picks the
@@ -665,7 +665,7 @@ much the layers of the music agree.
 
 Two guarantees, because generative art fails by being blank rather than by
 being wrong. A field's **visible crop** is measured before use and re-rendered
-wider if it came out featureless, since no amount of levelling afterwards
+wider if it came out featureless, since no amount of leveling afterwards
 invents detail that was never drawn. And an **auto-levels** pass stretches to
 the 2nd and 98th percentiles, at full strength only when the picture really
 did come out flat, so deliberate restraint survives.
@@ -1209,7 +1209,7 @@ before a phrase lands, cheap enough that several can sit in a long loop
 without costing it. Long rests used to be forced to a two-bar minimum, which
 is why an eight-bar loop so often lost a quarter of itself.
 
-Entries and exits are quantised to two-bar boundaries. Music stopping on
+Entries and exits are quantized to two-bar boundaries. Music stopping on
 bar three and a half is what reads as "it just stopped"; stopping where a
 phrase would end reads as a breath.
 
@@ -1271,7 +1271,7 @@ behind it:
   validated against what `render()` needs, missing fields from very old
   saves are defaulted, and opening a save is wrapped so one bad entry cannot
   take the app down.
-- **Export filenames were unsanitised.** Loop names are user-editable, and a
+- **Export filenames were unsanitized.** Loop names are user-editable, and a
   slash or colon in one breaks the download.
 - **Breath noise stopped mid-note.** The shared noise buffer is two seconds;
   a longer flute or ocarina note simply ran out of air. It loops now.

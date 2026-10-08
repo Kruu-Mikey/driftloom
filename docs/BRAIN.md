@@ -419,12 +419,13 @@ to a front page -- what Driftloom is, the live link, how to use and run
 it, Profiles, the documents list -- with the engineering sections moved
 unchanged into `docs/NOTES.md` (one relative link fixed so it still
 resolves). The intro now names the Rust core behind `?engine=rust`, and
-the front page's two British spellings are American.
-Its PR (#130) is the first build on the new Cloudflare account, and the
-Workers Builds preview **failed** with no log visible from here (the
-`core` check passed). A docs change can't break an assets-only build, so
-it is the new account's setup; Mikey reads the log. Until previews work,
-commit-preview A/Bs and the brain's preview checks are unavailable.
+the British spellings left in the README and NOTES are American now.
+Its PR (#130) was the first build on the new Cloudflare account, and
+the preview failed: the new Worker's non-production deploy command was
+`npx wrangler preview` (Cloudflare's beta Previews, named per branch,
+which needs a `previews` block in `wrangler.jsonc`). Mikey set it back
+to `npx wrangler versions upload`, which gives the per-commit preview
+URLs the A/Bs depend on. Production stays `npx wrangler deploy`.
 
 **Next, proposed to Mikey (2026-10-08).** Two tracks, neither blocked
 by the other. (1) The Rust port, step 3: the brain picks the next batch

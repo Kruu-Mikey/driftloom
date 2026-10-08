@@ -85,7 +85,7 @@ density, meter, form -- that move together.
 | **Haven** | still and domestic. Rhodes and a hushed pad, no percussion, very slow, deliberately dry |
 | **Bloom** | bright and mechanical. Mono lead with portamento through a resonant filter |
 | **Vapor** | drifting. Coprime layer cycles that never resynchronize |
-| **Halcyon** | warm analogue nostalgia. Fat detuned pads, soft breakbeat, long dub delays |
+| **Halcyon** | warm analog nostalgia. Fat detuned pads, soft breakbeat, long dub delays |
 | **Clockwork** | prepared piano. Felt-damped, faintly out of tune, the mechanism audible |
 | **Shatter** | fast and fractured. Chopped breaks, stutter rolls, chromatic turns |
 | **Grove** | wooden mallets. Kalimba tines and marimba bars: dry pitched percussion, which nothing else here provides |
