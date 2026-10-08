@@ -1046,6 +1046,13 @@ export class Synth {
     this._releases.splice(i, 0, { at, cost });
   }
 
+  // A buffer source starts on the frame its start time rounds to (to 1/1024
+  // of a frame), but a gain's first event waits for the frame its time is
+  // at or before: when `time * rate` lands a hair above a whole frame, the
+  // source's first frame plays through a gain still at its default of 1,
+  // one loud sample. So every gain a noise source feeds takes its first
+  // event's value as its own (`g.gain.value = x` before the
+  // `setValueAtTime(x, time)`), which the early frame then plays at.
   _noiseSource(time, dur) {
     const src = this.ctx.createBufferSource();
     src.buffer = this.noise;
@@ -1082,6 +1089,7 @@ export class Synth {
       cf.type = 'lowpass';
       cf.frequency.value = 1400;
       const cg = ctx.createGain();
+      cg.gain.value = v * 0.28;
       cg.gain.setValueAtTime(v * 0.28, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
       click.connect(cf).connect(cg).connect(out);
@@ -1117,6 +1125,7 @@ export class Synth {
       bp.frequency.value = inst === 'clap' ? 1500 : 1900;
       bp.Q.value = inst === 'clap' ? 1.4 : 0.8;
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(v * 0.7, time + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
@@ -1142,6 +1151,7 @@ export class Synth {
       hpf.type = 'highpass';
       hpf.frequency.value = inst === 'shaker' ? 5200 : 7400;
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(v * (inst === 'shaker' ? 0.3 : 0.42), time + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
@@ -1205,6 +1215,7 @@ export class Synth {
       bp.frequency.value = low ? 520 : 900;
       bp.Q.value = 1.1;
       const ng = ctx.createGain();
+      ng.gain.value = 0.0001;
       ng.gain.setValueAtTime(0.0001, time);
       ng.gain.exponentialRampToValueAtTime(level * (low ? 0.3 : 0.45), time + 0.002);
       ng.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
@@ -1223,6 +1234,7 @@ export class Synth {
       const ring = long ? 0.24 : 0.09;
       const level = v * HAND_LEVEL[inst];
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(level, time + 0.002);
       g.gain.exponentialRampToValueAtTime(0.0001, time + ring);
@@ -1347,6 +1359,7 @@ export class Synth {
       cf.type = 'bandpass';
       cf.frequency.value = 900;
       const cg = ctx.createGain();
+      cg.gain.value = vel * 0.1;
       cg.gain.setValueAtTime(vel * 0.1, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.025);
       click.connect(cf).connect(cg).connect(out);
@@ -1761,6 +1774,7 @@ export class Synth {
         bp.frequency.value = f * 2;
         bp.Q.value = 1.2;
         const ag = ctx.createGain();
+        ag.gain.value = 0.0001;
         ag.gain.setValueAtTime(0.0001, time);
         ag.gain.linearRampToValueAtTime(vel * level * (breathy ? 1 / 3 : 0.15), Math.min(time + 0.06, letGo));
         ag.gain.setTargetAtTime(0.0001, letGo, 0.09);
@@ -1946,6 +1960,7 @@ export class Synth {
         // settling within 30 ms: a puff of air, on the breath's own path
         // rather than a second noise source for every note.
         const ag = ctx.createGain();
+        ag.gain.value = 0.0001;
         ag.gain.setValueAtTime(0.0001, time);
         ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_CHIFF, Math.min(time + 0.004, letGo));
         ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_BREATH, Math.min(time + 0.03, letGo));
@@ -2068,6 +2083,7 @@ export class Synth {
           bp.frequency.value = 220 + Math.random() * 180;
           bp.Q.value = 3.5;
           const kg = ctx.createGain();
+          kg.gain.value = vel * 0.13;
           kg.gain.setValueAtTime(vel * 0.13, time);
           kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
           knock.connect(bp).connect(kg).connect(dest);
@@ -2240,6 +2256,7 @@ export class Synth {
 
         const amp = ctx.createGain();
         const stopAt = time + dur + 0.9;
+        amp.gain.value = 0.0001;
         amp.gain.setValueAtTime(0.0001, time);
         // Levels measured, not guessed. The humming tract puts an 18dB boost
         // at 280Hz, which lands directly on a triangle wave's fundamental
@@ -2411,6 +2428,7 @@ export class Synth {
         bp.frequency.value = humming ? 900 : 2200;
         bp.Q.value = 0.8;
         const bg = ctx.createGain();
+        bg.gain.value = 0.0001;
         bg.gain.setValueAtTime(0.0001, time);
         bg.gain.linearRampToValueAtTime(vel * (humming ? 0.05 : 0.1), time + 0.04);
         bg.gain.exponentialRampToValueAtTime(Math.max(0.0005, vel * 0.02), time + 0.3);
@@ -2445,6 +2463,7 @@ export class Synth {
         }
         const stopAt = time + hold + 1.4;
         const g = ctx.createGain();
+        g.gain.value = 0.0001;
         g.gain.setValueAtTime(0.0001, time);
         g.gain.exponentialRampToValueAtTime(vel * 0.3 * (soft ? TEMPLEBELL_CHORD_LIFT : 1), time + 0.006);
         this._release2(g.gain, time + 0.02, stopAt);
@@ -2475,6 +2494,7 @@ export class Synth {
         sf.frequency.value = f * 6;
         sf.Q.value = 1.2;
         const sg = ctx.createGain();
+        sg.gain.value = BELL_PARTIAL_VEL * 0.18;
         sg.gain.setValueAtTime(BELL_PARTIAL_VEL * 0.18, time);
         sg.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
         strike.connect(sf).connect(sg).connect(g);
@@ -2709,6 +2729,7 @@ export class Synth {
       bp.frequency.setValueAtTime(2400 + Math.random() * 3000, time);
       bp.Q.value = 9;
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
@@ -2732,6 +2753,7 @@ export class Synth {
       lfoG.gain.value = 280;
       lfo.connect(lfoG).connect(bp.frequency);
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       // Swell in and back out inside the segment rather than sitting flat.
       g.gain.linearRampToValueAtTime(vel * 0.32, time + Math.max(0.8, dur * 0.4));
@@ -2759,6 +2781,7 @@ export class Synth {
         return lp;
       });
       const g = ctx.createGain();
+      g.gain.value = 0.0001;
       g.gain.setValueAtTime(0.0001, time);
       g.gain.linearRampToValueAtTime(vel * WAVES_LEVEL, crest);
       g.gain.linearRampToValueAtTime(0.0001, time + dur);

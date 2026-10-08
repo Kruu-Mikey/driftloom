@@ -80,6 +80,9 @@ driftloom offline audio measurement
                     core has                                   (default js)
   --null            render the same seeded kalimba notes, and kalimba
                     loops, through both engines and subtract
+  --clicks          check that no voice plays a loud first sample when a
+                    note starts a hair after a whole frame; with --n, also
+                    count the noise starts that land there
   --selftest        check the loudness meter against reference signals
   --help            this
 
@@ -148,6 +151,20 @@ driftloom offline audio measurement
   residual is given against the kalimba's own level: how far below what
   it plays the difference sits.
 
+  --clicks is the proof for the one-frame click (queue item 26b). Chromium
+  starts a buffer source on the frame its start time rounds to (1/1024 of a
+  frame) but runs a gain's first event only from the first frame at or after
+  its time, so a note whose time sits just above a whole frame lets one frame
+  of noise through a gain still at its default of 1. Every voice, in every
+  layer, and every drum is played twice, starting 0.0003 of a frame after a
+  whole frame and 0.0003 before, at four places in the render block, and the
+  noise's part of each (the note less the same note with the noise silent) is
+  compared, over the frames from the start. Those differ only if the first
+  frame is wrong. Anything over -90 dBFS is a click, and the run exits
+  non-zero. --engine rust plays the core's voices through the core. With
+  --n, the loops of the corpus are scheduled (not rendered) and the buffer
+  sources they start counted, and how many start in that window.
+
   Needs Playwright and Chromium, which are a dependency of this tool and
   not of the app:  npm install -g playwright && npx playwright install chromium
 `;
@@ -186,7 +203,7 @@ function parseArgs(argv) {
       return v;
     };
     switch (arg) {
-      case '--n': case '-n': opts.n = Math.max(1, Math.round(number())); break;
+      case '--n': case '-n': opts.n = Math.max(1, Math.round(number())); opts.nGiven = true; break;
       case '--seed': opts.seed = number() >>> 0; break;
       case '--passes': opts.passes = Math.max(1, number()); break;
       case '--rate': opts.rate = Math.max(8000, Math.round(number())); break;
@@ -200,6 +217,7 @@ function parseArgs(argv) {
       case '--endings': opts.endings = true; break;
       case '--retire': opts.retire = true; break;
       case '--null': opts.null = true; break;
+      case '--clicks': opts.clicks = true; break;
       case '--engine': {
         const e = value();
         if (e !== 'js' && e !== 'rust') fail(`--engine is 'js' or 'rust', not '${e}'`);
@@ -835,6 +853,8 @@ async function renderNote(job, midi, vel, rep, o) {
   if (job.layer === 'melody') tracks.melody.push({ step: 0, dur, midi, vel, voice: job.voice, vowel, prev: o.prev });
   if (job.layer === 'chords') tracks.chords.push({ step: 0, dur, notes: (o.chord || [0]).map((i) => midi + i), vel, voice: job.voice, vowel });
   if (job.layer === 'bass') tracks.bass.push({ step: 0, dur, midi, vel, glide: false, voice: job.voice });
+  // A roll takes no humanizing jitter, so the hit lands where it is put.
+  if (job.layer === 'drums') tracks.drums.push({ step: 0, inst: job.voice, vel, roll: true });
   // Drops and wind take no pitch; a note handed to them is ignored.
   if (job.layer === 'texture') tracks.texture.push({ step: 0, dur, notes: [midi], vel, kind: job.voice });
   const engine = Object.create(Engine.prototype);
@@ -1100,6 +1120,7 @@ async function renderHat(kind, vel, at, o) {
     hpf.type = 'highpass';
     hpf.frequency.value = kind === 'shaker' ? 5200 : 7400;
     const g = ctx.createGain();
+    g.gain.value = 0.0001; // as drum() does (queue item 26b)
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(vel * (kind === 'shaker' ? 0.3 : 0.42), at + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
@@ -1115,12 +1136,17 @@ window.probeNull = async (o) => {
     const tasks = [];
     for (const kind of HAT_KINDS) {
       for (const vel of o.velocities) {
-        for (let k = 0; k < 24; k++) {
+        for (let k = 0; k < 28; k++) {
           // Fractions of a frame, places in the block, and every sixth just
-          // before a block starts.
-          const at = k % 6 === 0
-            ? (2304 + 128 * k - 0.3 - ((k * 0.618034) % 0.6)) / o.rate
-            : (2205 + ((k * 97) % 256) + ((k * 0.618034) % 1)) / o.rate;
+          // before a block starts. The last four sit a hair above a whole
+          // frame, where the source starts a frame ahead of its gain (queue
+          // item 26b): both engines must give that frame the gain's first
+          // value, so they still null.
+          const at = k >= 24
+            ? (2205 + 61 * k + 0.0003) / o.rate
+            : k % 6 === 0
+              ? (2304 + 128 * k - 0.3 - ((k * 0.618034) % 0.6)) / o.rate
+              : (2205 + ((k * 97) % 256) + ((k * 0.618034) % 1)) / o.rate;
           tasks.push(async () => {
             const js = (await renderHat(kind, vel, at, { ...o, engine: 'js' })).getChannelData(0);
             const rust = (await renderHat(kind, vel, at, { ...o, engine: 'rust' })).getChannelData(0);
@@ -1262,6 +1288,95 @@ window.probeNull = async (o) => {
     };
   }), Math.max(1, Math.floor(o.width / 2)));
   return out;
+};
+
+// --clicks: each note started a hair after a whole frame and a hair before
+// (see the usage text), and the part of each that is the noise's.
+//
+// The noise is separated out, rendering every note again with the noise
+// buffer silent (the same draws, so the same note otherwise) and
+// subtracting. An oscillator starts on the next whole frame whatever
+// fraction the start time has, so after it the two starts differ by a frame
+// for reasons that are right; the noise starts on the frame the time rounds
+// to, in both, and its part of the two must be the same sample for sample.
+// Where a filter follows the noise, the click rings on after its first
+// frame, so a stretch of frames is read, not one.
+window.probeClicks = async (o) => {
+  const realMake = Synth.prototype._makeNoise;
+  const tasks = [];
+  for (const job of o.jobs) {
+    for (const frame of o.frames) {
+      tasks.push(async () => {
+        const run = async (fraction, silent) => {
+          if (silent) {
+            Synth.prototype._makeNoise = function (seconds) {
+              const buf = realMake.call(this, seconds);
+              buf.getChannelData(0).fill(0);
+              return buf;
+            };
+          }
+          try {
+            return (await renderNote(job, job.midi, o.vel, 0,
+              { rate: o.rate, dur: job.dur, tail: 0.3, at: (frame + fraction) / o.rate, engine: o.engine })).getChannelData(0);
+          } finally {
+            Synth.prototype._makeNoise = realMake;
+          }
+        };
+        const noiseOf = async (fraction) => {
+          const [all, none] = [await run(fraction, false), await run(fraction, true)];
+          return all.map((x, i) => x - none[i]);
+        };
+        const early = await noiseOf(o.eps);
+        const clean = await noiseOf(-o.eps);
+        let worst = 0, at = 0, peak = 0;
+        for (let i = frame - 2; i < frame + o.read; i++) {
+          const d = Math.abs(early[i] - clean[i]);
+          if (d > worst) { worst = d; at = i - frame; }
+          peak = Math.max(peak, Math.abs(clean[i]));
+        }
+        return { layer: job.layer, voice: job.voice, frame, worst, at, peak };
+      });
+    }
+  }
+  // One at a time: the silent noise is a patch on the class, taken off
+  // again before the next render builds its synth.
+  return inParallel(tasks, 1);
+};
+
+// How many of the buffer sources the corpus starts begin in that window:
+// the start time, in frames, a little above a whole one (under 1/2048).
+window.countClicks = async (o) => {
+  const rate = o.rate;
+  let starts = 0, inWindow = 0, notes = 0;
+  const real = AudioBufferSourceNode.prototype.start;
+  AudioBufferSourceNode.prototype.start = function (when, ...rest) {
+    const frames = (when || 0) * rate;
+    starts++;
+    const frac = frames - Math.floor(frames);
+    if (frac > 0 && frac < 1 / 2048) inWindow++;
+    return real.call(this, when, ...rest);
+  };
+  const master = new Rng(o.seed);
+  for (let i = o.from; i < o.to; i++) {
+    const spec = newSpec(master.seed32());
+    const seconds = Math.min(30, Math.max(spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4) * 2, 12));
+    const ctx = new OfflineAudioContext(1, Math.ceil(seconds * rate), rate);
+    Math.random = mulberry32(spec.seed >>> 0 || 1);
+    const synth = new Synth(ctx, 'full');
+    const engine = new Engine(ctx, synth);
+    if (engine.clock.worker) engine.clock.worker.terminate();
+    engine.load(spec);
+    engine.playing = true;
+    engine.nextStepTime = 0.05;
+    let guard = 0;
+    while (engine.nextStepTime < seconds && guard++ < 200000) {
+      engine._scheduleStep(engine.step, engine.nextStepTime);
+      engine._advance();
+    }
+    notes++;
+  }
+  AudioBufferSourceNode.prototype.start = real;
+  return { loops: notes, starts, inWindow };
 };
 
 window.probeEndings = async (o) => {
@@ -2088,7 +2203,7 @@ try {
 const page = await browser.newPage();
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-const probing = !!opts.voices || opts.endings || opts.retire || opts.null;
+const probing = !!opts.voices || opts.endings || opts.retire || opts.null || opts.clicks;
 const counting = !!opts.refusals;
 const pageName = counting ? '__refusals' : probing ? '__probe' : '__measure';
 
@@ -2189,6 +2304,64 @@ if (opts.retire) {
     `  largest difference anywhere: ${db(Math.max(...rows.map((r) => r.worst)))}; limit ${db(LIMIT)}.`];
   for (const r of bad) out.push(`    DIFFERS  ${r.layer} ${r.voice} ${r.dur}s: ${db(r.worst)} (note peak ${db(r.peak)})`);
   out.push(bad.length ? `  ${bad.length} notes differ.` : '  Every note is identical.');
+  console.log(out.join('\n'));
+  process.exit(bad.length || pageErrors.length ? 1 : 0);
+}
+
+if (opts.clicks) {
+  // Every voice characters.js draws, in each layer, and every drum.
+  const DRUMS = ['kick', 'softkick', 'snare', 'clap', 'rim', 'hat', 'ohat', 'shaker', 'frame', 'tap', 'jingle', 'ojingle'];
+  const jobs = DRUMS.map((voice) => ({ layer: 'drums', voice, midi: 0, dur: 0.4 }));
+  for (const [layer, voices] of Object.entries(drawnLayers())) {
+    const midi = ENDING_MIDI[layer] ?? 79;
+    for (const voice of voices) jobs.push({ layer, voice, midi, dur: layer === 'texture' ? 1.0 : 0.4 });
+  }
+  const EPS = 0.0003;
+  const CLICK_READ = 96;
+  const frames = [5000, 5001, 5063, 5127].map((k, i) => k + 128 * (7 + i * 3));
+  const o = { vel: 0.7, rate: opts.rate, eps: EPS, frames, read: CLICK_READ, engine: opts.engine };
+  // About 100 notes a page on the core.
+  const rows = (await inPages('probeClicks', batches(jobs, 6).map((b) => ({ ...o, jobs: b })))).flat();
+  let counted = null;
+  if (opts.nGiven) {
+    counted = { loops: 0, starts: 0, inWindow: 0 };
+    for (const r of ranges(opts.n, 20)) {
+      const got = await page.evaluate((x) => window.countClicks(x), { rate: opts.rate, seed: opts.seed, ...r });
+      counted.loops += got.loops; counted.starts += got.starts; counted.inWindow += got.inWindow;
+    }
+  }
+  await browser.close();
+  server.close();
+  if (pageErrors.length) {
+    console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
+  }
+  const dbfs = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
+  const LIMIT = 3e-5;
+  const keys = [...new Set(rows.map((r) => `${r.layer}|${r.voice}`))];
+  const out = ['', 'driftloom: the one-frame click',
+    `  ${rows.length} notes (every voice in every layer, every drum; ${frames.length} starts each), ${opts.engine} engine, ${(opts.rate / 1000).toFixed(1)}k.`,
+    `  Each started ${EPS} of a frame after a whole frame and ${EPS} before; the noise's part of the two compared`,
+    `  over the ${CLICK_READ} frames from the start. The worst difference per voice, in dBFS, and the frame it falls on`,
+    `  (0 is the start). A click is anything over ${dbfs(LIMIT).toFixed(0)} dBFS.`, '',
+    `    ${'layer'.padEnd(8)} ${'voice'.padEnd(12)}   worst difference`];
+  const bad = [];
+  for (const key of keys) {
+    const [layer, voice] = key.split('|');
+    const mine = rows.filter((r) => r.layer === layer && r.voice === voice);
+    const top = mine.reduce((a, r) => (r.worst > a.worst ? r : a), mine[0]);
+    const worst = top.worst;
+    if (worst > LIMIT) bad.push(`${voice} (${layer})`);
+    out.push(`    ${layer.padEnd(8)} ${voice.padEnd(12)} ${worst > 0 ? dbfs(worst).toFixed(1).padStart(8) + ' dBFS' : '    none'}${worst > 0 ? `  frame ${top.at}` : ''}${worst > LIMIT ? '  CLICK' : ''}`);
+  }
+  out.push('');
+  out.push(bad.length ? `  ${bad.length} voice(s) click: ${bad.join(', ')}` : '  no voice clicks');
+  if (counted) {
+    out.push('');
+    out.push(`  ${counted.loops} loops (seed ${opts.seed}) schedule ${counted.starts} buffer sources; ${counted.inWindow} start in the window`);
+    out.push(`  (${(100 * counted.inWindow / Math.max(1, counted.starts)).toFixed(3)}% of them), where the first frame plays before its gain's first event.`);
+  }
+  out.push('');
+  writeJson({ rows, counted });
   console.log(out.join('\n'));
   process.exit(bad.length || pageErrors.length ? 1 : 0);
 }
