@@ -699,6 +699,8 @@ const CORE_VOICES = [
   'kalimba', 'fiddle', 'pad',
   // Item 23: the fm() voices (prepared's two strikes; its knock is still JavaScript), sine, tubular.
   'keys', 'bell', 'celeste', 'musicbox', 'rhodes', 'marimba', 'harp', 'piano', 'prepared', 'sine', 'tubular',
+  // Item 24: the wave-table voices (pluck is the square beep).
+  'softpad', 'analogpad', 'analoglead', 'saw', 'pluck', 'moog', 'whistle',
 ];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.

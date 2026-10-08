@@ -1193,3 +1193,12 @@ Mikey decides this line:
   Play a loop with keys or a bell and one with tubular bells, and check
   Diagnostics reads `engine: rust  late: 0`; `fallback` still counts bass,
   texture and drum notes, which move in later items.
+- #134, the Rust core's fourth step: the wave-table voices (item 24, v70),
+  https://20650621-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust`, softpad, analogpad,
+  analoglead, the saw pluck, the square beep, the moog and the whistle come
+  out of Rust, on five new wave tables (they null against the JavaScript
+  voices between -106 and -119 dB). Play a loop with a lead (the whistle's
+  slides are the thing to listen for) and one with a pad, and check
+  Diagnostics reads `engine: rust  late: 0`. The core's memory is now about
+  7 MB, up from 4.

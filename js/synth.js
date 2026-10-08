@@ -639,10 +639,21 @@ export class Synth {
   // at high, and 88.2% to 71.2% across lift. Consulting the feeling as
   // well would count the same thing twice.
   _slide(param, midi, time, dur, opts) {
+    const slide = this._slideOf(midi, dur, opts);
+    if (!slide) return false;
+    this._arrive(param, slide.from, slide.f, time, slide.reach);
+    return true;
+  }
+
+  // Whether a note slides, and if so from where and how fast: the draw
+  // (once, and only for a note long enough) and everything `_slide` does
+  // with it short of touching a parameter. The Rust core's whistle takes
+  // its slide from here and runs it itself.
+  _slideOf(midi, dur, opts) {
     // Scaled to note length, so a staccato line stays clean. A quarter of
     // the corpus's wind notes are shorter than this and none of them slide.
-    if (dur < SLIDE_MIN_DUR) return false;
-    if (Math.random() >= SLIDE_CHANCE) return false;
+    if (dur < SLIDE_MIN_DUR) return null;
+    if (Math.random() >= SLIDE_CHANCE) return null;
 
     const f = midiToFreq(midi);
     const prev = opts.prev;
@@ -655,8 +666,7 @@ export class Synth {
       ? midiToFreq(prev)
       : f * Math.pow(2, -SLIDE_SCOOP / 12);
 
-    this._arrive(param, from, f, time, Math.min(0.09, Math.max(0.03, dur * 0.22)));
-    return true;
+    return { from, f, reach: Math.min(0.09, Math.max(0.03, dur * 0.22)) };
   }
 
   // Short, and landing well before the midpoint: the note has to be *on*
@@ -1502,6 +1512,10 @@ export class Synth {
       this.fm(midi, time, dur, vel, { out, soft, ratio: 2, index: 260, decay: 0.4, cost: VOICE_COST.keys });
     } else if (voice === 'saw') {
       if (!this._budget(time, soft, VOICE_COST.saw)) return;
+      if (this.engine === 'rust' && this._coreNote(CORE_VOICES.sawpluck, out, time, midi, dur, vel, [])) {
+        this._release(time, dur + 0.6, VOICE_COST.saw);
+        return;
+      }
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.setPeriodicWave(this.leads.saw);
@@ -1530,6 +1544,10 @@ export class Synth {
     } else {
       // Square-wave beep with a touch of vibrato. The Adventure Time voice.
       if (!this._budget(time, soft, VOICE_COST.pluck)) return;
+      if (this.engine === 'rust' && this._coreNote(CORE_VOICES.beep, out, time, midi, dur, vel, [])) {
+        this._release(time, dur + 0.5, VOICE_COST.pluck);
+        return;
+      }
       const ctx = this.ctx;
       const o = ctx.createOscillator();
       o.type = 'square';
@@ -1910,6 +1928,10 @@ export class Synth {
       // why one oscillator never sounds like this however it is filtered.
       case 'analogpad': {
         if (!this._budget(time, true, VOICE_COST.analogpad)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.analogpad, dest, time, midi, dur, vel, [])) {
+          this._release(time, dur + 1.6, VOICE_COST.analogpad);
+          return;
+        }
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.Q.value = 1.6;
@@ -1940,6 +1962,10 @@ export class Synth {
         // Two detuned oscillators through one filter, no pad-scale energy
         // building up: a lead, not the analogpad.
         if (!this._budget(time, soft, VOICE_COST.analoglead)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.analoglead, dest, time, midi, dur, vel, [])) {
+          this._release(time, dur + 0.8, VOICE_COST.analoglead);
+          return;
+        }
         // Two soft sources, detuned, under a fixed lowpass. Was two raw saws
         // under a resonant sweep from eight times the note down.
         const lp = ctx.createBiquadFilter();
@@ -2442,6 +2468,21 @@ export class Synth {
       case 'whistle': {
         const whistle = name === 'whistle';
         if (!this._budget(time, soft, VOICE_COST[name])) return;
+        // On the Rust core. The whistle's one draw (does it slide, and
+        // from where) is made here, at the same point and only for the same
+        // notes as `_slide` below makes it, and sent with the note. The
+        // channel is checked first: a note the core cannot take draws in
+        // the JavaScript voice instead, not twice.
+        if (this.engine === 'rust' && !opts.glide) {
+          const channel = this._coreChannel(dest);
+          if (channel >= 0) {
+            const slide = whistle ? this._slideOf(midi, dur, opts) : null;
+            this.core.note(whistle ? CORE_VOICES.whistle : CORE_VOICES.moog, channel, time, midi, dur, vel, 0,
+              slide ? [slide.from, slide.reach] : []);
+            this._release(time, dur + 0.5, VOICE_COST[name]);
+            return;
+          }
+        }
         const o = ctx.createOscillator();
         if (whistle) o.type = 'triangle';
         else o.setPeriodicWave(this.leads.moog);
@@ -2504,6 +2545,10 @@ export class Synth {
       // to the profiles that actually wanted a pad.
       case 'softpad': {
         if (!this._budget(time, true, VOICE_COST.pad)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.softpad, dest, time, midi, dur, vel, [])) {
+          this._release(time, dur + 1.8, VOICE_COST.pad);
+          return;
+        }
         const lp = ctx.createBiquadFilter();
         lp.type = 'lowpass';
         lp.frequency.setValueAtTime(700, time);

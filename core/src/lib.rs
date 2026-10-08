@@ -17,6 +17,7 @@
 //! reading of the spec, Chromium -- to the sample.
 
 pub mod filter;
+pub mod lead;
 pub mod osc;
 pub mod param;
 pub mod voice;
@@ -26,6 +27,7 @@ pub mod wave;
 mod wasm;
 
 use filter::{Biquad, Kind};
+use lead::{Lead, LeadKind, Tone};
 use voice::{Fiddle, Fm, FmOptions, Kalimba, PadNote, SineNote, Tubular, Vibrato, midi_to_freq};
 use wave::{Fft, Waves};
 
@@ -88,12 +90,22 @@ pub const EXTRA: usize = 8;
 /// - SINE: none.
 /// - TUBULAR: the five `Math.random` draws for its partials' detunes, each
 ///   in [0, 1), in partial order.
+/// - SOFTPAD, ANALOGPAD, ANALOGLEAD, SAWPLUCK, BEEP, MOOG: none.
+/// - WHISTLE: where its slide comes from in Hz (NaN if it does not slide),
+///   then how long the slide takes to arrive, in seconds.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
 pub const PAD: u32 = 2;
 pub const FM: u32 = 3;
 pub const SINE: u32 = 4;
 pub const TUBULAR: u32 = 5;
+pub const SOFTPAD: u32 = 6;
+pub const ANALOGPAD: u32 = 7;
+pub const ANALOGLEAD: u32 = 8;
+pub const SAWPLUCK: u32 = 9;
+pub const BEEP: u32 = 10;
+pub const MOOG: u32 = 11;
+pub const WHISTLE: u32 = 12;
 
 // A voice lives in a slot of a fixed pool, so its size is the pool's price
 // and boxing it would allocate; the biggest, tubular, sets the slot's size.
@@ -111,6 +123,8 @@ enum Voice {
     Fm(Fm),
     Sine(SineNote),
     Tubular(Tubular),
+    Tone(Tone),
+    Lead(Lead),
 }
 
 struct Slot {
@@ -266,7 +280,7 @@ impl Core {
         parts: u32,
         extra: [f64; EXTRA],
     ) -> Taken {
-        if voice > TUBULAR
+        if voice > WHISTLE
             || channel as usize >= CHANNELS
             || !(time.is_finite() && dur.is_finite() && midi.is_finite() && vel.is_finite())
         {
@@ -360,6 +374,36 @@ impl Core {
                 slot.voice = Voice::Tubular(v);
                 span
             }
+            SOFTPAD | ANALOGPAD | ANALOGLEAD | SAWPLUCK | BEEP => {
+                let mut v = Tone::new();
+                match w.voice {
+                    SOFTPAD => v.soft_pad(w.midi, w.time, w.dur, w.vel, rate),
+                    ANALOGPAD => v.analog_pad(w.midi, w.time, w.dur, w.vel, rate),
+                    ANALOGLEAD => v.analog_lead(w.midi, w.time, w.dur, w.vel, rate),
+                    SAWPLUCK => v.saw_pluck(w.midi, w.time, w.dur, w.vel, rate),
+                    _ => v.beep(w.midi, w.time, w.dur, w.vel, rate),
+                }
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Tone(v);
+                span
+            }
+            MOOG | WHISTLE => {
+                let kind = if w.voice == MOOG {
+                    LeadKind::Moog
+                } else {
+                    LeadKind::Whistle
+                };
+                let slide = if a.is_finite() && b.is_finite() {
+                    Some((a, b))
+                } else {
+                    None
+                };
+                let mut v = Lead::new();
+                v.play(kind, w.midi, w.time, w.dur, w.vel, slide, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Lead(v);
+                span
+            }
             _ => {
                 let mut v = Kalimba::new();
                 v.play(w.midi, w.time, w.dur, w.vel, w.parts, rate);
@@ -421,6 +465,8 @@ impl Core {
                 Voice::Fm(v) => v.render(block, rate, &self.waves, out),
                 Voice::Sine(v) => v.render(block, rate, &self.waves, out),
                 Voice::Tubular(v) => v.render(block, rate, &self.waves, out),
+                Voice::Tone(v) => v.render(block, rate, &self.waves, out),
+                Voice::Lead(v) => v.render(block, rate, &self.waves, out),
             }
             if slot.end <= end {
                 slot.busy = false;
@@ -618,7 +664,7 @@ mod tests {
     fn unknown_voices_and_channels_are_refused() {
         let mut core = boxed();
         assert_eq!(
-            core.note(7, MELODY, 0.1, 60.0, 0.5, 0.5, STRIKE, NO),
+            core.note(99, MELODY, 0.1, 60.0, 0.5, 0.5, STRIKE, NO),
             Taken::Unknown
         );
         assert_eq!(
@@ -712,6 +758,53 @@ mod tests {
             b += 1;
         }
         assert_eq!(core.busy(), 0);
+    }
+
+    #[test]
+    fn each_wave_table_voice_sounds_then_lets_its_voice_go() {
+        // (voice, level range its peak should fall in), at a note of 0.5 s.
+        let voices = [
+            (SOFTPAD, 0.02, 0.5),
+            (ANALOGPAD, 0.02, 0.5),
+            (ANALOGLEAD, 0.01, 0.5),
+            (SAWPLUCK, 0.01, 0.5),
+            (BEEP, 0.01, 0.5),
+            (MOOG, 0.01, 0.5),
+            (WHISTLE, 0.01, 0.5),
+        ];
+        for (voice, low, high) in voices {
+            let mut core = boxed();
+            assert_eq!(
+                core.note(voice, MELODY, 0.05, 64.0, 0.5, 0.8, 0, NO),
+                Taken::OnTime
+            );
+            let (peak, _) = energy(&mut core, 0, 4.0);
+            assert!(peak > low && peak < high, "voice {voice}: peak {peak}");
+            assert_eq!(core.busy(), 0, "voice {voice} still sounding");
+        }
+    }
+
+    #[test]
+    fn a_whistle_slides_only_when_it_is_told_to() {
+        let mut plain = boxed();
+        let mut slid = boxed();
+        let mut none = [f64::NAN; EXTRA];
+        plain.note(WHISTLE, MELODY, 0.05, 72.0, 0.4, 0.7, 0, none);
+        none[0] = 440.0;
+        none[1] = 0.06;
+        slid.note(WHISTLE, MELODY, 0.05, 72.0, 0.4, 0.7, 0, none);
+        assert_ne!(render(&mut plain, 100), render(&mut slid, 100));
+    }
+
+    #[test]
+    fn the_built_in_waves_have_chromiums_partials() {
+        use wave::{sawtooth, square, triangle};
+        let pi = core::f32::consts::PI;
+        assert!((sawtooth(1) - 2.0 / pi).abs() < 1e-6);
+        assert!((sawtooth(2) + 1.0 / pi).abs() < 1e-6);
+        assert_eq!(square(2), 0.0);
+        assert!((square(3) - 4.0 / (3.0 * pi)).abs() < 1e-6);
+        assert!((triangle(1) - 8.0 / (pi * pi)).abs() < 1e-6);
     }
 
     #[test]

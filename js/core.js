@@ -2,7 +2,7 @@
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
 // here runs. With it on, the synth hands the voices the core has (kalimba,
-// fiddle, pad, every fm() voice, sine and tubular, so far) to an
+// fiddle, pad, every fm() voice, sine, tubular, the wave-table voices, so far) to an
 // AudioWorkletNode running js/dlcore.wasm,
 // and keeps everything else: scheduling, the voice budget, every
 // Math.random draw, every other voice, the effects and the master chain.
@@ -19,7 +19,10 @@ export const ENGINE = (() => {
 
 // The voices the core plays, by the number it knows them by
 // (core/src/lib.rs), and the parts of a kalimba note (core/src/voice.rs).
-export const CORE_VOICES = { kalimba: 0, fiddle: 1, pad: 2, fm: 3, sine: 4, tubular: 5 };
+export const CORE_VOICES = {
+  kalimba: 0, fiddle: 1, pad: 2, fm: 3, sine: 4, tubular: 5,
+  softpad: 6, analogpad: 7, analoglead: 8, sawpluck: 9, beep: 10, moog: 11, whistle: 12,
+};
 export const KALIMBA_STRIKE = 1;
 export const KALIMBA_BODY = 2;
 
