@@ -517,7 +517,29 @@ JavaScript synth, on `main` today. A noise note on the bare grid at
 certain tempos plays one sample through a gain still at 1. Queued as
 **item 26b**, a fix in both engines, before the drums are ported.
 
-**Next: Session 8, hands, Sonnet 5.5, high effort: items 26b and 27.**
+**Session 8 (hands, Sonnet 5.5, high) merged 26b (#139, v73), 27a
+(#140, v74) and 27b (#141, v75); brain-verified 2026-10-09.** 26b: a
+`--clicks` probe found 26 voices clicking on `main` and none after, on
+both engines; 1.4% of noise starts landed in the window (215 of 15,340
+in 200 loops). 27a/27b: bass, textures and drums play from the core,
+which serves all five channels; #140 also made every core parameter
+compare event times in frames (a loop at 11.3 s nulled at -38 dB
+before). Performance A/B, four loops with full kits: late ticks 0 both
+sides, audio thread 4-5% busier, main thread 9-13% lighter, node
+creation 110/s -> 0. Wasm 106,458 bytes; core memory 10.4 MB. Only the
+sung voices remain in JavaScript (not counted as fallbacks in
+Diagnostics). Brain's check: a Sonnet subagent read all three diffs
+(26b touched exactly the noise-fed gains, nothing else; flag-off paths,
+draws, budgets, ducking and the drums channel unchanged); a Haiku
+subagent reran tests three times, `--check`, `--clicks` on both engines
+(no clicks) and `--null` over every new voice (-95 to -147 dB; loops at
+the floor, late 0, fallback 0) and over the earlier voices. Three small
+problems found, queued as **item 27c**: 26b's `value` setter misbehaves
+for notes built late (offline proofs can't see it); the jingle draws
+its zils twice on a fallback; pan flute grace notes regressed to a
+-68.5 dBFS worst sample (was -125 at v72).
+
+**Next: Session 9, hands, Opus 5.5, high effort: items 27c and 28.**
 
 Not started, for Mikey's own time: the word rankings, Depth two, the
 open decisions above, the iPhone check.
