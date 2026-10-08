@@ -145,7 +145,8 @@ driftloom offline audio measurement
   --null is the proof the Rust core is the JavaScript synth: kalimba as a
   melody and as a chord voice, note by note across its window at two
   velocities and three lengths, each started at its own fraction of a
-  sample and point in the render block; then whole kalimba loops through
+  sample and point in the render block (one in five a hair past a whole
+  frame, half of those on a block's last); then whole kalimba loops through
   the real engine and the whole master chain. Each is rendered with
   --engine js and --engine rust from the same seed and subtracted. The
   residual is given against the kalimba's own level: how far below what
@@ -1127,8 +1128,7 @@ async function renderHat(kind, vel, at, o) {
     hpf.type = 'highpass';
     hpf.frequency.value = kind === 'shaker' ? 5200 : 7400;
     const g = ctx.createGain();
-    g.gain.value = 0.0001; // as drum() does (queue item 26b)
-    g.gain.setValueAtTime(0.0001, at);
+    synth._first(g.gain, 0.0001, at); // as drum() does (queue items 26b, 27c)
     g.gain.exponentialRampToValueAtTime(vel * (kind === 'shaker' ? 0.3 : 0.42), at + 0.003);
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     src.connect(hpf).connect(g).connect(channel);
@@ -1148,9 +1148,11 @@ window.probeNull = async (o) => {
           // before a block starts. The last four sit a hair above a whole
           // frame, where the source starts a frame ahead of its gain (queue
           // item 26b): both engines must give that frame the gain's first
-          // value, so they still null.
+          // value, so they still null. Two of those are a block's last
+          // frame, so the note starts in one block and sounds from the next
+          // (queue item 27c).
           const at = k >= 24
-            ? (2205 + 61 * k + 0.0003) / o.rate
+            ? ((k % 2 ? 2303 + 128 * (k - 20) : 2205 + 61 * k) + 0.0003) / o.rate
             : k % 6 === 0
               ? (2304 + 128 * k - 0.3 - ((k * 0.618034) % 0.6)) / o.rate
               : (2205 + ((k * 97) % 256) + ((k * 0.618034) % 1)) / o.rate;
@@ -1203,10 +1205,15 @@ window.probeNull = async (o) => {
             if (o.only && !o.only.includes(j)) continue;
             // Every fifth note a fraction of a frame before a block starts,
             // so its first frame is the block's: Chromium has rules of its
-            // own for that (core/src/param.rs, clamp_before).
+            // own for that (core/src/param.rs, clamp_before). Another fifth
+            // a hair past a whole frame, every other one a block's last:
+            // Chromium starts and stops every source on that frame, and
+            // an oscillator plays from the next (queue item 27c).
             const at = k % 5 === 0
               ? (2304 + 128 * (k % 7) - 0.25 - ((k * 0.618034) % 0.7)) / o.rate
-              : (2205 + ((k * 53) % 256) + ((k * 0.618034) % 1)) / o.rate;
+              : k % 5 === 2
+                ? ((k % 2 ? 2303 + 128 * (k % 7) : 2205 + ((k * 53) % 256)) + 0.0003) / o.rate
+                : (2205 + ((k * 53) % 256) + ((k * 0.618034) % 1)) / o.rate;
             const opts = {
               rate: o.rate, dur, tail: 1.8, at,
               prev: variant.prev == null ? undefined : midi + variant.prev, chord: variant.chord,

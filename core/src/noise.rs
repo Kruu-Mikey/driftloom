@@ -24,6 +24,7 @@
 //!   a loop wraps around the whole buffer, keeping the fraction.
 
 use crate::QUANTUM;
+use crate::osc::{frame_at, frames};
 
 /// The longest noise the core holds: two seconds at 96 kHz. A context
 /// faster than that keeps its noise voices in JavaScript.
@@ -78,18 +79,6 @@ impl Default for Noise {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// `TimeToSampleFrame`'s first step: the time in frames, to 1/1024 of one.
-fn frames(time: f64, rate: f64) -> f64 {
-    (time * rate * 1024.0).round() / 1024.0
-}
-
-/// The first frame at or after `time`, as Chromium schedules a buffer
-/// source. (Its oscillators take the plain ceiling; see `osc::frame_at`.)
-pub fn frame_at(time: f64, rate: f64) -> u64 {
-    let f = frames(time, rate).ceil();
-    if f > 0.0 { f as u64 } else { 0 }
 }
 
 /// A source playing the noise.

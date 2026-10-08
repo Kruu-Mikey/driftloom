@@ -1048,6 +1048,16 @@ export class Synth {
     return true;
   }
 
+  // `param.setValueAtTime(value, time)`, holding `value` from now on too
+  // (see `_noiseSource`). Not the `value` setter, which is
+  // `setValueAtTime(value, currentTime)`: for a note built after its own
+  // start (a late one), that event would come after the note's envelope
+  // and send it back to its first value. Late, this is the one event.
+  _first(param, value, time) {
+    param.setValueAtTime(value, Math.min(time, this.ctx.currentTime));
+    param.setValueAtTime(value, time);
+  }
+
   _release(time, dur, cost = DEFAULT_COST) {
     const at = (typeof dur === 'number' ? time + dur : this.ctx.currentTime + time) + 0.12;
     // The voice being built is over when its last part is.
@@ -1062,8 +1072,8 @@ export class Synth {
   // at or before: when `time * rate` lands a hair above a whole frame, the
   // source's first frame plays through a gain still at its default of 1,
   // one loud sample. So every gain a noise source feeds takes its first
-  // event's value as its own (`g.gain.value = x` before the
-  // `setValueAtTime(x, time)`), which the early frame then plays at.
+  // event's value from before it (`_first`), which the early frame then
+  // plays at.
   _noiseSource(time, dur) {
     const src = this.ctx.createBufferSource();
     src.buffer = this.noise;
@@ -1079,17 +1089,19 @@ export class Synth {
   // drum makes below go with the note, in the order it makes them: the
   // noise's rate and offset, and for the jingle its five zils' first. The
   // soft kick and the rim draw nothing. False when the core cannot take it
-  // (counted as a fallback) or the drum is not one it has.
+  // (counted as a fallback) or the drum is not one it has; the channel is
+  // asked first, so a drum the core cannot take draws only in the
+  // JavaScript voice, not twice.
   _coreDrum(inst, time, v, cost) {
     const out = this.channels.drums.gain;
     const hat = HAT_KINDS[inst];
     const kind = DRUM_KINDS[inst];
     if (hat === undefined && kind === undefined) return false;
-    const draws = [];
-    if (inst === 'jingle' || inst === 'ojingle') for (let i = 0; i < 5; i++) draws.push(Math.random());
     const noisy = inst !== 'softkick' && inst !== 'rim';
     const channel = noisy ? this._coreNoiseChannel(out) : this._coreChannel(out);
     if (channel < 0) return false;
+    const draws = [];
+    if (inst === 'jingle' || inst === 'ojingle') for (let i = 0; i < 5; i++) draws.push(Math.random());
     if (noisy) draws.push(Math.random(), Math.random());
     if (hat !== undefined) this.core.note(CORE_VOICES.hat, channel, time, 0, 0, v, hat, draws);
     else this.core.note(CORE_VOICES.drum, channel, time, 0, 0, v, kind, draws);
@@ -1123,8 +1135,7 @@ export class Synth {
       cf.type = 'lowpass';
       cf.frequency.value = 1400;
       const cg = ctx.createGain();
-      cg.gain.value = v * 0.28;
-      cg.gain.setValueAtTime(v * 0.28, time);
+      this._first(cg.gain, v * 0.28, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.03);
       click.connect(cf).connect(cg).connect(out);
       this._release(time, 0.45, cost);
@@ -1159,8 +1170,7 @@ export class Synth {
       bp.frequency.value = inst === 'clap' ? 1500 : 1900;
       bp.Q.value = inst === 'clap' ? 1.4 : 0.8;
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       g.gain.exponentialRampToValueAtTime(v * 0.7, time + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
       src.connect(bp).connect(g).connect(out);
@@ -1185,8 +1195,7 @@ export class Synth {
       hpf.type = 'highpass';
       hpf.frequency.value = inst === 'shaker' ? 5200 : 7400;
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       g.gain.exponentialRampToValueAtTime(v * (inst === 'shaker' ? 0.3 : 0.42), time + 0.003);
       g.gain.exponentialRampToValueAtTime(0.0001, time + dur);
       src.connect(hpf).connect(g).connect(out);
@@ -1249,8 +1258,7 @@ export class Synth {
       bp.frequency.value = low ? 520 : 900;
       bp.Q.value = 1.1;
       const ng = ctx.createGain();
-      ng.gain.value = 0.0001;
-      ng.gain.setValueAtTime(0.0001, time);
+      this._first(ng.gain, 0.0001, time);
       ng.gain.exponentialRampToValueAtTime(level * (low ? 0.3 : 0.45), time + 0.002);
       ng.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
       slap.connect(bp).connect(ng).connect(out);
@@ -1268,8 +1276,7 @@ export class Synth {
       const ring = long ? 0.24 : 0.09;
       const level = v * HAND_LEVEL[inst];
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       g.gain.exponentialRampToValueAtTime(level, time + 0.002);
       g.gain.exponentialRampToValueAtTime(0.0001, time + ring);
       g.connect(out);
@@ -1420,8 +1427,7 @@ export class Synth {
       cf.type = 'bandpass';
       cf.frequency.value = 900;
       const cg = ctx.createGain();
-      cg.gain.value = vel * 0.1;
-      cg.gain.setValueAtTime(vel * 0.1, time);
+      this._first(cg.gain, vel * 0.1, time);
       cg.gain.exponentialRampToValueAtTime(0.0001, time + 0.025);
       click.connect(cf).connect(cg).connect(out);
     } else if (voice === 'moogbass') {
@@ -1825,8 +1831,7 @@ export class Synth {
         bp.frequency.value = f * 2;
         bp.Q.value = 1.2;
         const ag = ctx.createGain();
-        ag.gain.value = 0.0001;
-        ag.gain.setValueAtTime(0.0001, time);
+        this._first(ag.gain, 0.0001, time);
         ag.gain.linearRampToValueAtTime(vel * level * (breathy ? 1 / 3 : 0.15), Math.min(time + 0.06, letGo));
         ag.gain.setTargetAtTime(0.0001, letGo, 0.09);
         air.connect(bp).connect(ag).connect(dest);
@@ -2011,8 +2016,7 @@ export class Synth {
         // settling within 30 ms: a puff of air, on the breath's own path
         // rather than a second noise source for every note.
         const ag = ctx.createGain();
-        ag.gain.value = 0.0001;
-        ag.gain.setValueAtTime(0.0001, time);
+        this._first(ag.gain, 0.0001, time);
         ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_CHIFF, Math.min(time + 0.004, letGo));
         ag.gain.exponentialRampToValueAtTime(level * PANFLUTE_BREATH, Math.min(time + 0.03, letGo));
         ag.gain.setTargetAtTime(0.0001, letGo, 0.08);
@@ -2134,8 +2138,7 @@ export class Synth {
           bp.frequency.value = 220 + Math.random() * 180;
           bp.Q.value = 3.5;
           const kg = ctx.createGain();
-          kg.gain.value = vel * 0.13;
-          kg.gain.setValueAtTime(vel * 0.13, time);
+          this._first(kg.gain, vel * 0.13, time);
           kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
           knock.connect(bp).connect(kg).connect(dest);
         }
@@ -2307,8 +2310,7 @@ export class Synth {
 
         const amp = ctx.createGain();
         const stopAt = time + dur + 0.9;
-        amp.gain.value = 0.0001;
-        amp.gain.setValueAtTime(0.0001, time);
+        this._first(amp.gain, 0.0001, time);
         // Levels measured, not guessed. The humming tract puts an 18dB boost
         // at 280Hz, which lands directly on a triangle wave's fundamental
         // and made it four times louder than every other voice.
@@ -2479,8 +2481,7 @@ export class Synth {
         bp.frequency.value = humming ? 900 : 2200;
         bp.Q.value = 0.8;
         const bg = ctx.createGain();
-        bg.gain.value = 0.0001;
-        bg.gain.setValueAtTime(0.0001, time);
+        this._first(bg.gain, 0.0001, time);
         bg.gain.linearRampToValueAtTime(vel * (humming ? 0.05 : 0.1), time + 0.04);
         bg.gain.exponentialRampToValueAtTime(Math.max(0.0005, vel * 0.02), time + 0.3);
         bg.gain.setTargetAtTime(0.0001, time + dur * 0.8, 0.15);
@@ -2514,8 +2515,7 @@ export class Synth {
         }
         const stopAt = time + hold + 1.4;
         const g = ctx.createGain();
-        g.gain.value = 0.0001;
-        g.gain.setValueAtTime(0.0001, time);
+        this._first(g.gain, 0.0001, time);
         g.gain.exponentialRampToValueAtTime(vel * 0.3 * (soft ? TEMPLEBELL_CHORD_LIFT : 1), time + 0.006);
         this._release2(g.gain, time + 0.02, stopAt);
         g.connect(dest);
@@ -2545,8 +2545,7 @@ export class Synth {
         sf.frequency.value = f * 6;
         sf.Q.value = 1.2;
         const sg = ctx.createGain();
-        sg.gain.value = BELL_PARTIAL_VEL * 0.18;
-        sg.gain.setValueAtTime(BELL_PARTIAL_VEL * 0.18, time);
+        this._first(sg.gain, BELL_PARTIAL_VEL * 0.18, time);
         sg.gain.exponentialRampToValueAtTime(0.0001, time + 0.04);
         strike.connect(sf).connect(sg).connect(g);
 
@@ -2794,8 +2793,7 @@ export class Synth {
       bp.frequency.setValueAtTime(2400 + Math.random() * 3000, time);
       bp.Q.value = 9;
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       g.gain.exponentialRampToValueAtTime(vel * 0.3, time + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, time + 0.12);
       src.connect(bp).connect(g).connect(out);
@@ -2829,8 +2827,7 @@ export class Synth {
       lfoG.gain.value = 280;
       lfo.connect(lfoG).connect(bp.frequency);
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       // Swell in and back out inside the segment rather than sitting flat.
       g.gain.linearRampToValueAtTime(vel * 0.32, time + Math.max(0.8, dur * 0.4));
       g.gain.setTargetAtTime(0.0001, time + dur * 0.75, Math.max(0.4, dur * 0.2));
@@ -2867,8 +2864,7 @@ export class Synth {
         return lp;
       });
       const g = ctx.createGain();
-      g.gain.value = 0.0001;
-      g.gain.setValueAtTime(0.0001, time);
+      this._first(g.gain, 0.0001, time);
       g.gain.linearRampToValueAtTime(vel * WAVES_LEVEL, crest);
       g.gain.linearRampToValueAtTime(0.0001, time + dur);
       src.connect(filters[0]).connect(filters[1]).connect(g).connect(out);

@@ -4,7 +4,7 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-08:** items 0-27 are done (13 stopped at its gate by
+**Status, 2026-10-09:** items 0-27c are done (13 stopped at its gate by
 design). Next: **item 28, the sung voices, the last of the Rust port**; it
 names its session's model in `docs/BRAIN.md` (State). A new Claude Code
 session starts here: read the standing rules and the merge policy, then
