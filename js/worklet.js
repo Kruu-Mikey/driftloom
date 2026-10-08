@@ -54,6 +54,12 @@ class DriftloomCore extends AudioWorkletProcessor {
     switch (m.type) {
       case 'note': {
         if (!core) return;
+        // A sung note's draws go first, into the room the core keeps for
+        // the next note's (core/src/lib.rs, Core::sung_draws).
+        if (m.draws) {
+          const at = core.dl_sung_draws(m.draws.length);
+          if (at) new Float64Array(core.memory.buffer, at, m.draws.length).set(m.draws);
+        }
         const x = m.extra;
         const taken = core.dl_note(
           m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts,

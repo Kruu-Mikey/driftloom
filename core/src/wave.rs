@@ -211,6 +211,8 @@ pub struct Waves {
     pub pipe: Wave,
     pub nylon_mellow: Wave,
     pub nylon_bright: Wave,
+    /// The sung voices' `glottal` source.
+    pub glottal: Wave,
 }
 
 /// The lead waves' slopes, and how many partials they have.
@@ -241,6 +243,11 @@ const NYLON_BRIGHT_SLOPE: f64 = 1.4;
 const NYLON_PLUCK_AT: f64 = 0.2;
 const FOLK_PARTIALS: usize = 64;
 
+/// The sung voices' `glottal` wave (`_makeGlottal`): every partial at
+/// 1/n^2.5, 64 of them.
+const GLOTTAL_SLOPE: f64 = 2.5;
+const GLOTTAL_PARTIALS: usize = 64;
+
 impl Waves {
     pub const fn new() -> Self {
         Waves {
@@ -256,6 +263,7 @@ impl Waves {
             pipe: Wave::new(),
             nylon_mellow: Wave::new(),
             nylon_bright: Wave::new(),
+            glottal: Wave::new(),
         }
     }
 
@@ -325,6 +333,15 @@ impl Waves {
             }
             wave.build(rate, &real[..=FOLK_PARTIALS], &imag[..=FOLK_PARTIALS], fft);
         }
+        for (n, im) in imag.iter_mut().enumerate().take(GLOTTAL_PARTIALS + 1).skip(1) {
+            *im = (1.0 / (n as f64).powf(GLOTTAL_SLOPE)) as f32;
+        }
+        self.glottal.build(
+            rate,
+            &real[..=GLOTTAL_PARTIALS],
+            &imag[..=GLOTTAL_PARTIALS],
+            fft,
+        );
     }
 }
 

@@ -4,11 +4,12 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-09:** items 0-27c are done (13 stopped at its gate by
-design). Next: **item 28, the sung voices, the last of the Rust port**; it
-names its session's model in `docs/BRAIN.md` (State). A new Claude Code
-session starts here: read the standing rules and the merge policy, then
-take the next item.
+**Status, 2026-10-09:** items 0-28 are done (13 stopped at its gate by
+design): every voice plays from the Rust core behind `?engine=rust`.
+Nothing is queued. Per "After item 28, stop": the brain verifies, Mikey
+listens to one labeled album across the new voices, and then he decides
+what is next. A new Claude Code session starts here: read the standing
+rules and the merge policy, then take the next item once there is one.
 
 ## Standing rules, for every item
 

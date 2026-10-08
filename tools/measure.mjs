@@ -735,10 +735,13 @@ const CORE_VOICES = [
   'swell', 'drop', 'chime', 'wind', 'waves',
   // The drums (the hats are the hat voice).
   'kick', 'softkick', 'snare', 'clap', 'rim', 'frame', 'tap', 'jingle', 'ojingle', 'hat', 'ohat', 'shaker',
+  // Item 28: the sung voices.
+  'vowel', 'hum', 'choir',
 ];
+const SUNG_VOICES = ['vowel', 'hum', 'choir'];
 const DRUM_VOICES = ['kick', 'softkick', 'snare', 'clap', 'rim', 'hat', 'ohat', 'shaker', 'frame', 'tap', 'jingle', 'ojingle'];
 // Those that play the noise: --null proves the source on its own first.
-const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared', 'pluckbass', 'drop', 'wind', 'waves'];
+const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared', 'pluckbass', 'drop', 'wind', 'waves', ...SUNG_VOICES];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
 const FAMILY_LIMIT = 3;
@@ -2403,7 +2406,12 @@ if (opts.null) {
   for (const layer of ['melody', 'chords', 'bass', 'texture']) {
     for (const voice of drawnLayers()[layer] || []) {
       if (!wanted.includes(voice === 'moogpad' ? 'pad' : voice)) continue;
-      jobs.push({ layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] });
+      // A sung note held long enough for its vowel to travel all the way
+      // and for some fifty steps of jitter, too.
+      jobs.push({
+        layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1],
+        ...(SUNG_VOICES.includes(voice) ? { lengths: [0.1, 0.4, 1.6, 6] } : {}),
+      });
     }
   }
   // A drum has no pitch and no length: the "pitches" only give it twenty-one

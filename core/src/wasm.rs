@@ -67,6 +67,19 @@ pub extern "C" fn dl_note(
     ) as u32
 }
 
+/// Room for the draws of the sung note that comes next; see
+/// `Core::sung_draws`. Returns where to write them, or 0 if a note cannot
+/// have that many.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_sung_draws(len: u32) -> *mut f64 {
+    let space = core().sung_draws(len as usize);
+    if space.is_empty() {
+        core::ptr::null_mut()
+    } else {
+        space.as_mut_ptr()
+    }
+}
+
 /// A new strum into `channel` at `time`; see `Core::damp`.
 #[unsafe(no_mangle)]
 pub extern "C" fn dl_damp(channel: u32, time: f64) {
