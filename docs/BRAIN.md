@@ -436,6 +436,11 @@ Preview deploy gets a **Deployment URL** that "never changes"
 commit preview for A/Bs. The branch's Preview URL moves with each push.
 Limits: 100 deployments per Preview, 100 Previews per Worker on the free
 plan, oldest pruned first. Production stays `npx wrangler deploy`.
+**Each Preview keeps its own copy of the build settings**, taken from
+Previews Base when its branch first builds: fixing Base doesn't fix a
+Preview that already exists (a typo'd command broke `brain-rust-6`'s
+until Mikey fixed it in that Preview's own settings). When a branch's
+preview fails and Base looks right, check that branch's Preview.
 
 **Next (Mikey, 2026-10-08): the Rust port first.** The brain wrote
 queue items 23-28 (every remaining voice, behind `?engine=rust`), from a
