@@ -4,8 +4,8 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-08:** items 0-26b are done (13 stopped at its gate by
-design). Next: **items 27-28, the rest of the Rust port**, in order; each
+**Status, 2026-10-08:** items 0-27a are done (13 stopped at its gate by
+design). Next: **27b (the drums) and 28, the rest of the Rust port**, in order; each
 names its sessions' model in `docs/BRAIN.md` (State). A new Claude Code
 session starts here: read the standing rules and the merge policy, then
 take the next item.
@@ -1289,3 +1289,14 @@ Mikey decides this line:
   engines (`measure.mjs --clicks`: 26 voices clicked, none do now). Hats,
   snares, claps, the bells and the breath voices are where it was. Nothing
   else changes, apart from the tick.
+- #140, the Rust core's seventh step, first half: bass and textures (item 27a,
+  v74), https://0f217058-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the bass voices (sub,
+  round, fifths, pluck, moog; the Rhodes bass through the FM voice) and the
+  swell, drop, wind and waves textures come out of Rust (-94 to -147 dB
+  against the JavaScript voices), and the core now serves all five channels.
+  Play a loop with a bass line and one with the wind or the sea (tide's waves)
+  and check Diagnostics reads `engine: rust  late: 0  fallback: 0`. Drum
+  notes still play in JavaScript until the next step. Also in it: a core bug
+  at frame-exact note starts (a loop at 11.3 s, 44.1 kHz nulled at -38 dB)
+  fixed for every voice. Core memory 10.4 MB.
