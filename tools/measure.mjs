@@ -77,7 +77,7 @@ driftloom offline audio measurement
   --profile <id>    keep only loops that profile leads, drawing from the
                     same corpus until --n of them are in
   --engine <e>      'js' or 'rust': which synth plays the voices the Rust
-                    core has (only kalimba so far)              (default js)
+                    core has                                   (default js)
   --null            render the same seeded kalimba notes, and kalimba
                     loops, through both engines and subtract
   --selftest        check the loudness meter against reference signals
@@ -695,7 +695,11 @@ const PROBE_WINDOWS = {
 const PROBE_VELOCITIES = [0.4, 0.8];
 const PROBE_REFERENCE = { layer: 'melody', voice: 'kalimba' };
 // The voices the Rust core plays (core/src/lib.rs), for --null.
-const CORE_VOICES = ['kalimba', 'fiddle', 'pad'];
+const CORE_VOICES = [
+  'kalimba', 'fiddle', 'pad',
+  // Item 23: the fm() voices (prepared's two strikes; its knock is still JavaScript), sine, tubular.
+  'keys', 'bell', 'celeste', 'musicbox', 'rhodes', 'marimba', 'harp', 'piano', 'prepared', 'sine', 'tubular',
+];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
 const FAMILY_LIMIT = 3;

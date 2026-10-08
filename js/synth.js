@@ -1406,6 +1406,15 @@ export class Synth {
     const decay = opts.decay ?? dur;
     const detune = opts.detune ?? 0;
 
+    // On the Rust core, with the five options resolved. The budget has been
+    // asked and is released the same way below; fm() draws nothing. The
+    // kalimba's JavaScript fallback says `noCore` so it is counted once.
+    if (this.engine === 'rust' && !opts.noCore
+      && this._coreNote(CORE_VOICES.fm, out, time, midi, dur, vel, [ratio, index, attack, decay, detune])) {
+      if (!opts.skipBudget) this._release(time, dur + 1.2, cost);
+      return;
+    }
+
     const car = ctx.createOscillator();
     car.type = 'sine';
     car.frequency.value = f;
@@ -1596,6 +1605,16 @@ export class Synth {
       this._release(time, 0.25, 3);
     }
     if (parts) this.core.note(CORE_VOICES.kalimba, channel, time, midi, dur, vel, parts);
+    return true;
+  }
+
+  // A note for the core, once the budget has said yes: false when it cannot
+  // take it (counted as a fallback), and the JavaScript voice plays it.
+  // `extra` is the voice's own values (core/src/lib.rs).
+  _coreNote(voice, dest, time, midi, dur, vel, extra) {
+    const channel = this._coreChannel(dest);
+    if (channel < 0) return false;
+    this.core.note(voice, channel, time, midi, dur, vel, 0, extra);
     return true;
   }
 
@@ -2016,7 +2035,7 @@ export class Synth {
       case 'kalimba': {
         if (this.engine === 'rust' && this._coreKalimba(midi, time, dur, vel, dest, soft)) return;
         this.fm(midi, time, Math.min(dur, 1.1), vel, {
-          soft,
+          soft, noCore: true,
           out: dest, ratio: 3.7, index: 260, decay: 0.09, attack: 0.002, cost: 8,
         });
         if (!this._budget(time, soft, 3)) return;
@@ -2373,6 +2392,15 @@ export class Synth {
       case 'tubular': {
         if (!this._budget(time, soft, VOICE_COST.tubular)) return;
         const hold = Math.max(dur, 5);
+        // On the Rust core: the five detune draws, in partial order, as the
+        // loop below makes them (and nothing else draws), go with the note.
+        if (this.engine === 'rust' && this.core && this.core.channelOf(dest) >= 0) {
+          const draws = [Math.random(), Math.random(), Math.random(), Math.random(), Math.random()];
+          this._coreNote(CORE_VOICES.tubular, dest, time, midi, dur, vel, draws);
+          this._release(time, hold + 1.2, VOICE_COST.tubular);
+          return;
+        }
+        if (this.engine === 'rust') this.fallbacks++;
         const stopAt = time + hold + 1.2;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);
@@ -2503,6 +2531,10 @@ export class Synth {
 
       case 'sine': {
         if (!this._budget(time, soft)) return;
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.sine, dest, time, midi, dur, vel, [])) {
+          this._release(time, dur + 1);
+          return;
+        }
         const o = ctx.createOscillator();
         o.type = 'sine';
         o.frequency.value = f;

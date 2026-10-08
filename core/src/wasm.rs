@@ -30,7 +30,8 @@ pub extern "C" fn dl_init(rate: f64) {
     core().init(rate);
 }
 
-/// A note; see `Core::note`. Returns a `Taken`, as a number.
+/// A note; see `Core::note`. `a` to `h` are its `EXTRA` values. Returns a
+/// `Taken`, as a number.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
 pub extern "C" fn dl_note(
@@ -45,8 +46,21 @@ pub extern "C" fn dl_note(
     b: f64,
     c: f64,
     d: f64,
+    e: f64,
+    f: f64,
+    g: f64,
+    h: f64,
 ) -> u32 {
-    core().note(voice, channel, time, midi, dur, vel, parts, [a, b, c, d]) as u32
+    core().note(
+        voice,
+        channel,
+        time,
+        midi,
+        dur,
+        vel,
+        parts,
+        [a, b, c, d, e, f, g, h],
+    ) as u32
 }
 
 /// Render the block that starts at frame `block` and return where its
