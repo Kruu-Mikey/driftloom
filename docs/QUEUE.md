@@ -4,8 +4,8 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-08:** items 0-22 are done (13 stopped at its gate by
-design). Next: **items 23-28, the rest of the Rust port**, in order; each
+**Status, 2026-10-08:** items 0-26b are done (13 stopped at its gate by
+design). Next: **items 27-28, the rest of the Rust port**, in order; each
 names its sessions' model in `docs/BRAIN.md` (State). A new Claude Code
 session starts here: read the standing rules and the merge policy, then
 take the next item.
@@ -1281,3 +1281,11 @@ Mikey decides this line:
   voices). Play a loop with an ocarina or flute and one with temple bells,
   and check Diagnostics reads `engine: rust  late: 0`; `fallback` now counts
   only bass, texture, drum and sung notes. Core memory about 11 MB.
+- #139, the one-frame click (item 26b, v73),
+  https://64580854-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing to listen for but the absence of rare ticks. A noise voice
+  started a hair after a whole frame (about 1.4% of noise starts, and one
+  loop in four had one) let one loud sample through; it is gone in both
+  engines (`measure.mjs --clicks`: 26 voices clicked, none do now). Hats,
+  snares, claps, the bells and the breath voices are where it was. Nothing
+  else changes, apart from the tick.

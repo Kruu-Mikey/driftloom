@@ -21,6 +21,10 @@ use crate::wave::Waves;
 const FILTER_TAIL: f64 = 0.2;
 /// A BiquadFilterNode's Q, before anything sets it.
 const Q_DEFAULT: f32 = 1.0;
+/// Where a gain behind the noise holds before its note: its first event's
+/// value (item 26b). A source can begin a frame ahead of that event, and
+/// the frame it plays then goes through this, not through unity.
+const QUIET: f32 = 0.0001;
 
 /// A source's playback rate from its draw: `0.9 + Math.random() * 0.25`.
 fn breath_rate(draw: f64) -> f64 {
@@ -225,7 +229,7 @@ impl Wind {
         self.filter
             .set(Kind::Bandpass, (f * 2.0) as f32, 1.2, 0.0, rate as f32);
         let a = &mut self.air_gain;
-        a.reset_at(UNITY, rate);
+        a.reset_at(QUIET, rate);
         a.set_value_at_time(0.0001, time);
         let share = if flute { 1.0 / 3.0 } else { 0.15 };
         a.linear_ramp_to_value_at_time(
@@ -402,7 +406,7 @@ impl Panflute {
         self.filter
             .set(Kind::Bandpass, (f * 1.5) as f32, 0.9, 0.0, rate as f32);
         let a = &mut self.air_gain;
-        a.reset_at(UNITY, rate);
+        a.reset_at(QUIET, rate);
         a.set_value_at_time(0.0001, time);
         a.exponential_ramp_to_value_at_time(
             (level * PANFLUTE_CHIFF) as f32,
@@ -543,7 +547,7 @@ impl Struck {
             rate as f32,
         );
         let g = &mut self.gain;
-        g.reset_at(UNITY, rate);
+        g.reset_at((vel * 0.13) as f32, rate);
         g.set_value_at_time((vel * 0.13) as f32, time);
         g.exponential_ramp_to_value_at_time(0.0001, time + 0.05, time);
         self.end = self.src.end_frame() + frame_at(FILTER_TAIL, rate);
@@ -582,7 +586,7 @@ impl Struck {
         self.filter
             .set(Kind::Highpass, cutoff, Q_DEFAULT, 0.0, rate as f32);
         let g = &mut self.gain;
-        g.reset_at(UNITY, rate);
+        g.reset_at(QUIET, rate);
         g.set_value_at_time(0.0001, time);
         g.exponential_ramp_to_value_at_time(
             (v * if kind == SHAKER { 0.3 } else { 0.42 }) as f32,
@@ -677,7 +681,7 @@ impl TempleBell {
         let hold = dur.max(6.5);
         let stop = time + hold + 1.4;
         let g = &mut self.envelope;
-        g.reset_at(UNITY, rate);
+        g.reset_at(QUIET, rate);
         g.set_value_at_time(0.0001, time);
         let lift = if chords { chord_lift() } else { 1.0 };
         g.exponential_ramp_to_value_at_time((vel * 0.3 * lift) as f32, time + 0.006, time);
@@ -719,7 +723,7 @@ impl TempleBell {
         self.filter
             .set(Kind::Bandpass, (f * 6.0) as f32, 1.2, 0.0, rate as f32);
         let s = &mut self.strike_gain;
-        s.reset_at(UNITY, rate);
+        s.reset_at((BELL_PARTIAL_VEL * 0.18) as f32, rate);
         s.set_value_at_time((BELL_PARTIAL_VEL * 0.18) as f32, time);
         s.exponential_ramp_to_value_at_time(0.0001, time + 0.04, time);
         self.end = frame_at(stop + 0.01, rate);
