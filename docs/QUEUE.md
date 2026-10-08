@@ -1344,3 +1344,13 @@ Mikey decides this line:
   the main thread 9-13% lighter, and no Web Audio nodes are made at all (110
   a second before); no late ticks or device fill-ins either way. Only the
   sung voices still play in JavaScript. Core memory 10.4 MB.
+- #143, three small fixes before the sung voices (item 27c, v76),
+  https://e6fb9fa3-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing to listen for. With `?engine=rust`, a note that starts or stops a
+  hair past a whole sample (one time in about two thousand) now plays
+  exactly as JavaScript plays it; before, the core could play its breath or
+  noise a sample late for the whole note (the pan flute's -68.5 dBFS in the
+  brain's check; snares and hats too, when they landed there). Also: the
+  first-value fix from 26b no longer uses the `value` setter, which a
+  browser could apply after a late note's envelope (Chromium doesn't), and
+  a jingle the core can't take no longer draws its zils twice.
