@@ -3,7 +3,10 @@
 // shared noise buffer, which is what keeps this playable on a cheap phone.
 
 import { midiToFreq } from './theory.js';
-import { CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, BASS_GLIDE, BASS_CHUG, KALIMBA_STRIKE, KALIMBA_BODY } from './core.js';
+import {
+  CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, DRUM_KINDS, HAT_KINDS, BASS_GLIDE, BASS_CHUG,
+  KALIMBA_STRIKE, KALIMBA_BODY,
+} from './core.js';
 
 // A voice budget in *cost units*, not a count of voices.
 //
@@ -200,6 +203,12 @@ const SOFTKICK_LEVEL = 1.15;
 const HAND_LEVEL = { frame: 1.097, tap: 0.2918, jingle: 0.02227, ojingle: 0.04494 };
 // A tambourine's zils, in Hz: inharmonic, and all above the 2-5 kHz band.
 const JINGLE_PARTIALS = [5300, 6650, 7900, 9400, 11200];
+// How long the budget holds each drum: what drum() releases below, for the
+// core's path, which does not run those lines.
+const DRUM_HOLD = {
+  kick: 0.45, softkick: 0.36, snare: 0.16, clap: 0.2, hat: 0.045, ohat: 0.26, shaker: 0.07,
+  rim: 0.1, frame: 0.32, tap: 0.12, jingle: 0.09, ojingle: 0.24,
+};
 
 // Waves (tide's air): noise under two lowpass stages, so the sea is a
 // swell and never a hiss, rising to a crest and falling away. The cutoff
@@ -1066,12 +1075,35 @@ export class Synth {
 
   // ------------------------------------------------------------- drums
 
+  // A drum on the Rust core, once the budget has said yes. The draws each
+  // drum makes below go with the note, in the order it makes them: the
+  // noise's rate and offset, and for the jingle its five zils' first. The
+  // soft kick and the rim draw nothing. False when the core cannot take it
+  // (counted as a fallback) or the drum is not one it has.
+  _coreDrum(inst, time, v, cost) {
+    const out = this.channels.drums.gain;
+    const hat = HAT_KINDS[inst];
+    const kind = DRUM_KINDS[inst];
+    if (hat === undefined && kind === undefined) return false;
+    const draws = [];
+    if (inst === 'jingle' || inst === 'ojingle') for (let i = 0; i < 5; i++) draws.push(Math.random());
+    const noisy = inst !== 'softkick' && inst !== 'rim';
+    const channel = noisy ? this._coreNoiseChannel(out) : this._coreChannel(out);
+    if (channel < 0) return false;
+    if (noisy) draws.push(Math.random(), Math.random());
+    if (hat !== undefined) this.core.note(CORE_VOICES.hat, channel, time, 0, 0, v, hat, draws);
+    else this.core.note(CORE_VOICES.drum, channel, time, 0, 0, v, kind, draws);
+    this._release(time, DRUM_HOLD[inst], cost);
+    return true;
+  }
+
   drum(inst, time, vel = 0.8) {
     const cost = VOICE_COST[inst] ?? 1.5;
     if (!this._budget(time, false, cost)) return;
     const ctx = this.ctx;
     const out = this.channels.drums.gain;
     const v = Math.max(0, Math.min(1, vel));
+    if (this.engine === 'rust' && this._coreDrum(inst, time, v, cost)) return;
 
     if (inst === 'kick') {
       const osc = ctx.createOscillator();

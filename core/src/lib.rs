@@ -18,6 +18,7 @@
 
 pub mod bass;
 pub mod breath;
+pub mod drums;
 pub mod filter;
 pub mod folk;
 pub mod lead;
@@ -33,6 +34,7 @@ mod wasm;
 
 use bass::Bass;
 use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
+use drums::Drum;
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
 use noise::Noise;
@@ -78,6 +80,7 @@ fn plays_noise(voice: u32, parts: u32) -> bool {
         STAB..=HAT => voice != STAB,
         BASS => parts & bass::KIND == bass::PLUCKBASS,
         TEXTURE => texture::uses_noise(parts),
+        DRUM => drums::uses_noise(parts),
         _ => false,
     }
 }
@@ -138,9 +141,13 @@ pub const EXTRA: usize = 12;
 ///   rate, offset and band draws; the wind's slow sine's rate draw, then
 ///   its band in Hz (NaN for the usual one); the waves' rate and offset
 ///   draws. `bell` and `chime` are FM notes.
+/// - DRUM: `parts` is which (`drums::KICK` and the rest; the hats are HAT).
+///   The noise's rate and offset draws, for every drum but the soft kick
+///   and the rim; the jingle's five zils' draws come first, then those.
 ///
 /// The noise voices -- those from the ocarina on, the pluck, the drop, the
-/// wind and the waves -- need the noise (`Core::noise`); a core without it
+/// wind, the waves and the drums but two -- need the noise (`Core::noise`); a
+/// core without it
 /// drops them, and the host plays them in JavaScript.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
@@ -166,8 +173,9 @@ pub const TEMPLEBELL: u32 = 20;
 pub const HAT: u32 = 21;
 pub const BASS: u32 = 22;
 pub const TEXTURE: u32 = 23;
+pub const DRUM: u32 = 24;
 /// The last voice there is.
-const LAST: u32 = TEXTURE;
+const LAST: u32 = DRUM;
 
 // `process` hands each voice the bus of its body by these places.
 const _: () =
@@ -200,6 +208,7 @@ enum Voice {
     TempleBell(TempleBell),
     Bass(Bass),
     Texture(Texture),
+    Drum(Drum),
 }
 
 struct Slot {
@@ -477,7 +486,7 @@ impl Core {
         };
         let rate = self.rate;
         let noise = self.noise.samples().len();
-        let [a, b, c, d, e, ..] = w.extra;
+        let [a, b, c, d, e, f, g, ..] = w.extra;
         let (begin, end) = match w.voice {
             FIDDLE => {
                 let prev = if a.is_finite() { Some(a) } else { None };
@@ -667,6 +676,13 @@ impl Core {
                 slot.voice = Voice::Bass(v);
                 span
             }
+            DRUM => {
+                let mut v = Drum::new();
+                v.play(w.parts, w.time, w.vel, &[a, b, c, d, e, f, g], noise, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Drum(v);
+                span
+            }
             TEXTURE => {
                 let mut v = Texture::new();
                 v.play(w.parts, w.midi, w.time, w.dur, w.vel, [a, b, c], noise, rate);
@@ -747,6 +763,7 @@ impl Core {
                 Voice::Texture(v) => {
                     v.render(block, rate, &self.waves, self.noise.samples(), out)
                 }
+                Voice::Drum(v) => v.render(block, rate, &self.waves, self.noise.samples(), out),
                 Voice::Pad(v) => v.render(block, rate, &self.waves, out),
                 Voice::Fm(v) => v.render(block, rate, &self.waves, out),
                 Voice::Sine(v) => v.render(block, rate, &self.waves, out),
