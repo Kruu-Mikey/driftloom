@@ -10,8 +10,8 @@ stop without warning.
 
 Three roles.
 
-- **Brain** -- a claude.ai chat in the *Procedural Music App* project.
-  Analyzes, verifies, designs, and writes the queue. Does not write code.
+- **Brain** -- a claude.ai chat in the *Driftloom* project (Mikey's
+  nowmichaelclark Claude account since 2026-10-08). Analyzes, verifies, designs, and writes the queue. Does not write code.
 - **Hands** -- Claude Code sessions. Write code, open PRs, measure, merge
   under the merge policy, and report.
 - **Mikey** -- the ears. His listening is the acceptance test for anything
@@ -47,9 +47,10 @@ everything a session needs.
 
 ## Getting oriented
 
-- Repo (public): `https://github.com/Kruu-Mikey/driftloom`. A PR:
-  `git fetch origin pull/N/head:prN`.
-- Live: `https://driftloom.kruu-mikey-thaiculture.workers.dev/`. Cloudflare
+- Repo (public): `https://github.com/nowmichaelclark/driftloom`. A PR:
+  `git fetch origin pull/N/head:prN`. It moved from `Kruu-Mikey/driftloom`
+  on 2026-10-08 with its history, PR numbers and branches.
+- Live: `https://driftloom.nowmichaelclark.workers.dev/`. Cloudflare
   Workers, assets only (`wrangler.jsonc`). Push to `main` deploys; only
   testers see it. Every PR gets preview deploys: the Cloudflare bot's PR
   comment has the branch and **commit** preview URLs (use the commit one;
@@ -60,12 +61,22 @@ everything a session needs.
   and `CACHE` in `sw.js` together on every app change), `sw` state, and
   `choir`.
 - Read `ROADMAP.md`, `docs/QUEUE.md`, `docs/MOODS.md`, `docs/ALBUMS.md`,
-  `docs/perf-baseline.md` and `README.md`. `Mikey's Thoughts.md` is his.
+  `docs/perf-baseline.md`, `README.md` (a short front page since
+  2026-10-08) and `docs/NOTES.md` (the engineering sections that were the
+  README's body). `Mikey's Thoughts.md` is his.
 - Credentials: Mikey pastes a GitHub token in the session's opening
   message. With it the brain commits and merges **docs-only** changes --
   `docs/*.md`, `ROADMAP.md`, `README.md` -- through small PRs it merges
   itself. Code stays with the hands. Never write the token into a file, a
-  commit, memory, or a brief. Mikey manages his own tokens.
+  commit, memory, Project knowledge, or a brief. Mikey manages his own
+  tokens. Commits are authored as
+  `Mikey <162073748+nowmichaelclark@users.noreply.github.com>` (Kruu
+  Mikey before 2026-10-08).
+- In a claude.ai brain session the GitHub API answers 403 for the repo
+  until it is attached to the session (`add_repo` with push access);
+  after that `gh api` (REST only, no GraphQL) and pushes work with the
+  token. The shell can't reach workers.dev: check the live site with
+  WebFetch.
 - Things that tripped the hands before: a Claude Code session may push
   only to its one designated branch, so an open draft PR on that branch
   (like the never-to-merge drum knob, #42) blocks the next PR -- close it
@@ -134,6 +145,8 @@ Stated decisions, not inferences. Dated where the date matters.
   to scroll through.
 - **Loops with fewer layers are wanted variety**, not a bug, even drums
   over a texture alone.
+- **About twice the variety it had in September 2026**: some loops wider
+  and deeper, very simple ones still possible at any length.
 - **The choir is a rarity** (about 1 loop in 30) that should feel special.
 - Fine with retro, strange, and occasionally wrong if it opens things up.
 - **6/8:** chords move on the dotted beats and hold; figures between the
@@ -280,9 +293,10 @@ Stated decisions, not inferences. Dated where the date matters.
   Baseline in `docs/perf-baseline.md`.
 - `tools/listen.mjs` -- one-command albums; still not built (roadmap 20).
 
-## State -- 2026-10-03
+## State -- 2026-10-08
 
-`main` at **v68**, deployed. No open PRs. Nothing is queued. Item 20
+`main` at **v68**, deployed at the new address (see Session 5, below).
+No open PRs. Nothing is queued. Item 20
 (#122, v66) and items 21-22 (#126 v67, #127 v68, Session 4) are merged
 and brain-verified (below).
 
@@ -338,7 +352,7 @@ Free description and most/least albums were too slow and abstract, so the
 words get a **ranking test** instead: queue item 19 (`rank.html`), for the
 hands: merged as #117 (v65), brain-verified (tests pass, `--check`
 holds, app untouched but the stamps; live page matches the repo). It
-lives at https://driftloom.kruu-mikey-thaiculture.workers.dev/rank
+lives at https://driftloom.nowmichaelclark.workers.dev/rank
 (`/rank.html` redirects there). The Moods album is retired; Depth two is
 still out. Next: Mikey does a first batch of rankings, exports, and the
 brain reads them with `tools/ranks.mjs`. Candidate words later (he
@@ -383,13 +397,38 @@ with its own Web Audio, while the core copies Chromium's, so the two
 engines agreeing there is good evidence the port holds outside Chrome.
 iPhone/WebKit is still unheard; a hidden-toggle blind test stays optional.
 
-**Account move (planned 2026-10-07):** Mikey is moving Driftloom from
+**Account move (planned 2026-10-07, done 2026-10-08):** Mikey is moving Driftloom from
 the Kruu-Mikey GitHub and Claude accounts to his nowmichaelclark ones.
 Nothing is queued and no PR is open, so it's a clean point to move.
 After the move, the repo URL, the brain's token and possibly the live
 URL change; the next brain fixes the links (README, this file, the
 Done lines) once Mikey confirms the new addresses. Old preview links in
 QUEUE.md's Done list keep working only if the Cloudflare account stays.
+
+**Session 5 (brain, 2026-10-08), the first on the new account.** State
+checked against GitHub and the live site: the repo arrived with its
+history (#129 the last merge, no open PRs, Workers Builds green on
+main); the live site serves v68 and `/rank` works. The old site's saved
+songs and ranking answers stay behind, and Mikey is fine with that. The
+handoff file from the old account's memory is in the Project's
+knowledge; what it held that this file lacked (the variety goal) is now
+under the decisions. This session, as a docs PR: links moved to the new
+repo and site (README, this file; the Done list's old preview links are
+history and stay), the commit identity switched, and the README trimmed
+to a front page -- what Driftloom is, the live link, how to use and run
+it, Profiles, the documents list -- with the engineering sections moved
+unchanged into `docs/NOTES.md` (one relative link fixed so it still
+resolves). The intro now names the Rust core behind `?engine=rust`, and
+the front page's two British spellings are American.
+
+**Next, proposed to Mikey (2026-10-08).** Two tracks, neither blocked
+by the other. (1) The Rust port, step 3: the brain picks the next batch
+of voices (by how many loops lean on them) and writes queue item 23;
+then a hands session on Opus 5.5 at high effort. Kalimba, fiddle and pad
+are ported; the other voices are still JavaScript. (2) Mikey's ears and
+answers: a first batch of word rankings on the new `/rank` (the words
+wait on it, and the generator's port waits on the words), Depth two,
+the open decisions above, and, optional, the Rust check on an iPhone.
 
 ## History
 
