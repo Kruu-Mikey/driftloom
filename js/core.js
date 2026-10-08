@@ -4,7 +4,7 @@
 // here runs. With it on, the synth hands the voices the core has (kalimba,
 // fiddle, pad, every fm() voice, sine, tubular, the wave-table voices,
 // nylon, accordion, stab, ocarina, flute, pan flute, prepared's knock, the
-// temple bell, the bass voices and the textures, so far) to an
+// temple bell, the bass voices, the textures and the drums, so far) to an
 // AudioWorkletNode running js/dlcore.wasm,
 // and keeps everything else: scheduling, the voice budget, every
 // Math.random draw, every other voice, the effects and the master chain.
@@ -26,7 +26,7 @@ export const CORE_VOICES = {
   softpad: 6, analogpad: 7, analoglead: 8, sawpluck: 9, beep: 10, moog: 11, whistle: 12,
   nylon: 13, accordion: 14,
   stab: 15, ocarina: 16, flute: 17, panflute: 18, knock: 19, templebell: 20, hat: 21,
-  bass: 22, texture: 23,
+  bass: 22, texture: 23, drum: 24,
 };
 // A bass note's voice in `parts`, and its two flags (core/src/bass.rs); a
 // name that is not here is the original, `sub`, as the JavaScript voice has it.
@@ -35,6 +35,12 @@ export const BASS_GLIDE = 8;
 export const BASS_CHUG = 16;
 // A texture note's, in `parts` (core/src/texture.rs).
 export const TEXTURE_KINDS = { swell: 0, drop: 1, wind: 2, waves: 3 };
+// A drum's, in `parts` (core/src/drums.rs); the hats are the hat voice, and
+// their kinds (core/src/breath.rs) are `parts` of their own.
+export const DRUM_KINDS = {
+  kick: 0, softkick: 1, snare: 2, clap: 3, rim: 4, frame: 5, tap: 6, jingle: 7, ojingle: 8,
+};
+export const HAT_KINDS = { hat: 0, ohat: 1, shaker: 2 };
 // The longest noise the core holds (NOISE_MAX, core/src/noise.rs): two
 // seconds at 96 kHz.
 export const CORE_NOISE_MAX = 192000;

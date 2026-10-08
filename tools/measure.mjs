@@ -732,7 +732,10 @@ const CORE_VOICES = [
   // and chime are).
   'sub', 'round', 'fifths', 'pluckbass', 'moogbass', 'rhodesbass',
   'swell', 'drop', 'chime', 'wind', 'waves',
+  // The drums (the hats are the hat voice).
+  'kick', 'softkick', 'snare', 'clap', 'rim', 'frame', 'tap', 'jingle', 'ojingle', 'hat', 'ohat', 'shaker',
 ];
+const DRUM_VOICES = ['kick', 'softkick', 'snare', 'clap', 'rim', 'hat', 'ohat', 'shaker', 'frame', 'tap', 'jingle', 'ojingle'];
 // Those that play the noise: --null proves the source on its own first.
 const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared', 'pluckbass', 'drop', 'wind', 'waves'];
 // How far from the rest of its layer a voice has to sit to be listed, and
@@ -1183,14 +1186,16 @@ window.probeNull = async (o) => {
         ? [{ name: '' }, { name: ', glide', glide: true }, { name: ', chug', chug: true }]
         : job.layer === 'texture'
           ? [{ name: '' }, ...(job.voice === 'wind' ? [{ name: ', band 480', band: 480 }] : [])]
-          : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
+          : job.layer === 'drums'
+            ? [{ name: '' }]
+            : [{ name: '' }, { name: ', triad', chord: [0, 4, 7] }];
     // A strummed voice, strummed twice: the second strum damps the first.
     if (job.layer === 'chords' && job.voice === 'nylon') {
       for (const strum of ['ahead', 'live', 'late']) variants.push({ name: ', strummed ' + strum, strum });
     }
     for (const variant of variants) {
       for (const vel of o.velocities) {
-        for (const dur of o.lengths) {
+        for (const dur of (job.lengths || o.lengths)) {
           // A strum is damped halfway through the note: not a grace's length.
           if (variant.strum && dur < 0.4) continue;
           for (let midi = job.low; midi <= job.high; midi += 3) {
@@ -1225,18 +1230,18 @@ window.probeNull = async (o) => {
   if ((o.to ?? o.loops) <= (o.from ?? 0)) return out;
 
   // Whole loops that play the core's voices, through the real Engine and the
-  // whole master chain: the mix, and the melody, chords, bass and texture taps, dry. Taken
+  // whole master chain: the mix, and the melody, chords, bass, texture and drums taps, dry. Taken
   // in turn for each voice, so every one is heard in some loops; a loop
   // with several counts for each.
   const asCore = (v) => (v === 'moogpad' ? 'pad' : v);
   // The channels the core plays into, tapped dry.
-  const CORE_TAPS = ['melody', 'chords', 'bass', 'texture'];
+  const CORE_TAPS = ['melody', 'chords', 'bass', 'texture', 'drums'];
   const voicesIn = (spec) => {
     const t = render(spec).tracks;
     const found = new Set();
-    for (const layer of ['melody', 'chords', 'bass', 'texture']) {
+    for (const layer of ['melody', 'chords', 'bass', 'texture', 'drums']) {
       for (const e of t[layer]) {
-        const name = asCore(layer === 'texture' ? e.kind : e.voice);
+        const name = asCore(layer === 'texture' ? e.kind : layer === 'drums' ? e.inst : e.voice);
         if (e.vel && o.voices.includes(name)) found.add(name);
       }
     }
@@ -2129,7 +2134,7 @@ function reportNull(data, opts) {
     out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
   out.push('');
-  out.push('  "core layers" is the melody, chords, bass and texture taps together, against their own level: everything else in');
+  out.push('  "core layers" is the melody, chords, bass, texture and drums taps together, against their own level: everything else in');
   out.push('  them is the same on both engines. "js vs js" is the same loop rendered twice on the JavaScript synth:');
   out.push('  the mix never nulls deeper than that, whichever engine plays, because Chromium does not fix the');
   out.push('  order it sums a node\'s inputs in.');
@@ -2393,6 +2398,11 @@ if (opts.null) {
       if (!wanted.includes(voice === 'moogpad' ? 'pad' : voice)) continue;
       jobs.push({ layer, voice, low: PROBE_WINDOWS[layer][0], high: PROBE_WINDOWS[layer][1] });
     }
+  }
+  // A drum has no pitch and no length: the "pitches" only give it twenty-one
+  // different starts, at each velocity.
+  for (const voice of DRUM_VOICES) {
+    if (wanted.includes(voice)) jobs.push({ layer: 'drums', voice, low: 0, high: 60, lengths: [0.1] });
   }
   const o = {
     voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],

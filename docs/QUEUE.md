@@ -4,9 +4,9 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-08:** items 0-27a are done (13 stopped at its gate by
-design). Next: **27b (the drums) and 28, the rest of the Rust port**, in order; each
-names its sessions' model in `docs/BRAIN.md` (State). A new Claude Code
+**Status, 2026-10-08:** items 0-27 are done (13 stopped at its gate by
+design). Next: **item 28, the sung voices, the last of the Rust port**; it
+names its session's model in `docs/BRAIN.md` (State). A new Claude Code
 session starts here: read the standing rules and the merge policy, then
 take the next item.
 
@@ -1300,3 +1300,14 @@ Mikey decides this line:
   notes still play in JavaScript until the next step. Also in it: a core bug
   at frame-exact note starts (a loop at 11.3 s, 44.1 kHz nulled at -38 dB)
   fixed for every voice. Core memory 10.4 MB.
+- #141, the Rust core's seventh step, second half: the drums (item 27b, v75),
+  https://d282b713-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` every drum comes out of
+  Rust (kick, soft kick, snare, clap, hats, shaker, rim, and tide's frame,
+  tap and jingle; -117 to -148 dB against the JavaScript drums), so the core
+  plays all five channels. Play tide's hand kit and a house or wayfare loop,
+  and check Diagnostics reads `engine: rust  late: 0  fallback: 0`. On the
+  drum loops measured (`perf.mjs --ab`) the audio thread runs 4-5% busier,
+  the main thread 9-13% lighter, and no Web Audio nodes are made at all (110
+  a second before); no late ticks or device fill-ins either way. Only the
+  sung voices still play in JavaScript. Core memory 10.4 MB.
