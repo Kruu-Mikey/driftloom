@@ -50,8 +50,10 @@
 
 use crate::QUANTUM;
 
-/// The most events one parameter holds. A JavaScript voice schedules at
-/// most five on any one parameter.
+/// The most events one parameter holds, unless it says otherwise. A
+/// JavaScript voice schedules at most five on any one parameter, but for a
+/// sung note's detune, which takes one for every step of its jitter (see
+/// `sung`, which holds more).
 pub const MAX_EVENTS: usize = 8;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -88,20 +90,20 @@ const EMPTY: Event = Event {
     v0: 0.0,
 };
 
-pub struct Param {
+pub struct Param<const N: usize = MAX_EVENTS> {
     intrinsic: f32,
-    events: [Event; MAX_EVENTS],
+    events: [Event; N],
     len: usize,
     /// The sample rate, when target curves start where Chromium starts
     /// them (above); zero for the spec's start.
     rate: f64,
 }
 
-impl Param {
+impl<const N: usize> Param<N> {
     pub const fn new(intrinsic: f32) -> Self {
         Param {
             intrinsic,
-            events: [EMPTY; MAX_EVENTS],
+            events: [EMPTY; N],
             len: 0,
             rate: 0.0,
         }
@@ -154,7 +156,7 @@ impl Param {
     }
 
     fn insert(&mut self, kind: Kind, time: f64, value: f32, tau: f64, added: f64) -> bool {
-        if self.len >= MAX_EVENTS || !time.is_finite() {
+        if self.len >= N || !time.is_finite() {
             return false;
         }
         // After every event at the same time or earlier: the events from
@@ -460,7 +462,7 @@ mod tests {
         // 11.3 s at 44.1 kHz is 498330.00000000006 frames: frame 498330 is
         // still before the event, as in Chromium, though 498330 / 44100 is
         // 11.3. 498330 is not a multiple of 128; its block starts at 498304.
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.5, 11.3);
         let mut out = [0.0; QUANTUM];
         p.fill(498304, 44100.0, &mut out);
@@ -473,7 +475,7 @@ mod tests {
         // The block that starts at frame 3328 is at 0.07546485260770976 s,
         // which is 3328.0000000000005 frames: an event clamped to it must
         // still have come by that block's first frame.
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.5, 0.05);
         p.clamp_before(3328, 44100.0);
         let mut out = [0.0; QUANTUM];
@@ -487,7 +489,7 @@ mod tests {
 
     #[test]
     fn holds_the_intrinsic_value_until_the_first_event() {
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.5, 2.0);
         assert_eq!(p.value_at(1.999), 1.0);
         assert_eq!(p.value_at(2.0), 0.5);
@@ -496,7 +498,7 @@ mod tests {
 
     #[test]
     fn a_ramp_starts_at_the_event_before_it() {
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.0001, 1.0);
         // Added long before it runs: it still starts at 1.0, not at 0.
         p.exponential_ramp_to_value_at_time(0.5, 1.002, 0.0);
@@ -510,7 +512,7 @@ mod tests {
 
     #[test]
     fn a_ramp_with_nothing_before_it_starts_when_added() {
-        let mut p = Param::new(2.0);
+        let mut p: Param = Param::new(2.0);
         p.linear_ramp_to_value_at_time(4.0, 3.0, 1.0);
         assert!(close(p.value_at(0.5), 2.0));
         assert!(close(p.value_at(2.0), 3.0));
@@ -518,7 +520,7 @@ mod tests {
 
     #[test]
     fn exponential_ramps_across_zero_hold_then_jump() {
-        let mut p = Param::new(0.0);
+        let mut p: Param = Param::new(0.0);
         p.set_value_at_time(-1.0, 0.0);
         p.exponential_ramp_to_value_at_time(1.0, 1.0, 0.0);
         assert!(close(p.value_at(0.5), -1.0));
@@ -527,7 +529,7 @@ mod tests {
 
     #[test]
     fn a_target_falls_from_the_value_it_starts_at() {
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.8, 0.0);
         p.set_target_at_time(0.0001, 1.0, 0.1);
         assert!(close(p.value_at(0.9), 0.8));
@@ -537,7 +539,7 @@ mod tests {
 
     #[test]
     fn a_ramp_after_a_target_under_way_starts_where_the_curve_is() {
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_target_at_time(0.0, 0.0, 1.0);
         // Added at 1.0, when the curve is at e^-1.
         p.linear_ramp_to_value_at_time(1.0, 2.0, 1.0);
@@ -548,7 +550,7 @@ mod tests {
 
     #[test]
     fn a_ramp_after_a_target_not_yet_started_replaces_it() {
-        let mut p = Param::new(0.5);
+        let mut p: Param = Param::new(0.5);
         p.set_target_at_time(0.0, 1.0, 1.0);
         p.linear_ramp_to_value_at_time(1.5, 2.0, 0.0);
         assert!(close(p.value_at(0.5), 0.5));
@@ -557,7 +559,7 @@ mod tests {
 
     #[test]
     fn same_time_events_keep_the_order_they_were_added() {
-        let mut p = Param::new(0.0);
+        let mut p: Param = Param::new(0.0);
         p.set_value_at_time(1.0, 1.0);
         p.set_value_at_time(2.0, 1.0);
         assert_eq!(p.value_at(1.0), 2.0);
@@ -565,7 +567,7 @@ mod tests {
 
     #[test]
     fn cancel_drops_events_from_its_time_on() {
-        let mut p = Param::new(0.0);
+        let mut p: Param = Param::new(0.0);
         p.set_value_at_time(1.0, 1.0);
         p.linear_ramp_to_value_at_time(0.0, 3.0, 0.0);
         p.cancel_scheduled_values(2.0);
@@ -574,7 +576,7 @@ mod tests {
 
     #[test]
     fn moves_while_anything_is_left_to_happen() {
-        let mut p = Param::new(440.0);
+        let mut p: Param = Param::new(440.0);
         let b = 0.003;
         assert!(!p.moving_from(0.0, b));
         p.set_value_at_time(110.0, 1.0);
@@ -594,7 +596,7 @@ mod tests {
     #[test]
     fn a_block_filled_matches_the_curve_frame_by_frame() {
         let rate = 44100.0;
-        let mut p = Param::new(1.0);
+        let mut p: Param = Param::new(1.0);
         p.set_value_at_time(0.0001, 0.001);
         p.exponential_ramp_to_value_at_time(0.5, 0.003, 0.0);
         p.linear_ramp_to_value_at_time(0.2, 0.004, 0.0);
@@ -616,7 +618,7 @@ mod tests {
 
     #[test]
     fn clamping_moves_a_ramps_start_with_its_event() {
-        let mut p = Param::new(440.0);
+        let mut p: Param = Param::new(440.0);
         p.set_value_at_time(100.0, 0.99);
         p.exponential_ramp_to_value_at_time(200.0, 1.1, 0.0);
         p.clamp_before(100, 100.0);
@@ -627,7 +629,7 @@ mod tests {
 
     #[test]
     fn a_full_parameter_refuses_more() {
-        let mut p = Param::new(0.0);
+        let mut p: Param = Param::new(0.0);
         for i in 0..MAX_EVENTS {
             assert!(p.set_value_at_time(i as f32, i as f64));
         }

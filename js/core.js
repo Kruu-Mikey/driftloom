@@ -1,13 +1,9 @@
 // The Rust core, main-thread side (queue item 21, roadmap 16).
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
-// here runs. With it on, the synth hands the voices the core has (kalimba,
-// fiddle, pad, every fm() voice, sine, tubular, the wave-table voices,
-// nylon, accordion, stab, ocarina, flute, pan flute, prepared's knock, the
-// temple bell, the bass voices, the textures and the drums, so far) to an
-// AudioWorkletNode running js/dlcore.wasm,
-// and keeps everything else: scheduling, the voice budget, every
-// Math.random draw, every other voice, the effects and the master chain.
+// here runs. With it on, the synth hands every voice to an AudioWorkletNode
+// running js/dlcore.wasm, and keeps everything else: scheduling, the voice
+// budget, every Math.random draw, the effects and the master chain.
 // The JavaScript synth stays the reference the core is proven against
 // (tools/measure.mjs --null).
 
@@ -27,7 +23,15 @@ export const CORE_VOICES = {
   nylon: 13, accordion: 14,
   stab: 15, ocarina: 16, flute: 17, panflute: 18, knock: 19, templebell: 20, hat: 21,
   bass: 22, texture: 23, drum: 24,
+  vowel: 25, hum: 26, choir: 27,
 };
+// A sung note's vowel and where it drifts to, as the core numbers them
+// (core/src/sung.rs); 4 is a hum opening.
+export const SUNG_VOWELS = { a: 0, e: 1, o: 2, u: 3 };
+export const SUNG_OPEN_HUM = 4;
+// The longest sung note the core takes (sung::LONGEST): its detune holds
+// the jitter's steps for this long. Longer ones play in JavaScript.
+export const SUNG_LONGEST = 13.5;
 // A bass note's voice in `parts`, and its two flags (core/src/bass.rs); a
 // name that is not here is the original, `sub`, as the JavaScript voice has it.
 export const BASS_KINDS = { sub: 0, round: 1, fifths: 2, pluckbass: 3, moogbass: 4 };
@@ -119,8 +123,9 @@ export class CoreHost {
   // the note it is joined to and its vibrato; for the pad, how many notes
   // the chord has; for fm, its five options; for tubular, its five detune
   // draws.
-  note(voice, channel, time, midi, dur, vel, parts, extra = NO_EXTRA) {
-    this.node.port.postMessage({ type: 'note', voice, channel, time, midi, dur, vel, parts, extra });
+  // `draws` is a sung note's draws, as many as it made (Core::sung_draws).
+  note(voice, channel, time, midi, dur, vel, parts, extra = NO_EXTRA, draws = null) {
+    this.node.port.postMessage({ type: 'note', voice, channel, time, midi, dur, vel, parts, extra, draws });
   }
 
   // A new strum into `channel` at `time`: the last strum's nylon strings

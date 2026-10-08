@@ -4,11 +4,12 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-09:** items 0-27c are done (13 stopped at its gate by
-design). Next: **item 28, the sung voices, the last of the Rust port**; it
-names its session's model in `docs/BRAIN.md` (State). A new Claude Code
-session starts here: read the standing rules and the merge policy, then
-take the next item.
+**Status, 2026-10-09:** items 0-28 are done (13 stopped at its gate by
+design): every voice plays from the Rust core behind `?engine=rust`.
+Nothing is queued. Per "After item 28, stop": the brain verifies, Mikey
+listens to one labeled album across the new voices, and then he decides
+what is next. A new Claude Code session starts here: read the standing
+rules and the merge policy, then take the next item once there is one.
 
 ## Standing rules, for every item
 
@@ -1354,3 +1355,11 @@ Mikey decides this line:
   first-value fix from 26b no longer uses the `value` setter, which a
   browser could apply after a late note's envelope (Chromium doesn't), and
   a jingle the core can't take no longer draws its zils twice.
+- #144, the Rust core's eighth and last step: the sung voices (item 28, v77),
+  https://d03e5106-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the vowel, the hum and
+  the choir come out of Rust (-96 to -99 dB against the JavaScript voices,
+  6-second notes with a drifting vowel included), so every voice does now.
+  Play a `hollow` loop and check Diagnostics reads `engine: rust  late: 0
+  fallback: 0`; listen for the scoop into each note, the vowel opening on
+  long ones, and the breath at the start. Core memory 12.4 MB.

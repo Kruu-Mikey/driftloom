@@ -167,6 +167,16 @@ impl NoiseSource {
         self.done = false;
     }
 
+    /// The same as `new`, but all zeros, for a pool that must cost nothing
+    /// in the `.wasm`: with no stop it plays nothing until `grain` or
+    /// `looped`.
+    pub const fn idle() -> Self {
+        NoiseSource {
+            done: false,
+            ..NoiseSource::new()
+        }
+    }
+
     pub fn start_frame(&self) -> u64 {
         self.start
     }

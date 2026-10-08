@@ -5,7 +5,7 @@
 import { midiToFreq } from './theory.js';
 import {
   CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, DRUM_KINDS, HAT_KINDS, BASS_GLIDE, BASS_CHUG,
-  KALIMBA_STRIKE, KALIMBA_BODY,
+  KALIMBA_STRIKE, KALIMBA_BODY, SUNG_VOWELS, SUNG_OPEN_HUM, SUNG_LONGEST,
 } from './core.js';
 
 // A voice budget in *cost units*, not a count of voices.
@@ -2300,17 +2300,23 @@ export class Synth {
         // closed tract relaxing, which is what a long hum does by itself.
         const OPEN_HUM = [[330, 70, 16.5], [1200, 110, 10], [2350, 170, 5]];
         let target = null;
+        // The same, as the Rust core numbers it.
+        let targetId = NaN;
         if (drifts) {
           const to = DRIFT_TO[vowelKey] || DRIFT_TO.a;
-          target = humming ? OPEN_HUM : VOWELS[to[Math.floor(Math.random() * to.length)]];
+          if (humming) {
+            target = OPEN_HUM;
+            targetId = SUNG_OPEN_HUM;
+          } else {
+            const key = to[Math.floor(Math.random() * to.length)];
+            target = VOWELS[key];
+            targetId = SUNG_VOWELS[key];
+          }
         }
 
         const cost = (choral ? 34 : humming ? 16 : 22) + (target ? VOWEL_DRIFT_COST : 0);
         if (!this._budget(time, soft, cost)) return;
 
-        const amp = ctx.createGain();
-        const stopAt = time + dur + 0.9;
-        this._first(amp.gain, 0.0001, time);
         // Levels measured, not guessed. The humming tract puts an 18dB boost
         // at 280Hz, which lands directly on a triangle wave's fundamental
         // and made it four times louder than every other voice.
@@ -2341,6 +2347,43 @@ export class Synth {
           // Where it lands, against the same median as where it starts.
           trim = (trim + trim * Math.min(FORMANT_TRIM_RANGE[1], Math.max(FORMANT_TRIM_RANGE[0], Math.pow(e0 / e1, FORMANT_TAME / 2)))) / 2;
         }
+
+        // On the Rust core: the vowel, where it drifts and the trim, as
+        // worked out above; then every draw the singers and the breath
+        // make below, in the same order, with how many steps of jitter
+        // each singer took (core/src/lib.rs, Core::sung_draws). A note
+        // longer than the core holds the jitter for plays here.
+        if (this.engine === 'rust') {
+          const channel = dur <= SUNG_LONGEST ? this._coreNoiseChannel(dest) : -1;
+          if (dur > SUNG_LONGEST) this.fallbacks++;
+          if (channel >= 0) {
+            const draws = [];
+            for (let i = 0; i < (choral ? 3 : 1); i++) {
+              if (choral) draws.push(Math.random());
+              draws.push(Math.random(), Math.random());
+              const steps = draws.push(0) - 1;
+              let t = time + 0.12;
+              while (t < time + dur) {
+                const value = Math.random();
+                const step = Math.random();
+                draws.push(value, step);
+                draws[steps]++;
+                t += 0.09 + step * 0.08;
+              }
+              draws.push(Math.random(), Math.random(), Math.random());
+            }
+            draws.push(Math.random());
+            const vowel = humming ? 0 : (SUNG_VOWELS[vowelKey] ?? 0);
+            this.core.note(CORE_VOICES[name], channel, time, midi, dur, vel, 0,
+              [vowel, targetId, trim, opts.detune || 0], draws);
+            this._release(time, dur + 0.9, cost);
+            return;
+          }
+        }
+
+        const amp = ctx.createGain();
+        const stopAt = time + dur + 0.9;
+        this._first(amp.gain, 0.0001, time);
         amp.gain.linearRampToValueAtTime(vel * trim * (choral ? 0.112 : humming ? 0.085 : 0.174),
           time + Math.min(0.3, dur * 0.25));
         this._release2(amp.gain, time + dur * 0.72, stopAt);
