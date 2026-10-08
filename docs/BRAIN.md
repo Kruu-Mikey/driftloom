@@ -57,6 +57,10 @@ everything a session needs.
   it never moves), and when the bot doesn't comment, the Workers Builds
   check run's output carries the commit preview URL. An old commit's
   preview stays live, which is what makes A/Bs across merged PRs possible.
+  Since the move, PR branches build as Cloudflare **Previews**: the commit
+  link is the Deployment URL, `<deployment-id>-driftloom...`; the
+  branch's Preview URL moves (see Session 5 in State). Previews from the
+  old account's links in QUEUE.md's Done list depend on that account.
 - The app's Diagnostics panel reports `build` (bump `BUILD` in `js/main.js`
   and `CACHE` in `sw.js` together on every app change), `sw` state, and
   `choir`.
@@ -421,11 +425,17 @@ unchanged into `docs/NOTES.md` (one relative link fixed so it still
 resolves). The intro now names the Rust core behind `?engine=rust`, and
 the British spellings left in the README and NOTES are American now.
 Its PR (#130) was the first build on the new Cloudflare account, and
-the preview failed: the new Worker's non-production deploy command was
-`npx wrangler preview` (Cloudflare's beta Previews, named per branch,
-which needs a `previews` block in `wrangler.jsonc`). Mikey set it back
-to `npx wrangler versions upload`, which gives the per-commit preview
-URLs the A/Bs depend on. Production stays `npx wrangler deploy`.
+the preview failed. The new Cloudflare account builds PR branches as
+**Previews** (beta, "Previews Base" in Settings -> Build), whose command
+is `npx wrangler preview` and which needs a `previews` block in
+`wrangler.jsonc` (added in this PR; config, not code, so the brain made
+it). `npx wrangler versions upload` doesn't work there: the preview
+build runs as a different Worker and rejects the config's name. Each
+Preview deploy gets a **Deployment URL** that "never changes"
+(`<deployment-id>-driftloom.nowmichaelclark.workers.dev`): use it as the
+commit preview for A/Bs. The branch's Preview URL moves with each push.
+Limits: 100 deployments per Preview, 100 Previews per Worker on the free
+plan, oldest pruned first. Production stays `npx wrangler deploy`.
 
 **Next, proposed to Mikey (2026-10-08).** Two tracks, neither blocked
 by the other. (1) The Rust port, step 3: the brain picks the next batch

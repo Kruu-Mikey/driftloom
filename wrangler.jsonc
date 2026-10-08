@@ -6,5 +6,9 @@
 {
   "name": "driftloom",
   "compatibility_date": "2026-09-19",
-  "assets": { "directory": "./" }
+  "assets": { "directory": "./" },
+  // PR branches build as Cloudflare Previews (`npx wrangler preview`),
+  // which needs this block; it can stay empty. Each deploy gets its own
+  // Deployment URL that never moves, which is what the A/Bs use.
+  "previews": {}
 }
