@@ -876,13 +876,61 @@ breath rate; templebell, eight detunes (partial by partial, -4 then +4
 cents) then rate and offset; prepared, rate, offset, then the knock's
 bandpass frequency.
 
+## 26b. The one-frame click in the noise voices (before item 27)
+
+Found by the hands in item 26 (#137) and traced by the brain from the
+code (2026-10-08). **A sound fix, in both engines at once.**
+
+- **What happens.** A noise buffer source started at `t` can start one
+  frame before its note's gain takes its first value: Chromium rounds a
+  buffer source's start to 1/1024 of a frame, but compares automation
+  times in frames (`time * rate <= frame`). When `t * rate` lands just
+  above a whole frame (by less than about 1/2048), that one frame of
+  noise passes through a gain still at its default of **1**: a single
+  loud sample (a -33 dBFS click was seen). #137 made the core reproduce
+  it, since JavaScript is the reference.
+- **How often.** Notes on the bare step grid (bass, texture, melody
+  and chord roots when the loop has no choir) land on whole frames
+  whenever `rate * 15 / bpm` is whole (bpm 120 at 44.1 kHz on every
+  other step, about 24 tempos in 40-190 at 44.1 kHz and 19 at 48 kHz),
+  and about half of those carry the tiny positive error. Jittered notes
+  (drums, swung steps, strums) hit it about 1 time in 2000. The voices
+  exposed are mostly quiet-onset ones, where a tick stands out.
+- **Exposed gains** (brain's reading; check each in the code): ocarina
+  and flute's air gain, panflute's air gain, prepared's knock, the
+  temple bell's strike and its outer gain, the kick's click, snare and
+  clap, hat/open hat/shaker, the frame and tap slap, the jingle's outer
+  gain, pluckbass's click, the sung voices' breath and their `amp`,
+  and the textures drop, wind and waves. Oscillator-fed gains are not
+  exposed (oscillators start on the plain ceiling, and their waves start
+  at zero); confirm.
+- **The fix.** Give each exposed gain its first event's value as its
+  intrinsic value when it is made (`g.gain.value = x` before
+  `setValueAtTime(x, t)`), so the early frame plays at `x`, not 1. Make
+  the matching change in the core (its `reset_at(UNITY, ...)` for those
+  gains), so both engines lose the click together and keep nulling.
+  Only the clicking frames should change.
+- **Proof.** A reproduction first, on `main`: a temple bell and a hat
+  struck where `t * rate` sits just above a whole frame (11.3 s at
+  44.1 kHz, or a grid note at an integral tempo) render a loud first
+  sample in JavaScript; after the fix they don't, on both engines. The
+  hat test in `--null` starts on fractional frames and never hits the
+  window, so add starts that do. Then: every sample outside the clicking
+  frames unchanged (flag off, a corpus of loops, compared with `main`
+  within the known summing noise), nulls for the ported voices as deep
+  as before, refusals and the balance lock untouched. Count how many
+  notes in a few hundred loops landed in the window before the fix.
+  Version bump: it changes what the app plays, if only by a sample.
+- For Mikey's ears: nothing to listen for but the absence of rare ticks.
+
 ## 27. Rust core, step 7: bass, textures and drums (five channels)
 
 Three more outputs, so the core serves all five channels: **bass,
 texture, drums** next to melody and chords, each connected into its
 channel's gain as the first two are (ducking, sends and mutes stay in
 Web Audio). Split it **27a** (bass and textures) and **27b** (drums) if
-that is cleaner.
+that is cleaner. Start from 26b's fixed JavaScript, so the drums and
+textures are ported without the click.
 - **Bass:** sub and moogbass (sawtooth through an automated resonant
   lowpass, from item 24), round and pluckbass (triangle, lowpass;
   pluckbass's click from item 26), fifths (two sines), rhodesbass

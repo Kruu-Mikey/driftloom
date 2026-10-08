@@ -490,7 +490,34 @@ and candid (it reported the toolchain failure and the stall plainly),
 but slow (about 100 minutes, mostly the stall); fine for reruns.
 Wasm 55,229 bytes; core memory 7.08 MB (the hands' figure).
 
-**Next: Session 7, hands, Opus 5.5, high effort: items 25-26.**
+**Session 7 (hands, Opus 5.5, high) merged items 25 (#136, v71) and
+26 (#137, v72); brain-verified 2026-10-08.** Harness fix first: Chromium
+never frees an offline context that loaded a worklet module (about
+1.6 MB a render), so `measure.mjs` now splits Rust and `--null` runs
+across fresh page loads and exits non-zero when the renderer crashes;
+the app can't leak this way (it never renders offline; 200 cores built
+and disposed on one live context stayed flat). A Sonnet subagent read
+both diffs: no bugs; flag-off paths, draw orders (accordion, the winds,
+panflute, temple bell, prepared's knock) and budgets unchanged; nylon's
+damp handled ahead, live and late; Chromium's "a setTarget starts from
+the last rendered value" rule (`reset_at`) applied only to the new
+voices, so earlier ones render as before. A Haiku subagent reran:
+generator tests three times, `--check` 22 of 22, `--null` over the new
+voices (noise source -146 dB; voices -99 to -131 dB; loops at the floor,
+late 0), and the per-voice probe through the core, which now finishes.
+CI's `core` job (byte check, core tests) green on both. Wasm 81,796
+bytes; core memory 10.9 MB. Haiku flagged its two probe runs (Rust and
+JS) as byte-identical as suspicious; the brain's reading: expected,
+since the tool prints levels to 0.1 LU and the engines differ by about
+-100 dB.
+
+**The one-frame click** (found by the hands in #137, traced by the
+brain's Sonnet subagent from the code): a real defect in the
+JavaScript synth, on `main` today. A noise note on the bare grid at
+certain tempos plays one sample through a gain still at 1. Queued as
+**item 26b**, a fix in both engines, before the drums are ported.
+
+**Next: Session 8, hands, Sonnet 5.5, high effort: items 26b and 27.**
 
 Not started, for Mikey's own time: the word rankings, Depth two, the
 open decisions above, the iPhone check.
