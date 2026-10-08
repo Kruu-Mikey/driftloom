@@ -20,12 +20,12 @@ pub fn midi_to_freq(midi: f64) -> f64 {
 }
 
 /// A GainNode's gain, before anything is scheduled on it.
-const UNITY: f32 = 1.0;
+pub(crate) const UNITY: f32 = 1.0;
 /// An OscillatorNode's frequency, likewise.
-const A440: f32 = 440.0;
+pub(crate) const A440: f32 = 440.0;
 
 /// A block's worth of a parameter, frame by frame.
-type Block = [f32; QUANTUM];
+pub(crate) type Block = [f32; QUANTUM];
 
 /// How an oscillator whose frequency is a parameter is pitched for the
 /// block starting at `block`: moving, frame by frame, while Web Audio would
@@ -34,7 +34,7 @@ type Block = [f32; QUANTUM];
 /// oscillator starts in this block: its events are clamped to the block
 /// then, as Chromium does (`Param::clamp_before`) -- after deciding whether
 /// it moves, as Chromium decides that first too.
-fn pitch_of<'a>(
+pub(crate) fn pitch_of<'a>(
     p: &mut Param,
     block: u64,
     rate: f64,
@@ -68,7 +68,7 @@ fn pitch_of<'a>(
 
 /// Whether an oscillator starting at frame `start` starts in the block
 /// from frame `block`.
-fn starts_in(start: u64, block: u64) -> bool {
+pub(crate) fn starts_in(start: u64, block: u64) -> bool {
     start >= block && start < block + QUANTUM as u64
 }
 
@@ -206,7 +206,7 @@ impl Default for Fm {
 
 /// `_release2`: from wherever the envelope has got to, an exponential fall
 /// to `floor`, then a short line to true zero at `to`.
-fn release(g: &mut Param, from: f64, to: f64, now: f64) {
+pub(crate) fn release(g: &mut Param, from: f64, to: f64, now: f64) {
     const FLOOR: f32 = 0.0006;
     g.exponential_ramp_to_value_at_time(FLOOR, (from + 0.01).max(to - 0.025), now);
     g.linear_ramp_to_value_at_time(0.0, to, now);

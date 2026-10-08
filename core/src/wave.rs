@@ -197,7 +197,21 @@ pub struct Waves {
     pub sine: Wave,
     pub bowed: Wave,
     pub triangle: Wave,
+    /// The built-in sawtooth and square.
+    pub saw: Wave,
+    pub square: Wave,
+    /// The leads' own waves (`LEAD_SLOPE` in synth.js): partial n at
+    /// 1/n^slope, 64 of them, like `bowed`.
+    pub lead_saw: Wave,
+    pub lead_moog: Wave,
+    pub lead_analog: Wave,
 }
+
+/// The lead waves' slopes, and how many partials they have.
+const LEAD_SAW_SLOPE: f64 = 1.5;
+const LEAD_MOOG_SLOPE: f64 = 1.8;
+const LEAD_ANALOG_SLOPE: f64 = 1.7;
+const LEAD_PARTIALS: usize = 64;
 
 /// The fiddle's `bowed` wave: partial n at 1/n^2.2, 64 of them
 /// (`_makeWave(BOWED_SLOPE)` in synth.js).
@@ -210,6 +224,11 @@ impl Waves {
             sine: Wave::new(),
             bowed: Wave::new(),
             triangle: Wave::new(),
+            saw: Wave::new(),
+            square: Wave::new(),
+            lead_saw: Wave::new(),
+            lead_moog: Wave::new(),
+            lead_analog: Wave::new(),
         }
     }
 
@@ -234,6 +253,27 @@ impl Waves {
         }
         real[0] = 0.0;
         self.triangle.build(rate, &real, &imag, fft);
+        // And the sawtooth and the square, likewise.
+        for (n, im) in imag.iter_mut().enumerate() {
+            *im = sawtooth(n);
+        }
+        self.saw.build(rate, &real, &imag, fft);
+        for (n, im) in imag.iter_mut().enumerate() {
+            *im = square(n);
+        }
+        self.square.build(rate, &real, &imag, fft);
+        // The leads' waves, as `_makeWave(slope)` gives them.
+        for (wave, slope) in [
+            (&mut self.lead_saw, LEAD_SAW_SLOPE),
+            (&mut self.lead_moog, LEAD_MOOG_SLOPE),
+            (&mut self.lead_analog, LEAD_ANALOG_SLOPE),
+        ] {
+            imag.fill(0.0);
+            for (n, im) in imag.iter_mut().enumerate().take(LEAD_PARTIALS + 1).skip(1) {
+                *im = (1.0 / (n as f64).powf(slope)) as f32;
+            }
+            wave.build(rate, &real[..=LEAD_PARTIALS], &imag[..=LEAD_PARTIALS], fft);
+        }
     }
 }
 
@@ -260,6 +300,25 @@ pub fn triangle(n: usize) -> f32 {
     let factor = 2.0 / (n as f32 * pi);
     let b = 2.0 * (factor * factor);
     if ((n - 1) >> 1) & 1 == 1 { -b } else { b }
+}
+
+/// The partials of Web Audio's built-in sawtooth, as Chromium writes them:
+/// `2 / (pi n)`, alternating in sign, so the wave ramps upward.
+pub fn sawtooth(n: usize) -> f32 {
+    if n == 0 {
+        return 0.0;
+    }
+    let factor = 2.0 / (n as f32 * core::f32::consts::PI);
+    if n.is_multiple_of(2) { -factor } else { factor }
+}
+
+/// The partials of Web Audio's built-in square: `4 / (pi n)`, odd ones only.
+pub fn square(n: usize) -> f32 {
+    if n.is_multiple_of(2) {
+        return 0.0;
+    }
+    let factor = 2.0 / (n as f32 * core::f32::consts::PI);
+    2.0 * factor
 }
 
 /// A complex FFT of up to `SIZE` points, in place, for building tables.
