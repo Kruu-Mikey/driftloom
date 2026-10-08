@@ -33,6 +33,13 @@ class DriftloomCore extends AudioWorkletProcessor {
       const module = new WebAssembly.Module(options.processorOptions.bytes);
       this.core = new WebAssembly.Instance(module, {}).exports;
       this.core.dl_init(sampleRate);
+      // The synth's noise, once (core/src/noise.rs). Too long for the core
+      // and it keeps none: the synth plays its noise voices in JS.
+      const noise = options.processorOptions.noise;
+      if (noise) {
+        const at = this.core.dl_noise(noise.length);
+        if (at) new Float32Array(this.core.memory.buffer, at, noise.length).set(noise);
+      }
     } catch (err) {
       // Too old a browser for the module, most likely (it needs Safari 15
       // or later). The synth hears this and plays everything in JS.
@@ -51,6 +58,7 @@ class DriftloomCore extends AudioWorkletProcessor {
         const taken = core.dl_note(
           m.voice, m.channel, m.time, m.midi, m.dur, m.vel, m.parts,
           x[0] ?? NaN, x[1] ?? NaN, x[2] ?? NaN, x[3] ?? NaN, x[4] ?? NaN, x[5] ?? NaN, x[6] ?? NaN, x[7] ?? NaN,
+          x[8] ?? NaN, x[9] ?? NaN, x[10] ?? NaN, x[11] ?? NaN,
         );
         // Rare, so worth a message each: Diagnostics counts them.
         if (taken === LATE || taken === FULL) {

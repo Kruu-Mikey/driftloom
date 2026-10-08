@@ -16,9 +16,11 @@
 //! Web Audio -- and, where Chromium's rendering differs from a plain
 //! reading of the spec, Chromium -- to the sample.
 
+pub mod breath;
 pub mod filter;
 pub mod folk;
 pub mod lead;
+pub mod noise;
 pub mod osc;
 pub mod param;
 pub mod voice;
@@ -27,8 +29,10 @@ pub mod wave;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
+use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
+use noise::Noise;
 use voice::{Fiddle, Fm, FmOptions, Kalimba, PadNote, SineNote, Tubular, Vibrato, midi_to_freq};
 use wave::{Fft, Waves};
 
@@ -74,9 +78,9 @@ pub enum Taken {
 }
 
 /// How many extra values a note carries. Fixed, so a note is a plain value
-/// and nothing allocates: the widest voice (`fm`'s five options, tubular's
-/// five detune draws) needs five, and the rest are for the ones to come.
-pub const EXTRA: usize = 8;
+/// and nothing allocates: the widest voice, the temple bell, sends ten
+/// draws.
+pub const EXTRA: usize = 12;
 
 /// The voices the core can play, by number. What each reads from a note's
 /// extra values (`Core::note`); values a voice does not name are unused:
@@ -98,6 +102,20 @@ pub const EXTRA: usize = 8;
 ///   next strum into its channel damps it (`Core::damp`).
 /// - ACCORDION: the note it is joined to (NaN if none), then the
 ///   `Math.random` draw that sets how late its second reed comes in.
+/// - STAB: none.
+/// - OCARINA, FLUTE: where the slide comes from in Hz and how long it
+///   takes (NaN if it does not slide), then the breath's rate draw.
+/// - PANFLUTE: the vibrato's rate draw (NaN for a note too short for one),
+///   then the breath's rate draw.
+/// - KNOCK: the prepared piano's knock: its noise's rate and offset draws,
+///   then its bandpass's frequency draw.
+/// - TEMPLEBELL: the eight detune draws, partial by partial, then the
+///   strike's rate and offset draws.
+/// - HAT: `parts` is which (`breath::HAT`, `OPEN_HAT`, `SHAKER`); its
+///   noise's rate and offset draws.
+///
+/// The noise voices -- the last six -- need the noise (`Core::noise`); a
+/// core without it drops them, and the host plays them in JavaScript.
 pub const KALIMBA: u32 = 0;
 pub const FIDDLE: u32 = 1;
 pub const PAD: u32 = 2;
@@ -113,9 +131,17 @@ pub const MOOG: u32 = 11;
 pub const WHISTLE: u32 = 12;
 pub const NYLON: u32 = 13;
 pub const ACCORDION: u32 = 14;
+pub const STAB: u32 = 15;
+pub const OCARINA: u32 = 16;
+pub const FLUTE: u32 = 17;
+pub const PANFLUTE: u32 = 18;
+pub const KNOCK: u32 = 19;
+pub const TEMPLEBELL: u32 = 20;
+pub const HAT: u32 = 21;
 
 // `process` hands each voice the bus of its body by these places.
-const _: () = assert!(folk::FIDDLE == 0 && folk::NYLON == 1 && folk::ACCORDION == 2 && folk::KINDS == 3);
+const _: () =
+    assert!(folk::FIDDLE == 0 && folk::NYLON == 1 && folk::ACCORDION == 2 && folk::KINDS == 3);
 
 // A voice lives in a slot of a fixed pool, so its size is the pool's price
 // and boxing it would allocate; the biggest, tubular, sets the slot's size.
@@ -137,6 +163,11 @@ enum Voice {
     Lead(Lead),
     Nylon(Nylon),
     Accordion(Accordion),
+    Stab(Stab),
+    Wind(Wind),
+    Panflute(Panflute),
+    Struck(Struck),
+    TempleBell(TempleBell),
 }
 
 struct Slot {
@@ -223,6 +254,7 @@ pub struct Core {
     bodies: [[Body; folk::KINDS]; CHANNELS],
     /// Which strum each channel is on (`Core::damp`).
     strums: [u32; CHANNELS],
+    noise: Noise,
     late: u32,
     dropped: u32,
 }
@@ -244,6 +276,7 @@ impl Core {
             buses: [[[0.0; QUANTUM]; folk::KINDS]; CHANNELS],
             bodies: [const { [const { Body::new() }; folk::KINDS] }; CHANNELS],
             strums: [0; CHANNELS],
+            noise: Noise::new(),
             late: 0,
             dropped: 0,
         }
@@ -274,6 +307,15 @@ impl Core {
         for slot in self.slots.iter_mut() {
             slot.busy = false;
         }
+    }
+
+    /// Room for the host's noise, `len` samples at the core's rate, to be
+    /// written into what this returns (`_makeNoise`: two seconds, drawn
+    /// from `Math.random` as the synth is built). Empty, and no noise, if it
+    /// is longer than `noise::NOISE_MAX`.
+    pub fn noise(&mut self, len: usize) -> &mut [f32] {
+        self.noise.resize(len);
+        self.noise.space()
     }
 
     /// Notes that arrived after their start time had been rendered.
@@ -309,7 +351,8 @@ impl Core {
         parts: u32,
         extra: [f64; EXTRA],
     ) -> Taken {
-        if voice > ACCORDION
+        if voice > HAT
+            || (voice > STAB && !self.noise.ready())
             || channel as usize >= CHANNELS
             || !(time.is_finite() && dur.is_finite() && midi.is_finite() && vel.is_finite())
         {
@@ -401,6 +444,7 @@ impl Core {
             return;
         };
         let rate = self.rate;
+        let noise = self.noise.samples().len();
         let [a, b, c, d, e, ..] = w.extra;
         let (begin, end) = match w.voice {
             FIDDLE => {
@@ -511,6 +555,79 @@ impl Core {
                 slot.voice = Voice::Accordion(v);
                 span
             }
+            STAB => {
+                let mut v = Stab::new();
+                v.play(w.midi, w.time, w.dur, w.vel, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Stab(v);
+                span
+            }
+            OCARINA | FLUTE => {
+                let slide = if a.is_finite() && b.is_finite() {
+                    Some((a, b))
+                } else {
+                    None
+                };
+                let mut v = Wind::new();
+                v.play(
+                    w.voice == FLUTE,
+                    w.midi,
+                    w.time,
+                    w.dur,
+                    w.vel,
+                    slide,
+                    c,
+                    noise,
+                    rate,
+                );
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Wind(v);
+                span
+            }
+            PANFLUTE => {
+                let vibrato = if a.is_finite() { Some(a) } else { None };
+                let mut v = Panflute::new();
+                v.play(w.midi, w.time, w.dur, w.vel, vibrato, b, noise, rate);
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Panflute(v);
+                span
+            }
+            KNOCK | HAT => {
+                let mut v = Struck::new();
+                if w.voice == KNOCK {
+                    v.knock(w.time, w.vel, a, b, c, noise, rate);
+                } else {
+                    v.hat(w.parts, w.time, w.vel, a, b, noise, rate);
+                }
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::Struck(v);
+                span
+            }
+            TEMPLEBELL => {
+                let mut draws = [0.0; TEMPLE_SINES];
+                for (d, &x) in draws.iter_mut().zip(w.extra.iter()) {
+                    *d = x;
+                }
+                let strike = (
+                    w.extra.get(TEMPLE_SINES).copied().unwrap_or(0.0),
+                    w.extra.get(TEMPLE_SINES + 1).copied().unwrap_or(0.0),
+                );
+                let mut v = TempleBell::new();
+                v.play(
+                    w.midi,
+                    w.time,
+                    w.dur,
+                    w.vel,
+                    w.channel == CHORDS,
+                    &draws,
+                    strike,
+                    noise,
+                    rate,
+                );
+                let span = (v.start_frame(), v.end_frame());
+                slot.voice = Voice::TempleBell(v);
+                span
+            }
             _ => {
                 let mut v = Kalimba::new();
                 v.play(w.midi, w.time, w.dur, w.vel, w.parts, rate);
@@ -573,6 +690,13 @@ impl Core {
                 Voice::Fiddle(v) => v.render(block, rate, &self.waves, fiddles),
                 Voice::Nylon(v) => v.render(block, rate, &self.waves, nylons),
                 Voice::Accordion(v) => v.render(block, rate, &self.waves, accordions),
+                Voice::Stab(v) => v.render(block, rate, &self.waves, out),
+                Voice::Wind(v) => v.render(block, rate, &self.waves, self.noise.samples(), out),
+                Voice::Panflute(v) => v.render(block, rate, &self.waves, self.noise.samples(), out),
+                Voice::Struck(v) => v.render(block, rate, self.noise.samples(), out),
+                Voice::TempleBell(v) => {
+                    v.render(block, rate, &self.waves, self.noise.samples(), out)
+                }
                 Voice::Pad(v) => v.render(block, rate, &self.waves, out),
                 Voice::Fm(v) => v.render(block, rate, &self.waves, out),
                 Voice::Sine(v) => v.render(block, rate, &self.waves, out),
@@ -783,7 +907,20 @@ mod tests {
     }
 
     // The options keys passes to `fm()`: ratio, index, attack, decay, detune.
-    const KEYS: [f64; EXTRA] = [2.0, 260.0, 0.006, 0.4, 0.0, f64::NAN, f64::NAN, f64::NAN];
+    const KEYS: [f64; EXTRA] = [
+        2.0,
+        260.0,
+        0.006,
+        0.4,
+        0.0,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+        f64::NAN,
+    ];
 
     fn energy(core: &mut Core, channel: usize, seconds: f64) -> (f32, f32) {
         let (mut peak, mut sum) = (0.0f32, 0.0f32);
@@ -830,7 +967,20 @@ mod tests {
             0.4,
             0.7,
             0,
-            [3.51, 420.0, 0.006, 0.5, 7.0, f64::NAN, f64::NAN, f64::NAN],
+            [
+                3.51,
+                420.0,
+                0.006,
+                0.5,
+                7.0,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+            ],
         );
         let a = render(&mut keys, 300);
         let b = render(&mut bell, 300);

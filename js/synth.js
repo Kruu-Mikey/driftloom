@@ -472,7 +472,8 @@ export class Synth {
   attachCore(core) {
     if (this.engine !== 'rust' || this.core) return;
     try {
-      this.core = new CoreHost(this._raw, core, [this.channels.melody.gain, this.channels.chords.gain]);
+      this.core = new CoreHost(this._raw, core, [this.channels.melody.gain, this.channels.chords.gain],
+        this.noise.getChannelData(0));
     } catch (err) {
       // No worklet node here: everything stays in JS, counted as fallbacks.
       console.warn('Rust core unavailable; playing in JS', err);
@@ -1648,6 +1649,14 @@ export class Synth {
     return channel;
   }
 
+  // The same, for a voice that plays the noise: -1 too when the core could
+  // not take the noise (a context faster than it holds).
+  _coreNoiseChannel(dest) {
+    const channel = this.core && this.core.noise ? this.core.channelOf(dest) : -1;
+    if (channel < 0) this.fallbacks++;
+    return channel;
+  }
+
   // The fiddle on the Rust core, once the budget has said yes (it asks once,
   // as below). Its three Math.random draws -- the vibrato's rate, where the
   // rate drifts to, and its depth -- are drawn here, in the same order and
@@ -1702,6 +1711,18 @@ export class Synth {
       case 'flute': {
         const breathy = name === 'flute';
         if (!this._budget(time, soft, VOICE_COST[name])) return;
+        // On the core: the slide's draw, then the breath's rate, as below.
+        if (this.engine === 'rust') {
+          const channel = this._coreNoiseChannel(dest);
+          if (channel >= 0) {
+            const slide = this._slideOf(midi, dur, opts);
+            const breath = Math.random();
+            this.core.note(breathy ? CORE_VOICES.flute : CORE_VOICES.ocarina, channel, time, midi, dur, vel, 0,
+              [slide ? slide.from : NaN, slide ? slide.reach : NaN, breath]);
+            this._release(time, dur + 0.4, VOICE_COST[name]);
+            return;
+          }
+        }
         // Both were 0.3, which put the ocarina 8.6 LU and the flute 6.9 LU over
         // the melody layer's median at 0.4s notes (measure.mjs --voice all
         // --note 0.4). Trimmed to the median, as the pluck and saw were. Tone
@@ -1869,6 +1890,18 @@ export class Synth {
       // Pan flute; see PANFLUTE_LEVEL.
       case 'panflute': {
         if (!this._budget(time, soft, VOICE_COST.panflute)) return;
+        // On the core: the vibrato's rate (long notes only), then the
+        // breath's, as below.
+        if (this.engine === 'rust') {
+          const channel = this._coreNoiseChannel(dest);
+          if (channel >= 0) {
+            const vibrato = dur >= VIBRATO_MIN_DUR ? Math.random() : NaN;
+            const breath = Math.random();
+            this.core.note(CORE_VOICES.panflute, channel, time, midi, dur, vel, 0, [vibrato, breath]);
+            this._release(time, dur + 0.4, VOICE_COST.panflute);
+            return;
+          }
+        }
         const level = vel * PANFLUTE_LEVEL;
         const o = ctx.createOscillator();
         o.setPeriodicWave(this.pipe);
@@ -2022,15 +2055,23 @@ export class Synth {
           out: dest, ratio: 1, index: 200, decay: 0.1, attack: 0.002, cost: 15,
         });
         if (!this._budget(time, soft, 3)) return;
-        const knock = this._noiseSource(time, 0.05);
-        const bp = ctx.createBiquadFilter();
-        bp.type = 'bandpass';
-        bp.frequency.value = 220 + Math.random() * 180;
-        bp.Q.value = 3.5;
-        const kg = ctx.createGain();
-        kg.gain.setValueAtTime(vel * 0.13, time);
-        kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
-        knock.connect(bp).connect(kg).connect(dest);
+        // The knock on the core: its noise's rate and offset, then the
+        // bandpass's frequency, as below.
+        const knockChannel = this.engine === 'rust' ? this._coreNoiseChannel(dest) : -1;
+        if (knockChannel >= 0) {
+          const draws = [Math.random(), Math.random(), Math.random()];
+          this.core.note(CORE_VOICES.knock, knockChannel, time, midi, 0.05, vel, 0, draws);
+        } else {
+          const knock = this._noiseSource(time, 0.05);
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.value = 220 + Math.random() * 180;
+          bp.Q.value = 3.5;
+          const kg = ctx.createGain();
+          kg.gain.setValueAtTime(vel * 0.13, time);
+          kg.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
+          knock.connect(bp).connect(kg).connect(dest);
+        }
         // A touch of detuning: nothing prepared stays in tune.
         this.fm(midi, time + 0.004, dur * 0.45, vel * 0.2, { soft,
           out: dest, ratio: 1, index: 90, decay: 0.08, detune: 9, cost: 7,
@@ -2049,6 +2090,10 @@ export class Synth {
       case 'stab': {
         if (!this._budget(time, soft)) return;
         const len = Math.min(dur, 0.22);
+        if (this.engine === 'rust' && this._coreNote(CORE_VOICES.stab, dest, time, midi, dur, vel, [])) {
+          this._release(time, len + 0.2);
+          return;
+        }
         const bp = ctx.createBiquadFilter();
         bp.type = 'bandpass';
         bp.frequency.setValueAtTime(Math.min(3400, f * 3.2), time);
@@ -2387,6 +2432,17 @@ export class Synth {
       case 'templebell': {
         if (!this._budget(time, soft, VOICE_COST.templebell)) return;
         const hold = Math.max(dur, 6.5);
+        // On the core: the eight detunes, partial by partial, then the
+        // strike's rate and offset, as below.
+        if (this.engine === 'rust') {
+          const channel = this._coreNoiseChannel(dest);
+          if (channel >= 0) {
+            const draws = Array.from({ length: 10 }, () => Math.random());
+            this.core.note(CORE_VOICES.templebell, channel, time, midi, dur, vel, 0, draws);
+            this._release(time, hold + 1.4, VOICE_COST.templebell);
+            return;
+          }
+        }
         const stopAt = time + hold + 1.4;
         const g = ctx.createGain();
         g.gain.setValueAtTime(0.0001, time);

@@ -708,7 +708,11 @@ const CORE_VOICES = [
   'softpad', 'analogpad', 'analoglead', 'saw', 'pluck', 'moog', 'whistle',
   // Item 25: the voices with a body of their own, beside the fiddle.
   'nylon', 'accordion',
+  // Item 26: the bandpass, and the noise (prepared's knock is in now too).
+  'stab', 'ocarina', 'flute', 'panflute', 'templebell',
 ];
+// Those that play the noise: --null proves the source on its own first.
+const NOISE_VOICES = ['ocarina', 'flute', 'panflute', 'templebell', 'prepared'];
 // How far from the rest of its layer a voice has to sit to be listed, and
 // how far its own velocity response has to differ from the layer's.
 const FAMILY_LIMIT = 3;
@@ -719,7 +723,7 @@ const SURVEY_LOOPS = 2000;
 const PROBE_PAGE = `
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { loadCore } from '/js/core.js';
+import { loadCore, CORE_VOICES } from '/js/core.js';
 import { newSpec, render } from '/js/generator.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 ${PAGE_HELPERS}
@@ -1072,8 +1076,62 @@ function nullOf(a, b) {
   return { sig, res, peak, worst };
 }
 
+// The noise source alone, before any voice plays it (--null): the hat's
+// graph -- a grain of the noise through a highpass under a gain -- rendered
+// on the melody channel, as JavaScript builds it and as the core plays it.
+// The draws are _noiseSource's, rate then offset, on both engines.
+const HAT_KINDS = ['hat', 'ohat', 'shaker'];
+async function renderHat(kind, vel, at, o) {
+  const dur = kind === 'ohat' ? 0.26 : kind === 'shaker' ? 0.07 : 0.045;
+  const ctx = new OfflineAudioContext(1, Math.ceil((at + dur + 0.6) * o.rate), o.rate);
+  const core = await coreFor(ctx, o.engine);
+  Math.random = mulberry32(seedFor(['hat', kind, vel.toFixed(2), at].join('|')));
+  const synth = synthFor(ctx, 'full', o.engine, core);
+  const channel = synth.channels.melody.gain;
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(ctx.destination);
+  if (synth.core) {
+    const draws = [Math.random(), Math.random()];
+    synth.core.note(CORE_VOICES.hat, synth.core.channelOf(channel), at, 0, dur, vel, HAT_KINDS.indexOf(kind), draws);
+  } else {
+    const src = synth._noiseSource(at, dur);
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = 'highpass';
+    hpf.frequency.value = kind === 'shaker' ? 5200 : 7400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vel * (kind === 'shaker' ? 0.3 : 0.42), at + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    src.connect(hpf).connect(g).connect(channel);
+  }
+  await settle(synth);
+  return rendered(ctx, synth);
+}
+
 window.probeNull = async (o) => {
   const out = { notes: [], loops: [] };
+  if (o.hat) {
+    const tasks = [];
+    for (const kind of HAT_KINDS) {
+      for (const vel of o.velocities) {
+        for (let k = 0; k < 24; k++) {
+          // Fractions of a frame, places in the block, and every sixth just
+          // before a block starts.
+          const at = k % 6 === 0
+            ? (2304 + 128 * k - 0.3 - ((k * 0.618034) % 0.6)) / o.rate
+            : (2205 + ((k * 97) % 256) + ((k * 0.618034) % 1)) / o.rate;
+          tasks.push(async () => {
+            const js = (await renderHat(kind, vel, at, { ...o, engine: 'js' })).getChannelData(0);
+            const rust = (await renderHat(kind, vel, at, { ...o, engine: 'rust' })).getChannelData(0);
+            return { voice: 'noise source', layer: '(hat graph)', variant: ', ' + kind, vel, dur: 0, midi: 0, at, ...nullOf(js, rust) };
+          });
+        }
+      }
+    }
+    out.notes = await inParallel(tasks, o.width);
+    return out;
+  }
   // Note by note. Each note starts at its own point: a different fraction
   // of a sample and a different place in the 128-frame render block, since
   // both change what Web Audio does with a start time. A melody voice is
@@ -2153,6 +2211,8 @@ if (opts.null) {
   // A voice in a layer a page (about 160 notes on each engine), then the
   // loops four a page.
   const parts = [
+    // The noise source first, alone.
+    ...(o.voices.some((v) => NOISE_VOICES.includes(v)) ? [{ ...o, jobs: [], hat: true, from: 0, to: 0 }] : []),
     ...batches(jobs.map((_, j) => j), 1).map((only) => ({ ...o, jobs, only, from: 0, to: 0 })),
     ...ranges(o.loops, 4).map((r) => ({ ...o, jobs: [], ...r })),
   ];

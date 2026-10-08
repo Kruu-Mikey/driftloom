@@ -245,8 +245,9 @@ impl Param {
     pub fn fill(&self, block: u64, rate: f64, out: &mut [f32; QUANTUM]) {
         let mut i = 0;
         while i < QUANTUM {
-            let t = (block + i as u64) as f64 / rate;
-            let (curve, until) = self.curve(t);
+            let frame = (block + i as u64) as f64;
+            let t = frame / rate;
+            let (curve, until) = self.curve(t, frame);
             let mut v = match curve {
                 Curve::Hold(v) => v,
                 Curve::Linear(e) => ramp_at(e, t),
@@ -259,8 +260,9 @@ impl Param {
                 _ => 1.0,
             };
             while i < QUANTUM {
-                let t = (block + i as u64) as f64 / rate;
-                if t >= until {
+                let frame = (block + i as u64) as f64;
+                let t = frame / rate;
+                if self.reached(until, t, frame) {
                     break;
                 }
                 if let Some(y) = out.get_mut(i) {
@@ -279,14 +281,31 @@ impl Param {
         }
     }
 
-    // The curve in force at `t`, and the time it gives way to the next.
-    fn curve(&self, t: f64) -> (Curve<'_>, f64) {
+    // Whether `time` has come by the frame `frame`, at time `t`. Chromium
+    // asks it in frames -- `time * rate <= frame` -- and a parameter that
+    // follows Chromium does too: 11.3 s is 498330.00000000006 frames at
+    // 44.1 kHz, after frame 498330, though 498330 / 44100 is 11.3. A buffer
+    // source can start on that frame, where its gain has not yet moved.
+    fn reached(&self, time: f64, t: f64, frame: f64) -> bool {
+        if self.rate > 0.0 {
+            time * self.rate <= frame
+        } else {
+            time <= t
+        }
+    }
+
+    // The curve in force at frame `frame`, time `t`, and the time it gives
+    // way to the next.
+    fn curve(&self, t: f64, frame: f64) -> (Curve<'_>, f64) {
         let events = self.list();
-        let n = events.iter().take_while(|e| e.time <= t).count();
+        let n = events
+            .iter()
+            .take_while(|e| self.reached(e.time, t, frame))
+            .count();
         let next = events.get(n);
         if let Some(r) = next
             && is_ramp(r)
-            && t >= r.t0
+            && self.reached(r.t0, t, frame)
         {
             let curve = if r.kind == Kind::Linear {
                 Curve::Linear(r)

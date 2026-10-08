@@ -30,7 +30,7 @@ pub extern "C" fn dl_init(rate: f64) {
     core().init(rate);
 }
 
-/// A note; see `Core::note`. `a` to `h` are its `EXTRA` values. Returns a
+/// A note; see `Core::note`. `a` to `l` are its `EXTRA` values. Returns a
 /// `Taken`, as a number.
 #[unsafe(no_mangle)]
 #[allow(clippy::too_many_arguments)]
@@ -50,6 +50,10 @@ pub extern "C" fn dl_note(
     f: f64,
     g: f64,
     h: f64,
+    i: f64,
+    j: f64,
+    k: f64,
+    l: f64,
 ) -> u32 {
     core().note(
         voice,
@@ -59,7 +63,7 @@ pub extern "C" fn dl_note(
         dur,
         vel,
         parts,
-        [a, b, c, d, e, f, g, h],
+        [a, b, c, d, e, f, g, h, i, j, k, l],
     ) as u32
 }
 
@@ -67,6 +71,18 @@ pub extern "C" fn dl_note(
 #[unsafe(no_mangle)]
 pub extern "C" fn dl_damp(channel: u32, time: f64) {
     core().damp(channel, time);
+}
+
+/// Room for `len` samples of the host's noise; see `Core::noise`. Returns
+/// where to write them, or 0 if the core cannot hold that many.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_noise(len: u32) -> *mut f32 {
+    let space = core().noise(len as usize);
+    if space.is_empty() {
+        core::ptr::null_mut()
+    } else {
+        space.as_mut_ptr()
+    }
 }
 
 /// Render the block that starts at frame `block` and return where its
