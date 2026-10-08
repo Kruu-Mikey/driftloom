@@ -8,7 +8,7 @@
 
 use crate::QUANTUM;
 use crate::filter::{Biquad, Kind};
-use crate::osc::{Part, Pitch, TableOsc};
+use crate::osc::{Part, Pitch, TableOsc, frame_at};
 use crate::param::Param;
 use crate::voice::{A440, Block, UNITY, midi_to_freq, pitch_of, release, starts_in};
 use crate::wave::{Wave, Waves};
@@ -37,6 +37,13 @@ fn table(source: Source, waves: &Waves) -> &Wave {
 
 /// The most oscillators a `Tone` has (the pads' three saws).
 const TONES: usize = 3;
+/// How long a voice is kept after its oscillators stop, in seconds, so the
+/// lowpass can ring out: an oscillator that stops while the note is still
+/// sounding (the leads and the beep stop on a schedule, not on silence)
+/// leaves a resonant filter ringing, and a node keeps rendering its tail.
+/// A cutoff of 200 Hz at a Q of 8 dB rings for about 30 ms; this is well
+/// past that.
+const FILTER_TAIL: f64 = 0.2;
 /// A BiquadFilterNode's frequency, and its Q, before anything is set.
 const CUTOFF_DEFAULT: f32 = 350.0;
 const Q_DEFAULT: f32 = 1.0;
@@ -59,6 +66,7 @@ pub struct Tone {
     q: f32,
     filter: Biquad,
     gain: Param,
+    end: u64,
 }
 
 impl Tone {
@@ -77,6 +85,7 @@ impl Tone {
             q: 0.0,
             filter: Biquad::new(),
             gain: Param::new(0.0),
+            end: 0,
         }
     }
 
@@ -106,6 +115,7 @@ impl Tone {
             osc.schedule(time, stop, rate);
         }
         self.gain.reset(UNITY);
+        self.end = frame_at(stop + FILTER_TAIL, rate);
     }
 
     /// `softpad`: three saws (-9, 0, +11 cents) under a lowpass that opens
@@ -211,7 +221,7 @@ impl Tone {
     }
 
     pub fn end_frame(&self) -> u64 {
-        self.oscs[0].stop_frame()
+        self.end
     }
 
     pub fn render(&mut self, block: u64, rate: f64, waves: &Waves, out: &mut Block) {
@@ -305,6 +315,7 @@ pub struct Lead {
     q: f32,
     filter: Biquad,
     gain: Param,
+    end: u64,
 }
 
 impl Lead {
@@ -319,6 +330,7 @@ impl Lead {
             q: 0.0,
             filter: Biquad::new(),
             gain: Param::new(0.0),
+            end: 0,
         }
     }
 
@@ -381,6 +393,7 @@ impl Lead {
         self.filter.reset();
         self.osc.schedule(time, stop, rate);
         self.lfo.schedule(time, stop, rate);
+        self.end = frame_at(stop + FILTER_TAIL, rate);
     }
 
     pub fn start_frame(&self) -> u64 {
@@ -388,7 +401,7 @@ impl Lead {
     }
 
     pub fn end_frame(&self) -> u64 {
-        self.osc.stop_frame()
+        self.end
     }
 
     pub fn render(&mut self, block: u64, rate: f64, waves: &Waves, out: &mut Block) {
