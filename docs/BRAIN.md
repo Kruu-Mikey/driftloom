@@ -437,14 +437,35 @@ commit preview for A/Bs. The branch's Preview URL moves with each push.
 Limits: 100 deployments per Preview, 100 Previews per Worker on the free
 plan, oldest pruned first. Production stays `npx wrangler deploy`.
 
-**Next, proposed to Mikey (2026-10-08).** Two tracks, neither blocked
-by the other. (1) The Rust port, step 3: the brain picks the next batch
-of voices (by how many loops lean on them) and writes queue item 23;
-then a hands session on Opus 5.5 at high effort. Kalimba, fiddle and pad
-are ported; the other voices are still JavaScript. (2) Mikey's ears and
-answers: a first batch of word rankings on the new `/rank` (the words
-wait on it, and the generator's port waits on the words), Depth two,
-the open decisions above, and, optional, the Rust check on an iPhone.
+**Next (Mikey, 2026-10-08): the Rust port first.** The brain wrote
+queue items 23-28 (every remaining voice, behind `?engine=rust`), from a
+read-only survey of `synth.js` done by two Sonnet subagents and
+spot-checked by the brain. Mikey's note: Sonnet 5.5 and Haiku 5.5 (new
+that day) are available, and the brain chooses models and effort. The
+sessions:
+- **Session 6:** hands, **Sonnet 5.5, high effort**: items 23-24 (the FM
+  voices, sine, tubular; the wave-table voices). Existing building
+  blocks and Chromium's own wave formulas; high effort because parity is
+  exact.
+- **Session 7:** hands, **Opus 5.5, high effort**: items 25-26 (bodies
+  and nylon's damp; bandpass, highpass and the noise source). Chromium
+  behavior to read and match: judgment-heavy.
+- **Session 8:** hands, **Sonnet 5.5, high effort**: item 27 (bass,
+  textures, drums; five channels; the performance A/B). Routine by then,
+  but many voices.
+- **Session 9:** hands, **Opus 5.5, high effort**: item 28 (the sung
+  voices).
+- **Brain checks between sessions.** The brain verifies each merged item
+  from GitHub, as before, and hands the mechanical reruns (the `.wasm`
+  byte check, tests three times, `--check`, the null and equivalence
+  runs) to **Haiku 5.5** subagents, reviewing their figures itself; a
+  Sonnet subagent reads diffs against the briefs. Haiku starts on these
+  low-risk reruns until it has a track record.
+- **Listening is batched:** one labeled album after item 28 across the
+  new voices, unless a null comes out shallow enough to be worth
+  hearing sooner.
+Not started, for Mikey's own time: the word rankings, Depth two, the
+open decisions above, the iPhone check.
 
 ## History
 

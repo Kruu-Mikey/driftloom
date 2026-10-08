@@ -4,11 +4,11 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-04:** items 0-22 are done (13 stopped at its gate by
-design). Nothing is queued after 22: the brain verifies it and builds the
-X/Y album, and the next items are written after Mikey has heard it. A new
-Claude Code session starts here: read the standing rules and the merge
-policy, then take the next item once there is one.
+**Status, 2026-10-08:** items 0-22 are done (13 stopped at its gate by
+design). Next: **items 23-28, the rest of the Rust port**, in order; each
+names its sessions' model in `docs/BRAIN.md` (State). A new Claude Code
+session starts here: read the standing rules and the merge policy, then
+take the next item.
 
 ## Standing rules, for every item
 
@@ -721,6 +721,196 @@ parts, and measures both engines.
 X/Y album (the same loops with and without the flag, plus a control
 track), and Mikey listens on his phone. What comes next -- the rest of
 the voices, behind the same flag -- is written after he has heard it.
+
+## Rust core, steps 3-8: every voice (items 23-28)
+
+Written 2026-10-08 (brain, Session 5). Items 21-22 proved the path:
+kalimba, fiddle and pad play from Rust behind `?engine=rust`, null
+against JavaScript, and Mikey heard no difference (Firefox, desktop).
+These six items bring **every remaining voice** over, behind the same
+flag, so the synth runs whole on the core. The effects and the master
+chain stay in Web Audio (see "After item 28"). The plan rests on a
+read-only survey of `synth.js` (brain, 2026-10-08): which voices share
+which building blocks, and every `Math.random` draw. Its findings are
+summarized in each item; check them against the code as you go -- the
+survey is a map, not a proof.
+
+**Standing rules for items 23-28**, on top of the usual ones and item
+21's crate, host, flag and split:
+
+- **The JavaScript synth stays the reference.** With the flag off,
+  nothing changes. Every `Math.random` draw stays in JavaScript, in the
+  same order and number, including draws made before a budget refusal;
+  the values travel with the note. The budget (`_budget`, `_release`,
+  costs, timing) stays in JavaScript, unchanged, per part where a voice
+  is billed in parts (kalimba's `parts` mask is the pattern).
+- **A voice is whole in Rust.** Its constants, waves and bodies live in
+  the core, not only in the message, so a native or game host gets the
+  same voice. A note that can't go to the core (its channel isn't served
+  yet, or the core hasn't loaded) plays in JavaScript, as now.
+- **Widen the note message** when a voice needs more than four extra
+  values (fm's five options, tubular's five detunes): a fixed, larger
+  array, still no allocation after init.
+- **The proofs, for every voice the item ports**, on melody and chords
+  where the voice plays both: item 21's table (level at `--note 0.4` and
+  `1.6` within 0.25 dB; tone bands within 0.5 points; `--endings` no new
+  flags), the **null test**, and **nothing else moves** (flag off:
+  `measure.mjs` byte-identical to `main` on a fixed set that includes the
+  item's voices; flag on: loops without them byte-identical too).
+  Refusals on full and lite unchanged, the balance lock untouched, core
+  tests and generator tests three times, `tools/build-core.sh --check`.
+  Where a voice nulls shallower than -60 dB, say what the residual is.
+- **Memory and size.** Report the `.wasm` size and the core's memory
+  (static and at peak) after each item. Each band-limited wave is about
+  590 KB of tables at Chromium's layout, and this plan adds about ten
+  (roughly 6 MB, zeros in the `.wasm`, real memory once built). The
+  phone is the target: if the core's memory would pass 16 MB, stop and
+  leave a note with the options rather than choosing.
+- **Report** as item 21 did, plus the commit preview URL with
+  `?engine=rust`, and the Diagnostics `fallback` count over a few loops
+  (it falls as items land; say which voices still fall back).
+- **Self-merge** stays as the merge policy says. If Claude Code's safety
+  check refuses the merge, stop and tell Mikey; he merges.
+
+## 23. Rust core, step 3: the FM voices, sine and tubular (no new DSP)
+
+The core's `Fm` is `fm()` exactly, and eight voices are nothing but
+`fm()` calls: keys (a third of all loops, 11% of all notes), bell,
+celeste, musicbox, rhodes, marimba, harp (two calls) and piano (two
+calls). **Hook `fm()` itself**, as `pad()` is hooked: when the core is
+on and the note's channel is one it serves, the note goes to the core
+with its five options; each `fm()` call is still budgeted on its own,
+so a refused second strike stays refused. That covers every caller on
+melody and chords at once. `fm()` calls on bass (rhodesbass) and
+texture (bell, chime) keep playing in JavaScript until item 27.
+
+Also: **sine** (one sine, a linear swell, `_release2`) and **tubular**
+(five sines, five detune draws sent with the note). Moogpad already
+plays through `pad()`; confirm it does.
+
+Survey notes: no voice in this item draws, except tubular's five.
+`keys` and `bell` reach `fm()` through `pluck()`'s first branches; the
+rest through `voice()`.
+
+## 24. Rust core, step 4: the wave-table voices
+
+Seven voices need only new wave tables, built the way the core already
+builds `triangle` and `bowed`:
+- Chromium's **built-in sawtooth and square**: softpad (three saws),
+  analogpad (three saws), and the square beep (`pluck()`'s default
+  branch: `pluck` and any name without its own case), with its constant
+  5.4 Hz vibrato on detune.
+- The leads' custom waves, `_makeWave(1.5 / 1.8 / 1.7)`: saw, moog,
+  analoglead.
+- **Whistle** (built-in triangle, which the core has): its pitch scoop
+  comes from `_slide`, whose draw happens only when `dur >= 0.18`;
+  JavaScript draws and sends whether it slid, from where, and the reach.
+  Moog and whistle share one case with an automated lowpass and a
+  vibrato depth that ramps in.
+
+Stab waits for the bandpass (item 26). Report the memory per table and
+in total (standing rule).
+
+## 25. Rust core, step 5: accordion and nylon, the shared bodies
+
+The core has one body (the fiddle's, per channel). Generalize it to a
+body per kind and channel, as `_body()` does in JavaScript, with the
+`BODIES` table: nylon and accordion (peaking and lowpass, kinds the core
+has).
+- **Accordion:** the `reed` wave (`_makeWave(2.0, 0.6)`), two reeds at
+  -1.25 and +1.25 cents, the second at 0.35 and started `rand / f`
+  seconds late (one draw, after the budget, sent with the note); its
+  level differs on chords.
+- **Nylon:** `nylonMellow` and `nylonBright` (`_makePluck`), two gains
+  with their own decays, and **`damp`**: a strummed chord damps the
+  previous strum's strings that are still ringing (`damp()` and
+  `_strung`). In the core that is a message that adds a
+  `setTargetAtTime(0.0001, time, 0.08)` to notes already queued or
+  playing on that channel, in the order JavaScript pushed them (mellow,
+  then bright). Find what Chromium does when an event is inserted into
+  a timeline that is already rendering, and match it; prove it with a
+  null test on strummed nylon chords, not only single notes.
+
+## 26. Rust core, step 6: bandpass, highpass and the noise source
+
+The one big new primitive. Every breath, strike and drum uses
+`this.noise`, a two-second buffer filled from `Math.random` in the
+Synth's constructor, so Rust cannot make it: **JavaScript hands its
+samples to the core once per Synth** (about 384 KB at 48 kHz; size the
+buffer for the highest rate the app accepts, and say what that is).
+- **Biquad kinds:** bandpass (its Q is linear, unlike the lowpass's dB)
+  and highpass, from Chromium's formulas, including its edge cases.
+- **A buffer source** that plays the noise as Chromium's
+  `AudioBufferSourceNode` does: `start(when, offset, duration)` with the
+  duration in buffer time, a constant `playbackRate`, looped and
+  unlooped, sub-frame starts, Chromium's interpolation. Read Chromium's
+  source rather than guessing. Two users: `_noiseSource` (unlooped, rate
+  and offset drawn) and the winds' and singers' looped breath (rate
+  drawn, offset 0).
+- Prove the source first on the simplest case before any voice: noise
+  -> highpass -> gain (the hat's graph, rendered on melody for the test).
+- **Voices:** stab (saws, bandpass), ocarina and flute (sine and
+  triangle, slide, vibrato, looped breath through a bandpass), panflute
+  (the `pipe` wave, a vibrato drawn only when `dur >= 0.5`, breath and
+  chiff), prepared's knock (three draws, only after its 3-unit budget)
+  and the temple bell (eight sine partials with eight detune draws, then
+  the strike's two). Draw orders are in the survey notes below; check
+  them in the code.
+
+Survey notes on draws: ocarina and flute, the slide draw (`dur >= 0.18`)
+then the breath rate; panflute, the vibrato rate (`dur >= 0.5`) then the
+breath rate; templebell, eight detunes (partial by partial, -4 then +4
+cents) then rate and offset; prepared, rate, offset, then the knock's
+bandpass frequency.
+
+## 27. Rust core, step 7: bass, textures and drums (five channels)
+
+Three more outputs, so the core serves all five channels: **bass,
+texture, drums** next to melody and chords, each connected into its
+channel's gain as the first two are (ducking, sends and mutes stay in
+Web Audio). Split it **27a** (bass and textures) and **27b** (drums) if
+that is cleaner.
+- **Bass:** sub and moogbass (sawtooth through an automated resonant
+  lowpass, from item 24), round and pluckbass (triangle, lowpass;
+  pluckbass's click from item 26), fifths (two sines), rhodesbass
+  (`fm()`, from item 23). Glide, chug's shorter release, and each
+  voice's trim. Only pluckbass draws (its click's two).
+- **Textures:** swell (sines, one budget check per note; the first
+  refusal drops the rest of the call), bell and chime (`fm()`), drop
+  (noise, bandpass at a drawn frequency), wind (looped noise, a bandpass
+  whose frequency a 0.07-0.13 Hz sine moves at audio rate) and waves
+  (looped noise, a drawn rate and offset, two lowpasses in series).
+- **Drums:** kick and softkick, snare and clap, hat, open hat and shaker,
+  rim, and the hand kit (frame, tap, jingle, open jingle). They are the
+  most notes per second of anything in the app, so this item also runs
+  **`perf.mjs --ab`** (flag off against on, loops with full kits, the
+  usual throttling): audio health must not get worse; report audio- and
+  main-thread cost, graph churn and memory, as item 22 did.
+
+## 28. Rust core, step 8: the sung voices (vowel, hum, choir)
+
+The hardest voices, last. Each singer's detune is a ramp, then a jitter
+of many small ramps (two draws per step, about one step per 0.13 s),
+**plus** a vibrato oscillator summed into the same detune; three peaking
+formant filters whose frequency, Q and gain all ramp when the vowel
+drifts; a lowpass; and a breath through a bandpass.
+- **Param capacity:** `MAX_EVENTS` is 8 and a long sung note needs
+  dozens. Measure the longest note a sung voice gets across the corpus
+  and size it from that, with a margin; still no allocation after init.
+- **The draw order is intricate** and partly before the budget: whether
+  it drifts and where to (both drawn before the budget check), then per
+  singer the choir spread, the scoop's start and end, the jitter steps,
+  the vibrato's three, and last the breath rate. Read `voice()`'s sung
+  case closely; a single misplaced draw shifts every later note.
+- The `glottal` wave, `_formantTrim` (computed in JavaScript and sent,
+  or ported: say which), choir's three singers into one tract.
+
+**After item 28, stop.** Every voice plays from Rust behind the flag.
+The brain verifies, Mikey listens to one labeled album across the new
+voices, and then he decides what is next: making the core the default,
+moving the effects and master chain into Rust (needed for a native or
+game host, not for the phone's web app), and the generator's port after
+the words.
 
 ## Later, not queued
 
