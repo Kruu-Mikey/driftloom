@@ -1355,3 +1355,11 @@ Mikey decides this line:
   first-value fix from 26b no longer uses the `value` setter, which a
   browser could apply after a late note's envelope (Chromium doesn't), and
   a jingle the core can't take no longer draws its zils twice.
+- #144, the Rust core's eighth and last step: the sung voices (item 28, v77),
+  https://d03e5106-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the vowel, the hum and
+  the choir come out of Rust (-96 to -99 dB against the JavaScript voices,
+  6-second notes with a drifting vowel included), so every voice does now.
+  Play a `hollow` loop and check Diagnostics reads `engine: rust  late: 0
+  fallback: 0`; listen for the scoop into each note, the vowel opening on
+  long ones, and the breath at the start. Core memory 12.4 MB.
