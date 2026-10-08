@@ -420,6 +420,11 @@ it, Profiles, the documents list -- with the engineering sections moved
 unchanged into `docs/NOTES.md` (one relative link fixed so it still
 resolves). The intro now names the Rust core behind `?engine=rust`, and
 the front page's two British spellings are American.
+Its PR (#130) is the first build on the new Cloudflare account, and the
+Workers Builds preview **failed** with no log visible from here (the
+`core` check passed). A docs change can't break an assets-only build, so
+it is the new account's setup; Mikey reads the log. Until previews work,
+commit-preview A/Bs and the brain's preview checks are unavailable.
 
 **Next, proposed to Mikey (2026-10-08).** Two tracks, neither blocked
 by the other. (1) The Rust port, step 3: the brain picks the next batch
