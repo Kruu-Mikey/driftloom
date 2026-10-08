@@ -143,7 +143,23 @@ impl NoiseSource {
     /// `src.loop = true; src.playbackRate.value = playback; src.start(when);
     /// src.stop(stop)`.
     pub fn looped(&mut self, when: f64, stop: f64, playback: f64, len: usize, rate: f64) {
-        self.begin(when, 0.0, playback, rate);
+        self.looped_at(when, 0.0, stop, playback, len, rate);
+    }
+
+    /// The same, from `offset` seconds in: `src.start(when, offset)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn looped_at(
+        &mut self,
+        when: f64,
+        offset: f64,
+        stop: f64,
+        playback: f64,
+        len: usize,
+        rate: f64,
+    ) {
+        let buffer = len as f64 / rate;
+        let offset = offset.max(0.0).min(buffer);
+        self.begin(when, frames(offset, rate).round(), playback, rate);
         self.end = len as f64;
         self.looped = true;
         self.stop = frame_at(stop, rate);

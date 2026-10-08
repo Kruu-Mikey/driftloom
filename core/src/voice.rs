@@ -45,7 +45,7 @@ pub(crate) fn pitch_of<'a>(
     let from = block as f64 / rate;
     let moving = p.moving_from(from, QUANTUM as f64 / rate);
     if first {
-        p.clamp_before(from);
+        p.clamp_before(block, rate);
     }
     if moving {
         p.fill(block, rate, freq);
@@ -163,7 +163,7 @@ impl Fm {
         // the carrier's own events it is first rendered when the carrier
         // starts, and its events are clamped to that block.
         if starts_in(self.carrier.start_frame(), block) {
-            self.depth.clamp_before(block as f64 / rate);
+            self.depth.clamp_before(block, rate);
         }
         let mut depth = [0.0; QUANTUM];
         self.depth.fill(block, rate, &mut depth);
@@ -480,7 +480,7 @@ impl Fiddle {
             // Feeding only the detune, the depth is first rendered when the
             // fiddle starts: clamped then, as above.
             if first {
-                self.lfo_depth.clamp_before(block as f64 / rate);
+                self.lfo_depth.clamp_before(block, rate);
             }
             let mut depth = [0.0f32; QUANTUM];
             self.lfo_depth.fill(block, rate, &mut depth);
