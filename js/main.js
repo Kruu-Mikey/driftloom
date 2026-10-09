@@ -154,21 +154,8 @@ function goBack() {
 function goForward() {
   // While an album is playing the skip buttons belong to the album, which is
   // what anyone would expect them to do.
-  //
-  // Except past the last track: skipping on from the end of an album leaves
-  // it and makes something new, the way skipping past the end of a playlist
-  // ends it anywhere else. (A track running out on its own still wraps to
-  // the first; that is onTrackEnd, which does not come through here.)
-  const pl = state.playlist;
-  if (pl && pl.ids.length) {
-    if (pl.index < pl.ids.length - 1) {
-      advancePlaylist(1);
-      return;
-    }
-    state.playlist = null;
-    library.refresh();
-    newLoop();
-    ui.toast(`End of ${pl.title}. New loop: ${state.spec.name}`);
+  if (state.playlist && state.playlist.ids.length) {
+    advancePlaylist(1);
     return;
   }
   // At the end of the history, skipping forward makes something new. A skip
@@ -270,16 +257,15 @@ function refreshCard() {
     ctx.drawImage(library.albumArt(album, specs, 320), 0, 0, 320, 320);
     state.coverFor = null;
     const pl = state.playlist;
-    let nowPlaying = '';
-    if (state.spec && state.engine && state.engine.spec) {
-      nowPlaying = state.spec.name;
-      if (pl && pl.albumId === album.id) nowPlaying += ` ${pl.index + 1}/${pl.ids.length}`;
-    }
-    ui.renderAlbumCard(album.title, specs, { nowPlaying });
-    // The playhead keeps running under the album's art: it belongs to the
-    // loop that is playing, which is still playing.
+    const playing = pl && pl.albumId === album.id
+      ? `playing ${pl.index + 1}/${pl.ids.length}` : '';
+    ui.renderAlbumCard(album.title, specs, { playing });
+    // Hidden rather than removed, so the card keeps its height and the
+    // viewport below does not jump.
+    playhead.style.visibility = 'hidden';
     return;
   }
+  playhead.style.visibility = '';
   if (!state.spec) return;
   if (state.coverFor !== state.spec) {
     drawCoverFor(state.spec);
@@ -293,7 +279,6 @@ function renderLoopWords() {
   const limit = state.spec.playFor;
   ui.renderReadout(state.spec, state.pattern, {
     album: pl && pl.ids.length ? `${pl.title} ${pl.index + 1}/${pl.ids.length}` : '',
-    onLeaveAlbum: leaveAlbum,
     pass: limit ? `pass ${state.passCount} of ${limit}` : '',
   });
 }
@@ -400,7 +385,7 @@ function leaveAlbum() {
   state.playlist = null;
   refreshCard();
   library.refresh();
-  ui.toast('Left the album. Next makes new loops again');
+  ui.toast('Album stopped; Next makes new loops again');
 }
 
 function playAlbum(albumId, index = 0) {
