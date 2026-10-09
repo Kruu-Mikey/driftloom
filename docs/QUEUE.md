@@ -1007,6 +1007,107 @@ moving the effects and master chain into Rust (needed for a native or
 game host, not for the phone's web app), and the generator's port after
 the words.
 
+## Rust core, steps 9-11: the effects and the master chain (items 29-31)
+
+Written 2026-10-09 (brain, Session 5), at Mikey's word: after item 28
+every voice plays from the core; now **the rest of the sound path moves
+too**, so the core makes the whole mix and a native or game host needs
+nothing from Web Audio but an output. Same flag (`?engine=rust`), same
+standing rules as items 23-28 (JavaScript is the reference; flag off,
+nothing changes; every check, every item), plus these:
+
+- **The graph, as it is today** (`_build()` in `synth.js`; read it, this
+  is a map): five channel gains (drums .82, bass .62, chords .44, melody
+  .58, texture .50), each with a reverb send and an echo send taken from
+  the channel gain itself; drums go straight to `preBus`, the other four
+  through `pumpBus` (the kick's duck). Reverb: `reverbIn` -> six combs on
+  full, three on lite (each a delay with a lowpass in its feedback, the
+  sum taken *before* the lowpass) -> `combSum` -> `reverbOut` ->
+  `preDelay` -> `tails` -> `preBus`. Echo: a delay with a lowpass and a
+  feedback gain, out through `tails`. Master: `preBus` -> `wobble` (a
+  delay whose time two always-running sine LFOs move, wow and flutter) ->
+  `sat` (a WaveShaper, a `tanh` curve, 2x oversampling on full, none on
+  lite) -> `tone` lowpass -> `hp` highpass -> `comp` (a
+  DynamicsCompressor) -> `master` gain -> `kill` gain -> `ceiling` (a
+  second DynamicsCompressor, the limiter) -> the destination. Runtime
+  changes: `setTone`, `fadeTails`/`restoreTails`, `duck`,
+  `setEchoTime`, `setMute`, `silence`/`unsilence`, `setVolume`,
+  `setCharacterLevel`. `setTone` replaces the saturator's curve outright.
+- **Notes that still play in JavaScript must keep reaching the effects.**
+  A fallback note (an unserved channel, a note before the core loads, a
+  sung note too long for its detune) plays through Web Audio nodes; once
+  the effects live in the core, those nodes need a way in. Give the
+  worklet node one input per channel, and connect each channel's JS path
+  into it, so a fallback note gets the same sends, duck and master as a
+  core note. If the core fails to load, the whole JavaScript graph plays,
+  as now.
+- **Cycles.** The echo and the combs are feedback loops; Web Audio clamps
+  a delay inside a cycle to at least one render quantum (128 frames).
+  Match what Chromium does, not what the spec suggests, and prove it.
+- **Proofs move from notes to the mix.** Each item adds a `--null` stage
+  for what it ports: the same input through the JavaScript stage and the
+  core's, subtracted, with signals that exercise it (impulses, swept
+  sines, noise, real loops; level steps for the compressors; every
+  runtime change at an awkward time). Whole loops: the mix against
+  JavaScript, next to the JS-against-JS floor (about -86 dB). Where a
+  stage can't null to the floor, say what the residual is and how loud,
+  in dBFS and against the signal, before going on.
+- **Performance** each item: `perf.mjs --ab`, flag off against on, on
+  loops with full kits and long reverb, the usual throttling, on full
+  and lite. The native Web Audio effects are fast C++; the core must not
+  make audio health worse (late ticks, fill-ins). If it does, stop and
+  leave a note with the figures rather than optimizing past the brief.
+- **Stereo.** Today the graph is mono end to end, as far as the brain can
+  see; confirm it, and keep it so.
+
+## 29. Rust core, step 9: channels, sends, duck, echo and reverb
+
+The mixing stage, up to `preBus`. The core sums its own voices into the
+five channels as now, plus the worklet's five inputs (the JS fallback
+notes); applies channel gains and mutes, the two sends, the duck on
+`pumpBus`, the echo (delay, lowpass, feedback, `setEchoTime`), the
+reverb (the combs on full and lite, `combSum`, `reverbOut`, `preDelay`)
+and `tails` (`fadeTails`/`restoreTails`), and outputs `preBus` to one
+node that feeds the JavaScript master chain (`wobble` onward), which
+stays as it is for now. **DelayNode** as Chromium renders it: its
+interpolation, its smoothing of `delayTime` changes, and the cycle
+clamp. `setTone`'s reverb and comb changes go to the core as messages,
+with the same `setTargetAtTime` curves.
+
+## 30. Rust core, step 10: wobble, saturator, tone and highpass
+
+The first half of the master chain. **Wobble:** a delay whose time is
+0.014 s plus two sine LFOs (wow 0.32 Hz, flutter 6.3 Hz) at audio rate,
+the LFOs started when the synth is built (find their phase on a real
+context, where the synth is built mid-stream). **Saturator:** the
+WaveShaper's curve lookup as Chromium does it (its index mapping and
+interpolation), with `oversample` 'none' on lite and '2x' on full:
+Chromium's up- and downsampling filters, read from its source, not
+approximated. `setTone` swaps the curve outright: match when the new
+curve takes effect. **Tone** (lowpass, `setTone` moves it) and **hp**
+(highpass, 38 Hz): the core has both kinds. The core then outputs the
+signal before `comp`.
+
+## 31. Rust core, step 11: the compressors and the whole mix in the core
+
+The last of the graph. **`comp` and `ceiling`:** Chromium's
+DynamicsCompressor (its kernel: the knee curve, attack, the adaptive
+release, its lookahead pre-delay, its makeup gain, its metering),
+ported from Chromium's source, then `master` (`setVolume`,
+`setCharacterLevel`) and `kill` (`silence`, `unsilence`). The worklet's
+output goes straight to the destination. Prove both compressors with
+level steps, bursts, and loops at the catalog's loudest (the loudest
+loops reach about 0.85 peak; find a few that push `ceiling`), and the
+whole app path: play, stop, re-roll, "let the loop wander", the hidden
+tab, a quality change (which rebuilds the synth), and `dispose()`. With
+the flag on, Web Audio then carries only the fallback notes and the
+output.
+
+**After item 31, stop.** The brain verifies; Mikey hears one more labeled
+album (the mix, on his phone); then he decides about making the core the
+default, and the generator's port (which waits on the words, his
+2026-10-03 decision, unless he changes it).
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want

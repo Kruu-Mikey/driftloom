@@ -568,10 +568,17 @@ test plays a 13.5 s three-singer note.
 **Out for listening: "Rust, all voices"** (`docs/ALBUMS.md`), ten
 loops, each played with and without the flag.
 
-**Then Mikey decides** (queue, "After item 28"): make the core the
-default; move the effects and master chain into Rust (for a native or
-game host, not needed for the web app); the generator's port after the
-words. Not started: the word rankings, Depth two, the open decisions,
+**Mikey, 2026-10-09: move the rest to Rust now** (the album waits for
+his evening). The brain wrote queue items 29-31: the channels, sends,
+duck, echo and reverb (29); wobble, saturator with Chromium's 2x
+oversampling, tone and highpass (30); both DynamicsCompressors, master
+and kill, the core's output straight to the destination (31). JS
+fallback notes reach the core's effects through one worklet input per
+channel. The generator's port still waits on the words (his 2026-10-03
+decision), unless he says otherwise. Sessions: **Session 10, hands,
+Opus 5.5, high: items 29-30; Session 11, hands, Opus 5.5, high: item
+31** (Chromium's compressor kernel and oversampling filters are the
+judgment-heavy parts). The brain verifies between them, as before. Not started: the word rankings, Depth two, the open decisions,
 the iPhone check.
 
 Not started, for Mikey's own time: the word rankings, Depth two, the
