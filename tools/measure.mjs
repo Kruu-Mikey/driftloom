@@ -78,8 +78,10 @@ driftloom offline audio measurement
                     same corpus until --n of them are in
   --engine <e>      'js' or 'rust': which synth plays the voices the Rust
                     core has                                   (default js)
-  --null            render the same seeded kalimba notes, and kalimba
-                    loops, through both engines and subtract
+  --null            render the same seeded notes of every voice the core
+                    plays, loops, and the mix stage, through both engines
+                    and subtract
+  --mix             with --null, the mix stage alone
   --clicks          check that no voice plays a loud first sample when a
                     note starts a hair after a whole frame; with --n, also
                     count the noise starts that land there
@@ -218,6 +220,7 @@ function parseArgs(argv) {
       case '--endings': opts.endings = true; break;
       case '--retire': opts.retire = true; break;
       case '--null': opts.null = true; break;
+      case '--mix': opts.mixOnly = true; break;
       case '--clicks': opts.clicks = true; break;
       case '--engine': {
         const e = value();
@@ -449,7 +452,40 @@ async function coreFor(ctx, engine) {
   return engine === 'rust' ? loadCore(ctx) : null;
 }
 function synthFor(ctx, quality, engine, core) {
-  return engine === 'rust' ? new Synth(ctx, quality, { engine, core }) : new Synth(ctx, quality);
+  return engine === 'rust' ? new Synth(ctx, quality, { engine, core, taps: true }) : new Synth(ctx, quality);
+}
+// The channels in the core's order: its taps are numbered so.
+const CORE_ORDER = ['melody', 'chords', 'bass', 'texture', 'drums'];
+// A layer dry and at unity into \`dest\`, and nothing else out of the synth:
+// on JavaScript the channel's own node, cut off from the mix with its gain
+// at 1; on the core, which mixes (queue item 29), that channel's tap -- the
+// voices and any fallback notes as they go into the mix -- with the master
+// chain cut off. Returns the channel's node, the voices' destination.
+function dryOut(synth, layer, dest) {
+  const channel = synth.channels[layer].gain;
+  if (synth.core) {
+    synth.ceiling.disconnect();
+    synth.core.node.connect(dest, synth.core.tapOf(CORE_ORDER.indexOf(layer)));
+    return channel;
+  }
+  channel.disconnect();
+  channel.gain.value = 1;
+  channel.connect(dest);
+  return channel;
+}
+// A layer as it leaves its channel gain, into \`dest\`'s input \`input\`,
+// beside everything else: the JavaScript channel gain's output, or the
+// core's tap through a gain at the channel's own level, which is the same
+// product (the harness never mutes).
+function layerTap(synth, layer, dest, input) {
+  if (!synth.core) {
+    synth.channels[layer].gain.connect(dest, 0, input);
+    return;
+  }
+  const g = synth._raw.createGain();
+  g.gain.value = synth.channels[layer].base.gain;
+  synth.core.node.connect(g, synth.core.tapOf(CORE_ORDER.indexOf(layer)));
+  g.connect(dest, 0, input);
 }
 async function settle(synth) {
   if (synth.core) await synth.core.flush();
@@ -547,7 +583,7 @@ async function renderLoop(spec, seconds, opts, bypass) {
     synth.ceiling.connect(splitter);
     splitter.connect(merger, 0, 0);
     splitter.connect(merger, 1, 1);
-    LAYERS.forEach((name, n) => synth.channels[name].gain.connect(merger, 0, n + 2));
+    LAYERS.forEach((name, n) => layerTap(synth, name, merger, n + 2));
   }
 
   engine.load(spec);
@@ -853,10 +889,7 @@ async function renderNote(job, midi, vel, rep, o) {
   const synth = synthFor(ctx, 'full', o.engine, core);
   // The budget is a runtime guard and would only refuse notes here.
   synth._budget = () => true;
-  const channel = synth.channels[job.layer].gain;
-  channel.disconnect();
-  channel.gain.value = 1;
-  channel.connect(ctx.destination);
+  const channel = dryOut(synth, job.layer, ctx.destination);
 
   const tracks = { drums: [], bass: [], chords: [], melody: [], texture: [] };
   const dur = o.dur / STEP;
@@ -898,10 +931,7 @@ async function renderStrums(job, midi, vel, o) {
   Math.random = random;
   const synth = synthFor(ctx, 'full', o.engine, core);
   synth._budget = () => true;
-  const channel = synth.channels[job.layer].gain;
-  channel.disconnect();
-  channel.gain.value = 1;
-  channel.connect(ctx.destination);
+  const channel = dryOut(synth, job.layer, ctx.destination);
   const notes = [0, 4, 7].map((i) => midi + i);
   const dur = o.dur / STEP;
   const tracks = {
@@ -1118,10 +1148,7 @@ async function renderHat(kind, vel, at, o) {
   const core = await coreFor(ctx, o.engine);
   Math.random = mulberry32(seedFor(['hat', kind, vel.toFixed(2), at].join('|')));
   const synth = synthFor(ctx, 'full', o.engine, core);
-  const channel = synth.channels.melody.gain;
-  channel.disconnect();
-  channel.gain.value = 1;
-  channel.connect(ctx.destination);
+  const channel = dryOut(synth, 'melody', ctx.destination);
   if (synth.core) {
     const draws = [Math.random(), Math.random()];
     synth.core.note(CORE_VOICES.hat, synth.core.channelOf(channel), at, 0, dur, vel, HAT_KINDS.indexOf(kind), draws);
@@ -1140,8 +1167,124 @@ async function renderHat(kind, vel, at, o) {
   return rendered(ctx, synth);
 }
 
+// --null's mix stage (queue item 29): the same signals played into the
+// five channels' nodes -- where every voice plays -- through the
+// JavaScript mix and through the core's, and read at preBus, where the
+// master chain begins. Each channel gets its own: impulses scattered over
+// the frames of the render block, a swept sine, or bursts of noise. On top,
+// the runtime changes the app makes, at awkward times: setTone and
+// setEchoTime at the start, and in 'moving' a duck on fractions of a frame
+// all through, the tails faded and brought back, a channel muted and let
+// back in, and, while the render is under way (at a block boundary, as a
+// live call lands), setTone again in the middle of the last one's glide,
+// the echo's time moved while it rings, and a duck asked for a moment
+// after its own time.
+const MIX_TONES = [
+  { warmth: 0.6, space: 0.5, wobble: 0.4 },
+  { warmth: 0.3, space: 0.95, wobble: 0.7 },
+  { warmth: 0.9, space: 0.1, wobble: 0.2 },
+];
+function mixSignal(kind, c, n, rate) {
+  const d = new Float32Array(n);
+  const rnd = mulberry32(seedFor(['mix signal', kind, c].join('|')));
+  if (kind === 'impulses') {
+    // Every 0.31 s or so, on a different frame of the block each time.
+    for (let k = 0; ; k++) {
+      const at = Math.round(0.05 * rate) + c * 977 + k * 13687 + ((k * 53) % 128);
+      if (at >= n) break;
+      d[at] = k % 2 ? 0.5 : -0.35;
+    }
+  } else if (kind === 'sweep') {
+    // 40 Hz to 16 kHz and back, each channel a quarter-turn behind the last.
+    let phase = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / rate + c * 0.9;
+      const x = (Math.sin(t * Math.PI / 4.5) + 1) / 2;
+      phase += 2 * Math.PI * 40 * Math.pow(400, x) / rate;
+      d[i] = 0.25 * Math.sin(phase);
+    }
+  } else {
+    // Bursts of noise, 0.3 s on in every 0.8.
+    for (let i = 0; i < n; i++) {
+      const t = i / rate + c * 0.16;
+      d[i] = (t % 0.8) < 0.3 ? 0.3 * (rnd() * 2 - 1) : 0;
+    }
+  }
+  return d;
+}
+async function renderMixStage(v, o, engine) {
+  const rate = o.rate;
+  const n = Math.ceil(v.seconds * rate);
+  const ctx = new OfflineAudioContext(1, n, rate);
+  const core = await coreFor(ctx, engine);
+  Math.random = mulberry32(seedFor(['mix', v.name].join('|')));
+  const synth = synthFor(ctx, v.quality, engine, core);
+  if (engine === 'rust' && !synth._coreMix()) throw new Error('the core is not mixing');
+  synth.preBus.disconnect();
+  synth.preBus.connect(ctx.destination);
+  CORE_ORDER.forEach((name, c) => {
+    const buf = ctx.createBuffer(1, n, rate);
+    buf.getChannelData(0).set(mixSignal(v.signal, c, n, rate));
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(synth.channels[name].gain);
+    src.start(0);
+  });
+  synth.setTone(MIX_TONES[0]);
+  synth.setEchoTime(0.36);
+  if (v.moving) {
+    // Ducks on fractions of a frame, ahead of time, as the engine asks.
+    for (let k = 0; ; k++) {
+      const t = 0.11 + k * 0.3731 + ((k * 0.618034) % 1) / rate;
+      if (t > v.seconds - 0.5) break;
+      synth.duck(t, 0.2 + ((k * 0.37) % 0.6), 0.12 + ((k * 0.11) % 0.2));
+    }
+    synth.fadeTails(3.1234567);
+    synth.restoreTails(4.5678901);
+    synth.setMute('texture', true);
+    const at = (t) => Math.round((t * rate) / 128) * 128 / rate;
+    const live = [
+      [at(1.5), () => { synth.setTone(MIX_TONES[1]); synth.setEchoTime(0.5123); synth.setMute('chords', true); }],
+      [at(2.1), () => { synth.setTone(MIX_TONES[2]); synth.setMute('texture', false); }],
+      [at(2.7), () => { synth.setMute('chords', false); synth.setEchoTime(0.2511); synth.duck(ctx.currentTime - 0.0123, 0.7, 0.2); }],
+      [at(5.3), () => { synth.fadeTails(ctx.currentTime + 0.0001234, 0.2, 0.6); synth.setEchoTime(1.2); }],
+      [at(6.1), () => { synth.restoreTails(ctx.currentTime - 0.01); }],
+    ];
+    for (const [t, call] of live) {
+      ctx.suspend(t).then(async () => {
+        call();
+        await settle(synth);
+        ctx.resume();
+      });
+    }
+  }
+  await settle(synth);
+  return rendered(ctx, synth);
+}
+async function probeMixStage(o) {
+  const variants = [];
+  for (const quality of ['full', 'lite']) {
+    for (const signal of ['impulses', 'sweep', 'noise']) {
+      for (const moving of [false, true]) {
+        variants.push({ name: signal + ', ' + (moving ? 'moving' : 'still') + ', ' + quality, signal, moving, quality, seconds: 8 });
+      }
+    }
+  }
+  const mine = variants.slice(o.mixFrom ?? 0, o.mixTo ?? variants.length);
+  return inParallel(mine.map((v) => async () => {
+    const js = (await renderMixStage(v, o, 'js')).getChannelData(0);
+    const rust = (await renderMixStage(v, o, 'rust')).getChannelData(0);
+    const again = (await renderMixStage(v, o, 'js')).getChannelData(0);
+    return { name: v.name, ...nullOf(js, rust), floor: nullOf(js, again) };
+  }), Math.max(1, Math.floor(o.width / 2)));
+}
+
 window.probeNull = async (o) => {
   const out = { notes: [], loops: [] };
+  if (o.mix) {
+    out.mix = await probeMixStage(o);
+    return out;
+  }
   if (o.hat) {
     const tasks = [];
     for (const kind of HAT_KINDS) {
@@ -1280,7 +1423,7 @@ window.probeNull = async (o) => {
     merger.connect(ctx.destination);
     synth.ceiling.disconnect();
     synth.ceiling.connect(merger, 0, 0);
-    CORE_TAPS.forEach((name, n) => synth.channels[name].gain.connect(merger, 0, n + 1));
+    CORE_TAPS.forEach((name, n) => layerTap(synth, name, merger, n + 1));
     engine.load(spec);
     engine.playing = true;
     engine.nextStepTime = 0.05;
@@ -2144,6 +2287,11 @@ function reportNull(data, opts) {
     out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
   out.push('');
+  out.push('  the mix stage: signals into the five channels, read at preBus           residual   js vs js    worst');
+  for (const r of data.mix || []) {
+    out.push(`    ${r.name.padEnd(40)}                         ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS`);
+  }
+  out.push('');
   out.push('  "core layers" is the melody, chords, bass, texture and drums taps together, against their own level: everything else in');
   out.push('  them is the same on both engines. "js vs js" is the same loop rendered twice on the JavaScript synth:');
   out.push('  the mix never nulls deeper than that, whichever engine plays, because Chromium does not fix the');
@@ -2425,14 +2573,20 @@ if (opts.null) {
   };
   // A voice in a layer a page (about 160 notes on each engine), then the
   // loops four a page.
-  const parts = [
+  const parts = opts.mixOnly ? [] : [
     // The noise source first, alone.
     ...(o.voices.some((v) => NOISE_VOICES.includes(v)) ? [{ ...o, jobs: [], hat: true, from: 0, to: 0 }] : []),
     ...batches(jobs.map((_, j) => j), 1).map((only) => ({ ...o, jobs, only, from: 0, to: 0 })),
     ...ranges(o.loops, 4).map((r) => ({ ...o, jobs: [], ...r })),
   ];
+  parts.push(
+    // The mix stage, four variants a page.
+    ...[0, 4, 8].map((from) => ({ ...o, jobs: [], from: 0, to: 0, mix: true, mixFrom: from, mixTo: from + 4 })),
+  );
   const got = await inPages('probeNull', parts);
-  const data = { notes: got.flatMap((g) => g.notes), loops: got.flatMap((g) => g.loops) };
+  const data = {
+    notes: got.flatMap((g) => g.notes), loops: got.flatMap((g) => g.loops), mix: got.flatMap((g) => g.mix || []),
+  };
   await browser.close();
   server.close();
   if (pageErrors.length) {

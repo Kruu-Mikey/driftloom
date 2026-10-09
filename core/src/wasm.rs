@@ -2,9 +2,11 @@
 //! instance: the worklet compiles one instance per AudioWorkletNode.
 //!
 //! Plain numbers in and out, nothing else -- no imports, no strings, no
-//! allocator. A block's samples are read straight out of linear memory at
-//! the address `dl_process` returns: `CHANNELS` runs of `QUANTUM` floats,
-//! one channel after the other.
+//! allocator. Samples move through linear memory: before each block the
+//! host writes its own notes for each channel at the address `dl_inputs`
+//! returns, `CHANNELS` runs of `QUANTUM` floats; after it, the mix is at
+//! `dl_bus`, one run, and the channels as they went into it at the address
+//! `dl_process` returns, `CHANNELS` runs.
 
 use core::cell::UnsafeCell;
 
@@ -98,8 +100,35 @@ pub extern "C" fn dl_noise(len: u32) -> *mut f32 {
     }
 }
 
+/// The mix as the synth builds it on full quality (1) or lite (0); see
+/// `Core::quality`. Returns whether the core mixes at its rate.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_quality(full: u32) -> u32 {
+    core().quality(full != 0);
+    core().mixing() as u32
+}
+
+/// Move one of the mix's parameters; see `Core::param`. Returns 1 if it
+/// took.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_param(id: u32, op: u32, value: f64, time: f64, tau: f64) -> u32 {
+    core().param(id, op, value, time, tau) as u32
+}
+
+/// Where the host writes its own notes for the next block.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_inputs() -> *mut f32 {
+    core().inputs().as_mut_ptr().cast()
+}
+
+/// Where the last block's mix is.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_bus() -> *const f32 {
+    core().bus().as_ptr()
+}
+
 /// Render the block that starts at frame `block` and return where its
-/// samples are.
+/// channels are (the mix is at `dl_bus`).
 #[unsafe(no_mangle)]
 pub extern "C" fn dl_process(block: f64) -> *const f32 {
     let frame = if block > 0.0 { block as u64 } else { 0 };

@@ -6,7 +6,16 @@ import { midiToFreq } from './theory.js';
 import {
   CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, DRUM_KINDS, HAT_KINDS, BASS_GLIDE, BASS_CHUG,
   KALIMBA_STRIKE, KALIMBA_BODY, SUNG_VOWELS, SUNG_OPEN_HUM, SUNG_LONGEST,
+  MIX, SET, LINEAR, TARGET, CANCEL,
 } from './core.js';
+
+// The channels in the core's order (core/src/lib.rs): its inputs, its
+// taps and its channel gains are numbered so.
+const CORE_CHANNELS = ['melody', 'chords', 'bass', 'texture', 'drums'];
+// How long the JavaScript mix keeps ringing after the core takes over
+// mid-play, so its echo and reverb tails die away rather than stop: the
+// longest echo (1.9 s) fed back at 0.34 is down 47 dB after five repeats.
+const RING_OUT_MS = 10000;
 
 // A voice budget in *cost units*, not a count of voices.
 //
@@ -445,8 +454,10 @@ function recordingContext(ctx, synth) {
 export class Synth {
   // `engine` is 'js' or 'rust' (the `?engine=rust` flag, js/core.js), and
   // `core` what loadCore() gave for this context, if it has arrived; one
-  // that arrives later is handed over with attachCore().
-  constructor(ctx, quality = 'full', { engine = 'js', core = null } = {}) {
+  // that arrives later is handed over with attachCore(). `taps` gives the
+  // core's node an output per channel, as it goes into the mix (the
+  // measure harness reads them).
+  constructor(ctx, quality = 'full', { engine = 'js', core = null, taps = false } = {}) {
     this._building = null;
     this._voiceEnd = null;
     // Finished-to-be voices, earliest end first: { end, nodes }.
@@ -472,6 +483,10 @@ export class Synth {
     this.engine = engine;
     this._raw = ctx;
     this.core = null;
+    this._taps = taps;
+    this._ringOut = null;
+    // What the mix was last asked for, to hand from one mix to the other.
+    this._asked = { tone: null, echo: null, mutes: {} };
     // Notes for a core voice that played in JS instead: the core had not
     // arrived, had failed, or does not serve the note's channel.
     this.fallbacks = 0;
@@ -481,14 +496,83 @@ export class Synth {
   attachCore(core) {
     if (this.engine !== 'rust' || this.core) return;
     try {
-      const c = this.channels;
       this.core = new CoreHost(this._raw, core,
-        [c.melody.gain, c.chords.gain, c.bass.gain, c.texture.gain, c.drums.gain],
-        this.noise.getChannelData(0));
+        CORE_CHANNELS.map((name) => this.channels[name].gain),
+        this.noise.getChannelData(0), { quality: this.quality, taps: this._taps });
     } catch (err) {
       // No worklet node here: everything stays in JS, counted as fallbacks.
       console.warn('Rust core unavailable; playing in JS', err);
+      return;
     }
+    this.core.onfail = () => this._mixInJs();
+    this._mixInCore();
+  }
+
+  // The core mixes (queue item 29). Each channel's node, where every
+  // voice plays into, stops being the channel's gain and becomes the
+  // core's input for it, at unity: what the core takes never passes
+  // through it, and what it cannot take (a fallback note) reaches the
+  // core's mix there. The core's mix goes to preBus in place of the
+  // JavaScript one.
+  _mixInCore() {
+    const node = this.core.node;
+    CORE_CHANNELS.forEach((name, i) => {
+      const g = this.channels[name].gain;
+      g.disconnect();
+      g.gain.cancelScheduledValues(0);
+      g.gain.value = 1;
+      g.connect(node, 0, i);
+    });
+    node.connect(this.preBus, 0);
+    // The JavaScript mix now hears nothing. Cut it off from preBus, so
+    // Web Audio stops rendering it -- at once if nothing has played yet,
+    // and once its tails have died away if the core arrived mid-play.
+    const cut = () => {
+      this._ringOut = null;
+      try { this.tails.disconnect(); } catch { /* already detached */ }
+      try { this.pumpBus.disconnect(); } catch { /* already detached */ }
+    };
+    if (this._raw.currentTime > 0 && typeof setTimeout === 'function') {
+      this._ringOut = setTimeout(cut, RING_OUT_MS);
+    } else {
+      cut();
+    }
+    // And bring the core's mix to where the JavaScript one was asked to
+    // be. A duck or a fade of the tails already scheduled stays with the
+    // JavaScript mix: the core's starts level.
+    const { tone, echo, mutes } = this._mixState();
+    if (tone) this._toneToMix(tone, this.ctx.currentTime);
+    if (echo != null) this.setEchoTime(echo);
+    for (const [layer, muted] of Object.entries(mutes)) if (muted) this.setMute(layer, true);
+  }
+
+  // The core failed after all (too old a browser for its module): the
+  // JavaScript mix takes everything back, as the synth built it.
+  _mixInJs() {
+    if (this._ringOut) { clearTimeout(this._ringOut); this._ringOut = null; }
+    try { this.core.node.disconnect(); } catch { /* already detached */ }
+    const { tone, echo, mutes } = this._mixState();
+    for (const [name, ch] of Object.entries(this.channels)) {
+      const g = ch.gain;
+      try { g.disconnect(); } catch { /* already detached */ }
+      g.gain.value = mutes[name] ? 0 : ch.base.gain;
+      g.connect(name === 'drums' ? this.preBus : this.pumpBus);
+      g.connect(ch.verb);
+      g.connect(ch.echo);
+    }
+    this.tails.connect(this.preBus);
+    this.pumpBus.connect(this.preBus);
+    if (tone) this._toneToMix(tone, this.ctx.currentTime);
+    if (echo != null) this.setEchoTime(echo);
+  }
+
+  // The core, when it is the one mixing.
+  _coreMix() {
+    return this.core && !this.core.failed ? this.core : null;
+  }
+
+  _mixState() {
+    return this._asked;
   }
 
   // For Diagnostics.
@@ -885,30 +969,56 @@ export class Synth {
   setTone(tone) {
     const t = this.ctx.currentTime;
     const warmth = tone.warmth ?? 0.6;
-    const space = tone.space ?? 0.5;
     const wobble = tone.wobble ?? 0.4;
 
     this.tone.frequency.setTargetAtTime(2600 + (1 - warmth) * 9000, t, 0.2);
     this.sat.curve = tanhCurve(0.55 + warmth * 1.25);
-    this.reverbOut.gain.setTargetAtTime(0.4 + space * 0.9, t, 0.2);
+    this._mixState().tone = tone;
+    this._toneToMix(tone, t);
+    this.wowDepth.gain.setTargetAtTime(0.0004 + wobble * 0.0038, t, 0.2);
+    this.flutterDepth.gain.setTargetAtTime(0.00004 + wobble * 0.0005, t, 0.2);
+  }
+
+  // setTone's part in the mix: the reverb's level, feedback and color.
+  _toneToMix(tone, t) {
+    const space = tone.space ?? 0.5;
     // Cap room feedback to prevent resonant high-frequency feedback at large room sizes.
     const fb = Math.min(0.74, 0.66 + space * 0.2);
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.reverbOut, TARGET, 0.4 + space * 0.9, t, 0.2);
+      core.param(MIX.combFb, TARGET, fb, t, 0.2);
+      core.param(MIX.combFreq, TARGET, 1400 + space * 2600, t, 0.2);
+      core.param(MIX.combSum, TARGET, (1 - fb) / this.combs.length, t, 0.2);
+      return;
+    }
+    this.reverbOut.gain.setTargetAtTime(0.4 + space * 0.9, t, 0.2);
     for (const c of this.combs) {
       c.fb.gain.setTargetAtTime(fb, t, 0.2);
       c.lp.frequency.setTargetAtTime(1400 + space * 2600, t, 0.2);
     }
     this.combSum.gain.setTargetAtTime((1 - fb) / this.combs.length, t, 0.2);
-    this.wowDepth.gain.setTargetAtTime(0.0004 + wobble * 0.0038, t, 0.2);
-    this.flutterDepth.gain.setTargetAtTime(0.00004 + wobble * 0.0005, t, 0.2);
   }
 
   // Let the tail ring naturally for a moment, then take it down to nothing.
   fadeTails(time, hold = 0.7, fall = 1.1) {
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.tails, CANCEL, 0, time);
+      core.param(MIX.tails, TARGET, 0.0001, time + hold, fall / 3);
+      return;
+    }
     this.tails.gain.cancelScheduledValues(time);
     this.tails.gain.setTargetAtTime(0.0001, time + hold, fall / 3);
   }
 
   restoreTails(time) {
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.tails, CANCEL, 0, time);
+      core.param(MIX.tails, TARGET, 1, time, 0.08);
+      return;
+    }
     this.tails.gain.cancelScheduledValues(time);
     this.tails.gain.setTargetAtTime(1, time, 0.08);
   }
@@ -916,6 +1026,13 @@ export class Synth {
   // Called on each kick when the profile asks for it.
   duck(time, amount = 0.5, recover = 0.24) {
     if (!amount) return;
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.pump, CANCEL, 0, time);
+      core.param(MIX.pump, SET, Math.max(0.1, 1 - amount), time);
+      core.param(MIX.pump, LINEAR, 1, time + recover);
+      return;
+    }
     const g = this.pumpBus.gain;
     g.cancelScheduledValues(time);
     g.setValueAtTime(Math.max(0.1, 1 - amount), time);
@@ -923,12 +1040,24 @@ export class Synth {
   }
 
   setEchoTime(seconds) {
+    this._mixState().echo = seconds;
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.echo, TARGET, Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
+      return;
+    }
     this.echo.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
   }
 
   setMute(layer, muted) {
     const ch = this.channels[layer];
     if (!ch) return;
+    this._mixState().mutes[layer] = muted;
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.gains + CORE_CHANNELS.indexOf(layer), TARGET, muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);
+      return;
+    }
     ch.gain.gain.setTargetAtTime(muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);
   }
 
@@ -960,6 +1089,7 @@ export class Synth {
   // ringing. Tear it down properly instead.
   dispose() {
     if (this._sweeper) { clearInterval(this._sweeper); this._sweeper = null; }
+    if (this._ringOut) { clearTimeout(this._ringOut); this._ringOut = null; }
     for (const osc of [this.wowLfo, this.flutterLfo]) {
       try { osc.stop(); } catch { /* already stopped */ }
       try { osc.disconnect(); } catch { /* already detached */ }

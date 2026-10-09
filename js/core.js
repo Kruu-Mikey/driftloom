@@ -2,8 +2,10 @@
 //
 // `?engine=rust` turns it on; it is off by default, and with it off nothing
 // here runs. With it on, the synth hands every voice to an AudioWorkletNode
-// running js/dlcore.wasm, and keeps everything else: scheduling, the voice
-// budget, every Math.random draw, the effects and the master chain.
+// running js/dlcore.wasm, and since queue item 29 the mix as well: the
+// channels, sends, duck, echo and reverb. It keeps everything else:
+// scheduling, the voice budget, every Math.random draw, and the master
+// chain.
 // The JavaScript synth stays the reference the core is proven against
 // (tools/measure.mjs --null).
 
@@ -51,6 +53,19 @@ export const CORE_NOISE_MAX = 192000;
 export const KALIMBA_STRIKE = 1;
 export const KALIMBA_BODY = 2;
 
+// The mix's parameters, by the number the core knows them by
+// (core/src/mix.rs): each one AudioParam of the synth's graph (the combs'
+// one of each comb, which setTone moves together). `gains` is the first of
+// five, one per channel in the core's order.
+export const MIX = {
+  gains: 0, pump: 5, tails: 6, echo: 7, combFb: 8, combFreq: 9, combSum: 10, reverbOut: 11,
+};
+// The AudioParam calls a parameter takes.
+export const SET = 0;
+export const LINEAR = 1;
+export const TARGET = 2;
+export const CANCEL = 3;
+
 const WASM_URL = new URL('./dlcore.wasm', import.meta.url);
 const WORKLET_URL = new URL('./worklet.js', import.meta.url);
 
@@ -89,13 +104,22 @@ export async function loadCore(ctx) {
 // core/src/lib.rs); what it leaves out reaches the core as NaN.
 const NO_EXTRA = [];
 
-// One core node for one synth: an output per channel it serves, each
-// connected into that channel's input.
+// One core node for one synth. `dests` are the synth's five channels in
+// the core's order, each a voice's destination: what a voice the core
+// takes would have played into, and, for a note it cannot take, where the
+// synth plays it instead -- connected by the synth into the node's input
+// for that channel. The node's one output is the mix, for the master
+// chain; with `taps`, five more carry the channels as they went into it.
 // `noise` is the synth's noise samples, handed to the core once.
+// `quality` is the synth's: the mix has six combs on 'full', three on
+// 'lite'.
 export class CoreHost {
-  constructor(ctx, core, dests, noise = null) {
+  constructor(ctx, core, dests, noise = null, { quality = 'full', taps = false } = {}) {
     this.ctx = ctx;
     this.dests = dests;
+    this.taps = taps;
+    // Called once if the core turns out not to run (too old a browser).
+    this.onfail = null;
     // Whether the core has the noise its noise voices play.
     this.noise = !!noise && noise.length <= CORE_NOISE_MAX;
     this.late = 0;
@@ -103,15 +127,30 @@ export class CoreHost {
     this.failed = null;
     this._pings = new Map();
     this._ping = 0;
+    const outputs = taps ? 1 + dests.length : 1;
     this.node = new AudioWorkletNode(ctx, 'driftloom-core', {
-      numberOfInputs: 0,
-      numberOfOutputs: dests.length,
-      outputChannelCount: dests.map(() => 1),
+      numberOfInputs: dests.length,
+      numberOfOutputs: outputs,
+      outputChannelCount: new Array(outputs).fill(1),
+      // The graph is mono end to end.
+      channelCount: 1,
+      channelCountMode: 'explicit',
       // Copied, not moved: the page keeps its copy for the next synth.
-      processorOptions: { bytes: core.bytes, noise: this.noise ? noise : null },
+      processorOptions: { bytes: core.bytes, noise: this.noise ? noise : null, quality },
     });
-    dests.forEach((dest, i) => this.node.connect(dest, i));
     this.node.port.onmessage = (e) => this._receive(e.data);
+  }
+
+  // The output carrying channel `channel` as it went into the mix (`taps`).
+  tapOf(channel) {
+    return this.taps ? 1 + channel : -1;
+  }
+
+  // Move one of the mix's parameters (MIX) by an AudioParam call (SET,
+  // LINEAR, TARGET, CANCEL), as the synth would move its own node's:
+  // `value` at `time`, with time constant `tau` for a target.
+  param(id, op, value, time, tau = 0) {
+    this.node.port.postMessage({ type: 'param', id, op, value, time, tau });
   }
 
   // The core's channel number for this destination, or -1.
@@ -159,6 +198,9 @@ export class CoreHost {
       this._pings.delete(m.id);
       if (resolve) resolve(m);
     }
-    if (m.type === 'failed') this.failed = m.message;
+    if (m.type === 'failed') {
+      this.failed = m.message;
+      if (this.onfail) this.onfail();
+    }
   }
 }
