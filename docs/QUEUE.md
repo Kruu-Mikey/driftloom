@@ -1131,7 +1131,8 @@ Mikey decides this line:
 ## Notes from Claude Code
 
 - **Item 30, the stall hunt: no cause in item 30 found; still left
-  unmerged (2026-10-09, Session 10).** As the brain asked.
+  unmerged (2026-10-09, Session 10).** Decided by the brain (#154): the long quanta are
+  the VM's, the fill-ins even; #148 merged. As the brain asked.
   - **What the long quanta are** (`perf.mjs --trace-extra --trace-dir`,
     V8 GC, wasm and Web Audio per-node categories, plus a sampler reading
     the audio thread's faults and context switches from /proc every 20 ms
@@ -1174,7 +1175,8 @@ Mikey decides this line:
     full-only passes, the fill-in rates are even, and nothing found points
     at item 30's code. The brain's call.
 - **Item 30, rerun: still left unmerged -- its fill-in rate is worse
-  (2026-10-09, Session 10).** As the brain asked: #150 (the worklet's block
+  (2026-10-09, Session 10).** Decided by the brain (#154): the long quanta are
+  the VM's, the fill-ins even; #148 merged. As the brain asked: #150 (the worklet's block
   count) merged on its own; #148's downsampler is now an FFT convolution as
   Chromium's is (a 256-point FFT, overlap-add; within 2e-6 of the direct
   sum; about half its cost natively), re-nulled (loops -95 to -121 dB,
@@ -1558,3 +1560,20 @@ Mikey decides this line:
   block's frame number while it renders the next; the core then played that
   block's envelopes 128 frames late (about one note in fifty on item 30's
   build, none seen on item 29's). The worklet now keeps its own count.
+- #148, the Rust core's tenth step: wobble, saturator, tone and highpass
+  (item 30, v80),
+  https://10e757b3-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the core runs the
+  first half of the master chain after its mix: the tape wobble (its 14 ms
+  delay and the wow and flutter LFOs, phased from when the synth started
+  them), the saturator (Chromium's curve lookup, and on full its 2x
+  oversampling, the downsampler an FFT as Chromium's), the tone lowpass and
+  the 38 Hz highpass; its output goes to the bus compressor. Mix stage -77
+  to -85 dB against a JS-vs-JS floor of -78 to -97 dB (the wobble's
+  last-bit LFO differences; -116 to -136 dB with it held still); whole
+  loops at the floor. Performance, counterbalanced against item 29's core,
+  120 runs a side: device fill-in runs 4 against 5; audio render +4% (full
+  +7%, lite -3%). The long render quanta seen along the way are the
+  sandbox VM's, in both builds (Notes from Claude Code). Play a warm,
+  wobbly loop and check Diagnostics reads `engine: rust  late: 0
+  fallback: 0`. `.wasm` 149,440 bytes.
