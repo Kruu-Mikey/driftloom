@@ -165,6 +165,7 @@ function parseArgs(argv) {
     seconds: 60, warmup: 8, parts: ['load', 'idle', 'matrix', 'hidden', 'muted', 'split', 'memory'],
     hiddenThrottle: [1, 6], hiddenSeconds: null, gcEvery: 0, memoryMinutes: 5, jsProfile: false,
     url: null, query: '', port: 8741, chrome: null, quick: false, json: null, md: null, pick: false,
+    traceDir: null, traceOver: 20, traceExtra: false,
   };
   const list = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < argv.length; i++) {
@@ -196,6 +197,9 @@ function parseArgs(argv) {
       case '--json': o.json = next(); break;
       case '--md': o.md = next(); break;
       case '--pick': o.pick = true; break;
+      case '--trace-dir': o.traceDir = path.resolve(next()); break;
+      case '--trace-over': o.traceOver = Number(next()); break;
+      case '--trace-extra': o.traceExtra = true; break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${a}`);
     }
@@ -625,7 +629,15 @@ const TRACE_CATEGORIES = [
   'devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'webaudio', 'audio', 'toplevel',
 ].join(',');
 
-async function traceStart(b) {
+// With --trace-extra, also V8's garbage collector and WebAssembly compiler
+// and Web Audio's per-node detail, to see what holds up a long quantum.
+const TRACE_EXTRA = [
+  'v8.gc', 'disabled-by-default-v8.gc', 'v8.wasm', 'disabled-by-default-v8.wasm.detailed',
+  'disabled-by-default-v8.compile', 'v8.execute', 'disabled-by-default-webaudio.audionode',
+  'disabled-by-default-audio-worklet', 'audio-worklet', 'scheduler', 'base',
+].join(',');
+
+async function traceStart(b, extra = false) {
   const events = [];
   let done;
   const finished = new Promise((r) => { done = r; });
@@ -633,7 +645,8 @@ async function traceStart(b) {
     if (d.method === 'Tracing.dataCollected') events.push(...d.params.value);
     if (d.method === 'Tracing.tracingComplete') done();
   });
-  await b.send('Tracing.start', { categories: TRACE_CATEGORIES, transferMode: 'ReportEvents' });
+  const categories = extra ? `${TRACE_CATEGORIES},${TRACE_EXTRA}` : TRACE_CATEGORIES;
+  await b.send('Tracing.start', { categories, transferMode: 'ReportEvents' });
   return async () => {
     await b.send('Tracing.end');
     await Promise.race([finished, sleep(30000)]);
@@ -692,6 +705,7 @@ function readTrace(events, seconds) {
     }
   }
   callbackDurs.sort((a, b) => a - b);
+  out.pid = pid;
   out.p99CallbackMs = callbackDurs.length ? callbackDurs[Math.floor(callbackDurs.length * 0.99)] : 0;
   out.seconds = seconds;
   return out;
@@ -830,7 +844,7 @@ async function run(opts, chromePath, cfg) {
     const m0 = await tab.metrics();
     const s0 = await tab.snap();
     const fillTimes = [];
-    const stop = await traceStart(b);
+    const stop = await traceStart(b, opts.traceExtra);
     if (opts.gcEvery > 0) {
       await tab.send('HeapProfiler.enable');
       const until = Date.now() + cfg.seconds * 1000;
@@ -857,7 +871,17 @@ async function run(opts, chromePath, cfg) {
     }
     const m1 = await tab.metrics();
     const s1 = await tab.snap();
-    const trace = readTrace(await stop(), cfg.seconds);
+    const events = await stop();
+    const trace = readTrace(events, cfg.seconds);
+    // A run with a long quantum keeps its trace (--trace-dir), the page's
+    // renderer only, to read what its audio thread was doing then.
+    if (opts.traceDir && trace.worstRenderMs > opts.traceOver) {
+      fs.mkdirSync(opts.traceDir, { recursive: true });
+      const keep = events.filter((e) => e.pid === trace.pid);
+      const file = path.join(opts.traceDir, `${opts.side || 'run'}-${result.loop}-${cfg.quality}-${cfg.throttle}x-${Date.now()}.json`);
+      fs.writeFileSync(file, JSON.stringify({ traceEvents: keep }));
+      result.traceFile = file;
+    }
     let split = null;
     if (cfg.jsProfile) {
       const { profile } = await tab.send('Profiler.stop');
@@ -1311,8 +1335,8 @@ async function main() {
   }
   // The A side: another folder (--ab), or this one without the extra query
   // (--ab-query), in which case B is this folder with it.
-  const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/` } : opts.abQuery ? { ...opts } : null;
-  const optsB = opts.abQuery ? { ...opts, query: [opts.query, opts.abQuery].filter(Boolean).join('&') } : opts;
+  const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/`, side: 'A' } : opts.abQuery ? { ...opts, side: 'A' } : null;
+  const optsB = { ...opts, ...(opts.abQuery ? { query: [opts.query, opts.abQuery].filter(Boolean).join('&') } : {}), ...(optsA ? { side: 'B' } : {}) };
   const once = async (cfg) => {
     if (optsA) {
       log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''} (A)`);
