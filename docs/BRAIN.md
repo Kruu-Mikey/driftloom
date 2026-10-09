@@ -602,6 +602,22 @@ against item 30's, with each fill-in's time and the worst `process()`
 block; merge if item 30's fill-in rate is no worse, else stop with the
 figures. Mikey also plays the #148 preview on his phone.
 
+**The rerun (Session 10, 2026-10-09 evening).** The worklet fix landed
+on its own (#150, v79). The downsampler is now an FFT convolution
+(half the cost; re-null unchanged). The interleaved A/B, 60 runs a side:
+fill-ins in 5 runs on item 30's core against 1 on item 29's; pooled
+with the first A/B, 8 of 100 against 1 of 100 (p about 0.017). Item
+30's runs also have far more long render quanta (90th percentile 28 ms
+against 11; 7 runs over 20 ms against 1), four of its fill-in runs had a
+38-71 ms quantum, and it happens on lite too, where item 30 costs *less*
+than item 29 on average. So: real, and not compute cost. Something
+stalls the audio thread now and then. **Brain's call:** find the stall
+before deciding anything (suspects: garbage collection in the worklet's
+scope, a message or allocation item 30 added, nodes of the old JS chain
+still pulling or running after it's cut off, `memory.grow`); use runs
+with a quantum over 20 ms as the measure (seven times commoner than
+fill-ins, so a bisect needs far fewer runs). #148 stays open.
+
 **Ears reports** (Project knowledge, `claude/ears-batch-1.md`,
 `-batch-2.md`, `ears-tools.md`): a parallel sounds-and-ideas brain chat
 measured 32 albums against Driftloom (stereo, too much 60-120 Hz and
