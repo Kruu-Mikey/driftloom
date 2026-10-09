@@ -539,7 +539,40 @@ for notes built late (offline proofs can't see it); the jingle draws
 its zils twice on a fallback; pan flute grace notes regressed to a
 -68.5 dBFS worst sample (was -125 at v72).
 
-**Next: Session 9, hands, Opus 5.5, high effort: items 27c and 28.**
+**Session 9 (hands, Opus 5.5, high) merged 27c (#143, v76) and 28
+(#144, v77); brain-verified 2026-10-09. Every voice now plays from the
+Rust core behind `?engine=rust`.** 27c: the -68.5 dBFS pan flute was a
+core bug since item 21, not 26b or 27a: Chromium times sources to
+1/1024 of a frame, the core used whole frames, so notes starting or
+stopping a hair past a frame (about 1 in 2000) came out wrong in every
+voice; fixed, and `--null` now starts one note in five in that window.
+The 26b setter did not cut late notes in Chromium (it moves a late
+note's past events to the present), but the safer form went in anyway,
+for WebKit. The jingle draws 7 on a fallback. 28: vowel, hum and choir;
+each singer's detune holds 13.5 s (longest sung note in 30,000 loops:
+10.2 s); the formant trim is computed in JavaScript and sent (a native
+host needs it ported, about 40 lines). Wasm 121,209 bytes; core memory
+12.44 MB. Brain's check: a Sonnet subagent read both diffs (no bugs; the
+source-timing fix goes through one `schedule` for every voice; every
+`_core*` call site checks the channel before drawing; the sung draws
+match in order and count, and a note over 13.5 s falls back before
+drawing); a Haiku subagent reran tests three times, `--check`, `--null`
+over every voice (worst note -84 dB or deeper, worst sample -89 dBFS;
+12 loops late 0, fallback 0) and `--clicks` on both engines (none).
+Small, unverified, for later: the core's sung step count isn't clamped
+to the draws it got (only a corrupt message could exploit it); a sung
+note's draws (up to about 7 KB) are cloned per message, where a
+transferred `Float64Array` would avoid garbage on the audio thread; no
+test plays a 13.5 s three-singer note.
+
+**Out for listening: "Rust, all voices"** (`docs/ALBUMS.md`), ten
+loops, each played with and without the flag.
+
+**Then Mikey decides** (queue, "After item 28"): make the core the
+default; move the effects and master chain into Rust (for a native or
+game host, not needed for the web app); the generator's port after the
+words. Not started: the word rankings, Depth two, the open decisions,
+the iPhone check.
 
 Not started, for Mikey's own time: the word rankings, Depth two, the
 open decisions above, the iPhone check.
