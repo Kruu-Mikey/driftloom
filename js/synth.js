@@ -3,6 +3,8 @@
 // shared noise buffer, which is what keeps this playable on a cheap phone.
 
 import { midiToFreq } from './theory.js';
+// Prototype switches (ears batch two), off unless a page sets globalThis.PROTO.
+const PROTO = () => globalThis.PROTO || {};
 import {
   CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, DRUM_KINDS, HAT_KINDS, BASS_GLIDE, BASS_CHUG,
   KALIMBA_STRIKE, KALIMBA_BODY, SUNG_VOWELS, SUNG_OPEN_HUM, SUNG_LONGEST,
@@ -848,7 +850,17 @@ export class Synth {
     this.preBus.connect(this.wobble);
     this.wobble.connect(this.sat);
     this.sat.connect(this.tone);
-    this.tone.connect(this.hp);
+    if (PROTO().arc) {
+      // Slow arc: a second lowpass that opens and closes over minutes.
+      this.arcLp = ctx.createBiquadFilter();
+      this.arcLp.type = 'lowpass';
+      this.arcLp.Q.value = 0.7;
+      this.arcLp.frequency.value = 16000;
+      this.tone.connect(this.arcLp);
+      this.arcLp.connect(this.hp);
+    } else {
+      this.tone.connect(this.hp);
+    }
     this.hp.connect(this.comp);
     this.comp.connect(this.master);
     // Everything already scheduled keeps playing after Stop: notes are
@@ -896,7 +908,17 @@ export class Synth {
       this.combs.push({ d, fb, lp });
     }
     this.combSum.gain.value = 0.2 / this.combs.length;
-    this.combSum.connect(this.reverbOut);
+    if (PROTO().stereo) {
+      // Stereo room: alternate combs feed left and right.
+      const merge = ctx.createChannelMerger(2);
+      const sides = [ctx.createGain(), ctx.createGain()];
+      this.combs.forEach((c, i) => { c.d.disconnect(this.combSum); c.d.connect(sides[i % 2]); });
+      sides.forEach((g, i) => { g.gain.value = 0.2 / this.combs.length * 2; g.connect(merge, 0, i); });
+      this.combSides = sides;
+      merge.connect(this.reverbOut);
+    } else {
+      this.combSum.connect(this.reverbOut);
+    }
     // Both tails run through one gain so a scheduled rest can be made into
     // real silence. Without this a four second hole is two seconds of hole
     // and two seconds of reverb wash, which is not what silence sounds like.
@@ -920,9 +942,23 @@ export class Synth {
     this.echoIn = ctx.createGain();
     this.echoIn.connect(this.echo);
     this.echo.connect(this.echoTone);
-    this.echoTone.connect(this.echoFb);
-    this.echoFb.connect(this.echo);
-    this.echoTone.connect(this.tails);
+    if (PROTO().stereo) {
+      // Ping-pong: the first repeat on the left, the next on the right.
+      this.echoR = ctx.createDelay(2.0);
+      this.echoR.delayTime.value = 0.36;
+      const merge = ctx.createChannelMerger(2);
+      this.echoTone.connect(this.echoR);
+      this.echoR.connect(this.echoFb);
+      this.echoFb.connect(this.echo);
+      this.echoTone.connect(merge, 0, 0);
+      this.echoR.connect(merge, 0, 1);
+      merge.connect(this.tails);
+      this.echoFb.gain.value = 0.5;
+    } else {
+      this.echoTone.connect(this.echoFb);
+      this.echoFb.connect(this.echo);
+      this.echoTone.connect(this.tails);
+    }
 
     // No continuous surface-noise layer: the musical voices and reverb
     // provide the atmosphere without adding an audible hiss.
@@ -959,7 +995,14 @@ export class Synth {
       verb.gain.value = c.verb;
       const echo = ctx.createGain();
       echo.gain.value = c.echo;
-      g.connect(name === 'drums' ? this.preBus : this.pumpBus);
+      const PAN = { drums: 0, bass: 0, chords: -0.6, melody: 0.5, texture: -0.25 };
+      let dry = g;
+      if (PROTO().stereo) {
+        dry = ctx.createStereoPanner();
+        dry.pan.value = PAN[name];
+        g.connect(dry);
+      }
+      dry.connect(name === 'drums' ? this.preBus : this.pumpBus);
       g.connect(verb).connect(this.reverbIn);
       g.connect(echo).connect(this.echoIn);
       this.channels[name] = { gain: g, verb, echo, base: c };
@@ -998,6 +1041,7 @@ export class Synth {
       c.lp.frequency.setTargetAtTime(1400 + space * 2600, t, 0.2);
     }
     this.combSum.gain.setTargetAtTime((1 - fb) / this.combs.length, t, 0.2);
+    if (this.combSides) for (const g of this.combSides) g.gain.setTargetAtTime(2 * (1 - fb) / this.combs.length, t, 0.2);
   }
 
   // Let the tail ring naturally for a moment, then take it down to nothing.
@@ -1047,6 +1091,27 @@ export class Synth {
       return;
     }
     this.echo.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
+    if (this.echoR) this.echoR.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
+  }
+
+  // Prototype: the slow arc. The extra lowpass breathes between `lo` and
+  // `hi` once every `period` seconds, starting closed and lingering on
+  // the dark side; the echo feedback rises a little as it opens.
+  startArc(t0, period = 120, lo = 300, hi = 9000, cycles = 6) {
+    if (!this.arcLp) return;
+    const n = 512;
+    const curve = new Float32Array(n);
+    const fb = new Float32Array(n);
+    const base = this.echoFb.gain.value;
+    for (let i = 0; i < n; i++) {
+      const ph = (1 - Math.cos(2 * Math.PI * i / (n - 1))) / 2;
+      curve[i] = lo * Math.pow(hi / lo, ph * ph);
+      fb[i] = base + 0.14 * ph;
+    }
+    for (let k = 0; k < cycles; k++) {
+      this.arcLp.frequency.setValueCurveAtTime(curve, t0 + k * period, period - 0.01);
+      this.echoFb.gain.setValueCurveAtTime(fb, t0 + k * period, period - 0.01);
+    }
   }
 
   setMute(layer, muted) {
@@ -1597,6 +1662,29 @@ export class Synth {
       sg.gain.setTargetAtTime(0.0001, time + dur, letGo(0.08));
       sub.connect(sg).connect(out);
       sub.start(time); sub.stop(stop);
+    }
+    if (PROTO().roundBass && voice !== 'rhodesbass') {
+      // Second and third harmonics, softly, under a lowpass: the note is
+      // heard on a phone even where its fundamental is not reproduced.
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 900;
+      lp.Q.value = 0.5;
+      const hg = ctx.createGain();
+      hg.gain.setValueAtTime(0.0001, time);
+      hg.gain.exponentialRampToValueAtTime(Math.max(0.001, vel * 0.3), time + 0.02);
+      hg.gain.setTargetAtTime(vel * 0.2, time + 0.06, 0.3);
+      hg.gain.setTargetAtTime(0.0001, time + dur, letGo(0.09));
+      for (const [mult, lvl] of [[2, 1], [3, 0.45], [4, 0.18]]) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(f * mult, time);
+        const g = ctx.createGain();
+        g.gain.value = lvl;
+        o.connect(g).connect(lp);
+        o.start(time); o.stop(stop);
+      }
+      lp.connect(hg).connect(out);
     }
     this._release(time, hold, cost);
   }

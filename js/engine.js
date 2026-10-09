@@ -152,6 +152,10 @@ export class Engine {
     this.synth.setCharacterLevel(character.level ?? 1);
     this.pumpAmount = character.pump ?? 0;
     this.synth.setEchoTime((60 / spec.bpm) * 0.75);
+    // Prototypes (ears batch two), off unless a page sets globalThis.PROTO.
+    const P = globalThis.PROTO || {};
+    if (P.arc && this.synth.startArc) this.synth.startArc(this.ctx.currentTime + 0.05, P.arcPeriod || 120);
+    this._glassRng = new Rng(((spec.seed ^ 0x6a55e) >>> 0) || 1);
     for (const [layer, muted] of Object.entries(spec.mutes || {})) {
       this.synth.setMute(layer, muted);
     }
@@ -340,7 +344,7 @@ export class Engine {
     const spbNow = p.stepsPerBar || 16;
     if (abs % spbNow === 0) {
       const quiet = this._isSilentBar(abs);
-      if (quiet && !this.tailsDucked) {
+      if (quiet && !this.tailsDucked && !(globalThis.PROTO || {}).floorDrop) {
         this.synth.fadeTails(time);
         this.tailsDucked = true;
       } else if (!quiet && this.tailsDucked) {
@@ -417,6 +421,29 @@ export class Engine {
             this._play(t + slip + i * 0.011, () => this.synth.voice(e.voice, n, t + slip + i * 0.011, e.dur * sd, e.vel * spread,
               this.synth.channels.chords.gain, { vowel: e.vowel, detune: e.detune }));
           });
+        }
+      }
+    }
+    // Prototype: glass keys. On a chord's first beat, now and then, two or
+    // three of its notes ring out high (E5-G6) as a soft FM bell, a dotted
+    // eighth apart.
+    if ((globalThis.PROTO || {}).glass && !mutes.chords) {
+      const s = at('chords');
+      const g = this._glassRng;
+      for (const e of p.tracks.chords) {
+        if (e.step !== s || !e.vel || !e.notes || !e.notes.length) continue;
+        if (!g.chance(0.55)) continue;
+        const count = g.chance(0.5) ? 3 : 2;
+        const pcs = e.notes.slice().sort((a, b) => a - b);
+        const start = g.int(0, pcs.length - 1);
+        for (let i = 0; i < count; i++) {
+          let m = pcs[(start + i) % pcs.length];
+          while (m < 76) m += 12;
+          while (m > 91) m -= 12;
+          const at = t + i * 3 * sd;
+          const vel = 0.62 * (1 - i * 0.18);
+          this._play(at, () => this.synth.fm(m, at, Math.max(0.6, 2.5 * sd), vel,
+            { ratio: 3.5, index: 150, decay: 1.8, attack: 0.003, detune: 3, cost: 6, out: this.synth.channels.texture.gain }));
         }
       }
     }

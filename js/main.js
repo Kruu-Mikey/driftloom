@@ -11,6 +11,18 @@ import * as share from './share.js';
 // guessing whether a change landed. Bump it with CACHE in sw.js.
 const BUILD = 'v79';
 
+// Ears prototypes (draft): `?proto=stereo,glass` switches named sketches on
+// for listening, `?proto=all` every one. Off by default; the JavaScript
+// engine only. See docs/EARS.md.
+{
+  const asked = new URLSearchParams(location.search).get('proto');
+  if (asked) {
+    const ALL = ['roundBass', 'glass', 'floorDrop', 'stereo', 'arc'];
+    const names = asked === 'all' ? ALL : asked.split(',').map((s) => s.trim()).filter(Boolean);
+    globalThis.PROTO = Object.fromEntries(names.map((n) => [n, true]));
+  }
+}
+
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
 let swState = 'unsupported';
