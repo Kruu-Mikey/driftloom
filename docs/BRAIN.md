@@ -618,6 +618,28 @@ still pulling or running after it's cut off, `memory.grow`); use runs
 with a quantum over 20 ms as the measure (seven times commoner than
 fill-ins, so a bisect needs far fewer runs). #148 stays open.
 
+**The stall hunt (Session 10, 2026-10-10).** Not item 30's code. Traces
+(V8 GC, wasm, per-node Web Audio) put every quantum over 15 ms in one of
+two kinds in *both* builds: off the CPU (15-322 ms of wall time for
+0.5-20 ms of CPU), or charged as CPU wherever the thread happened to be
+(item 29 inside native DelayNode and gains, item 30 inside its script,
+once inside Chromium's topology check). During one, a separate sampler
+process went 115 ms without a tick: the whole VM stopped. The core's
+`process()` takes 0.15-0.4 ms; no allocator, fixed memory, GCs under
+0.5 ms, the old JS chain doesn't render once cut off, page faults and
+context switches the same in both builds. **Slot order mattered:** with
+item 30 run first, item 29 had more long quanta; the earlier A/Bs put
+item 30 second every time, so their "8 of 100 against 1" was partly the
+slot, and the brain read it too strongly. Counterbalanced, all 120 runs
+a side: fill-ins 5 (item 29) against 4 (item 30); quanta over 20 ms 3
+against 8 (p about 0.11). **Brain's call (2026-10-10): merge #148.**
+The stalls are the test machine's, item 30 adds nothing that could
+cause one, and fill-ins are even; the flag is testers-only and the merge
+revertible. The phone is the real test (the "Rust, all voices" album,
+then the item-31 album). **For future A/Bs:** counterbalance the slot
+order, and use `perf.mjs --trace-dir/--trace-over` to look inside any
+long quantum before blaming code; the sandbox VM freezes now and then.
+
 **Ears reports** (Project knowledge, `claude/ears-batch-1.md`,
 `-batch-2.md`, `ears-tools.md`): a parallel sounds-and-ideas brain chat
 measured 32 albums against Driftloom (stereo, too much 60-120 Hz and
