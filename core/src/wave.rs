@@ -158,6 +158,47 @@ impl Wave {
         }
     }
 
+    /// The wave at table position `index` for an oscillator stepping `incr`
+    /// table samples a frame, below a third of one: Chromium reads those
+    /// with a 3-point Lagrange interpolator (from 0.16) or a 5-point one
+    /// (`DoInterpolation`), in 64-bit floats, from each of the two tables,
+    /// then blends them. Only an LFO is that slow (`master`).
+    pub fn read_slow(&self, index: f64, incr: f32, pick: Pick) -> f32 {
+        let mask = self.size.wrapping_sub(1);
+        let i0 = index as usize;
+        let t = index - i0 as f64;
+        let (Some(h), Some(l)) = (self.tables.get(pick.higher), self.tables.get(pick.lower)) else {
+            return 0.0;
+        };
+        let at = |table: &[f32; SIZE], k: isize| -> f64 {
+            let i = (i0 as isize + k) as usize & mask;
+            table.get(i).copied().unwrap_or(0.0) as f64
+        };
+        let (mut lower, mut higher) = (0.0f64, 0.0f64);
+        if incr >= 0.16 {
+            let a = [0.5 * t * (t - 1.0), 1.0 - t * t, 0.5 * t * (t + 1.0)];
+            for (k, &w) in (-1isize..=1).zip(a.iter()) {
+                lower += w * at(l, k);
+                higher += w * at(h, k);
+            }
+        } else {
+            let t2 = t * t;
+            let a = [
+                t * (t2 - 1.0) * (t - 2.0) / 24.0,
+                -t * (t - 1.0) * (t2 - 4.0) / 6.0,
+                (t2 - 1.0) * (t2 - 4.0) / 4.0,
+                -t * (t + 1.0) * (t2 - 4.0) / 6.0,
+                t * (t2 - 1.0) * (t + 2.0) / 24.0,
+            ];
+            for (k, &w) in (-2isize..=2).zip(a.iter()) {
+                lower += w * at(l, k);
+                higher += w * at(h, k);
+            }
+        }
+        let f = pick.blend;
+        ((1.0 - f) as f64 * higher + f as f64 * lower) as f32
+    }
+
     /// The wave at table position `index`, linearly read from each of the
     /// two tables and blended, as Chromium reads one when the step between
     /// samples is a third of a table sample or more (every pitch over about

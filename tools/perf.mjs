@@ -654,7 +654,7 @@ function readTrace(events, seconds) {
     if (e.name === 'RealtimeAudioDestinationHandler::Render') pids.set(e.pid, (pids.get(e.pid) || 0) + 1);
   }
   const pid = [...pids.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const out = { renderCalls: 0, renderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {}, paintRects: {} };
+  const out = { renderCalls: 0, renderMs: 0, worstRenderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {}, paintRects: {} };
   const callbackDurs = [];
   for (const e of events) {
     if (e.pid !== pid || e.ph !== 'X') continue;
@@ -663,6 +663,8 @@ function readTrace(events, seconds) {
     if (e.name === 'RealtimeAudioDestinationHandler::Render') {
       out.renderCalls++;
       out.renderMs += dur;
+      // One render quantum of the whole graph, the core's process() in it.
+      if (dur > out.worstRenderMs) out.worstRenderMs = dur;
       out.renderThreads[thread] = (out.renderThreads[thread] || 0) + dur;
     } else if (e.name === 'AudioDestination::Render') {
       out.callbacks++;
@@ -827,6 +829,7 @@ async function run(opts, chromePath, cfg) {
     }
     const m0 = await tab.metrics();
     const s0 = await tab.snap();
+    const fillTimes = [];
     const stop = await traceStart(b);
     if (opts.gcEvery > 0) {
       await tab.send('HeapProfiler.enable');
@@ -836,7 +839,21 @@ async function run(opts, chromePath, cfg) {
         await tab.send('HeapProfiler.collectGarbage');
       }
     } else {
-      await sleep(cfg.seconds * 1000);
+      // Chromium's fill-in counter, read twice a second, so each fill-in has
+      // a time: from the window's start, and on the context's clock (from
+      // when the context started, a moment before the first note).
+      const t0 = Date.now();
+      const until = t0 + cfg.seconds * 1000;
+      let last = s0.playout && s0.playout.fallbackFramesEvents;
+      while (Date.now() < until) {
+        await sleep(Math.min(500, until - Date.now()));
+        const s = await tab.snap();
+        const now = s.playout && s.playout.fallbackFramesEvents;
+        if (now != null && last != null && now > last) {
+          fillTimes.push({ inWindow: +((Date.now() - t0) / 1000).toFixed(2), ctxTime: s.ctxTime != null ? +s.ctxTime.toFixed(2) : null, events: now - last });
+        }
+        if (now != null) last = now;
+      }
     }
     const m1 = await tab.metrics();
     const s1 = await tab.snap();
@@ -853,7 +870,7 @@ async function run(opts, chromePath, cfg) {
     }
     Object.assign(result, perSecond(m0, m1, s0, s1, trace, cfg.seconds), {
       lateTicks: diag.lateTicks, worstLateMs: diag.worstLateMs, ticks: diag.ticks, clock: diag.clock,
-      visibility: s1.visibility, split,
+      visibility: s1.visibility, split, fillTimes,
     });
     return result;
   } finally {
@@ -886,6 +903,7 @@ function perSecond(m0, m1, s0, s1, trace, seconds) {
     callbackMs: trace.callbacks ? trace.callbackMs / trace.callbacks : 0,
     worstCallbackMs: trace.worstCallbackMs,
     p99CallbackMs: trace.p99CallbackMs,
+    worstRenderMs: trace.worstRenderMs,
     longTasks: s1.longTasks - s0.longTasks,
     longTaskMs: s1.longTaskMs - s0.longTaskMs,
     nodesPerSec: per(s0.nodes, s1.nodes),
@@ -1309,7 +1327,7 @@ async function main() {
     try {
       const r = { ...(await run(optsB, chromePath, cfg)), ...(optsA ? { side: 'B' } : {}) };
       data.runs.push(r);
-      log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}, render ${f1(r.renderMs)} ms/s, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
+      log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}${r.fillTimes && r.fillTimes.length ? ` at ${r.fillTimes.map((f) => `${f.inWindow}s (ctx ${f.ctxTime}s)`).join(', ')}` : ''}, render ${f1(r.renderMs)} ms/s, worst quantum ${(r.worstRenderMs ?? 0).toFixed(2)} ms, worst callback ${(r.worstCallbackMs ?? 0).toFixed(2)} ms, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
     } catch (err) {
       log(`  failed: ${err.message}`);
       data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message });

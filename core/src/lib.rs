@@ -23,10 +23,12 @@ pub mod drums;
 pub mod filter;
 pub mod folk;
 pub mod lead;
+pub mod master;
 pub mod mix;
 pub mod noise;
 pub mod osc;
 pub mod param;
+pub mod resample;
 pub mod sung;
 pub mod texture;
 pub mod timeline;
@@ -41,6 +43,7 @@ use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
 use drums::Drum;
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
+use master::Master;
 use mix::Mix;
 use noise::Noise;
 use sung::{Kind3, Sung};
@@ -56,8 +59,10 @@ pub const QUANTUM: usize = 128;
 /// The channels the core plays into. Each is one of the synth's per-layer
 /// channels: all five of them (queue item 27). Since queue item 29 the core
 /// mixes them too (`mix`), with the host's own notes for each (`inputs`),
-/// through the channel gains, the sends, the duck, the echo and the reverb,
-/// into one bus (`bus`).
+/// through the channel gains, the sends, the duck, the echo and the reverb;
+/// and since item 30 runs the mix through the first half of the master
+/// chain (`master`), the wobble, the saturator, the tone and the highpass,
+/// into one bus (`bus`): what the bus compressor takes.
 pub const CHANNELS: usize = 5;
 pub const MELODY: u32 = 0;
 pub const CHORDS: u32 = 1;
@@ -92,6 +97,15 @@ fn plays_noise(voice: u32, parts: u32) -> bool {
         _ => false,
     }
 }
+
+/// The master chain's parameters (`Core::param`), after the mix's
+/// (`mix::LAST_PARAM`): the tone lowpass's frequency, the wobble's two
+/// depths, the saturator's drive and the LFOs' start.
+pub const TONE_FREQ: u32 = mix::LAST_PARAM + 1;
+pub const WOW_DEPTH: u32 = TONE_FREQ + 1;
+pub const FLUTTER_DEPTH: u32 = TONE_FREQ + 2;
+pub const SAT_DRIVE: u32 = TONE_FREQ + 3;
+pub const LFO_START: u32 = TONE_FREQ + 4;
 
 /// What the core says to a note.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -346,6 +360,10 @@ pub struct Core {
     /// it could not hand over (`inputs`).
     inputs: [[f32; QUANTUM]; CHANNELS],
     mix: Mix,
+    master: Master,
+    bus: [f32; QUANTUM],
+    /// Whether the master chain fits at this rate.
+    master_ready: bool,
     late: u32,
     dropped: u32,
 }
@@ -375,6 +393,9 @@ impl Core {
             arena_at: 0,
             inputs: [[0.0; QUANTUM]; CHANNELS],
             mix: Mix::new(),
+            master: Master::new(),
+            bus: [0.0; QUANTUM],
+            master_ready: false,
             late: 0,
             dropped: 0,
         }
@@ -397,7 +418,7 @@ impl Core {
         }
         self.strums = [0; CHANNELS];
         self.inputs = [[0.0; QUANTUM]; CHANNELS];
-        self.mix.init(rate, true);
+        self.quality(true);
     }
 
     /// The mix as the synth builds it on lite quality (three combs, not
@@ -405,26 +426,47 @@ impl Core {
     /// the mix afresh.
     pub fn quality(&mut self, full: bool) {
         self.mix.init(self.rate, full);
+        self.master_ready = self.master.init(self.rate, full);
     }
 
     /// Whether the core mixes at this sample rate (`mix::MAX_RATE`). A
     /// host whose core does not plays the mix itself.
     pub fn mixing(&self) -> bool {
-        self.mix.ready()
+        self.mix.ready() && self.master_ready
     }
 
-    /// Move one of the mix's parameters (`mix::GAINS` and the rest) the way
-    /// the AudioParam call `op` would (`mix::SET`, `LINEAR`, `TARGET`,
+    /// Move one of the mix's parameters (`mix::GAINS` and the rest) or the
+    /// master chain's (`TONE_FREQ` and the rest, below) the way the
+    /// AudioParam call `op` would (`mix::SET`, `LINEAR`, `TARGET`,
     /// `CANCEL`): to `value` at `time` seconds, with time constant `tau` for
     /// a target. A time already rendered is the next block's start, as
     /// Chromium has it. False if there is no such parameter or call, or the
     /// parameter holds as many events as it can.
+    ///
+    /// Two are not AudioParams: `SAT_DRIVE` gives the saturator the curve
+    /// `tanhCurve(value)`, from the next block, as setting a WaveShaper's
+    /// `curve` does; `LFO_START` says when the synth built the wobble's
+    /// LFOs, `time`. Both take any `op`.
     pub fn param(&mut self, id: u32, op: u32, value: f64, time: f64, tau: f64) -> bool {
         if !(value.is_finite() && time.is_finite() && tau.is_finite()) || self.rate <= 0.0 {
             return false;
         }
         let now = self.next as f64 / self.rate;
-        self.mix.param(id, op, value as f32, time, tau, now)
+        let v = value as f32;
+        match id {
+            TONE_FREQ => mix::apply(self.master.tone_freq(), op, v, time, tau, now),
+            WOW_DEPTH => mix::apply(self.master.wow_depth(), op, v, time, tau, now),
+            FLUTTER_DEPTH => mix::apply(self.master.flutter_depth(), op, v, time, tau, now),
+            SAT_DRIVE => {
+                self.master.set_drive(value);
+                true
+            }
+            LFO_START => {
+                self.master.start(time);
+                true
+            }
+            _ => self.mix.param(id, op, v, time, tau, now),
+        }
     }
 
     /// Where the host writes what it plays into each channel for the next
@@ -434,9 +476,10 @@ impl Core {
         &mut self.inputs
     }
 
-    /// The mix of the last block rendered: what the synth's `preBus` gets.
+    /// The last block rendered, through the mix and the first half of the
+    /// master chain: what the synth's bus compressor gets.
     pub fn bus(&self) -> &[f32; QUANTUM] {
-        self.mix.bus()
+        &self.bus
     }
 
     /// Let every voice go at once, sounding or waiting: the host is going
@@ -979,7 +1022,8 @@ impl Core {
             }
             input.fill(0.0);
         }
-        self.mix.process(block, &self.out);
+        let mixed = *self.mix.process(block, &self.out);
+        self.bus = *self.master.process(block, &mixed, &self.waves);
         &self.out
     }
 }
