@@ -304,15 +304,20 @@ function updateSaveButton() {
 
 // ------------------------------------------------------------ viewport
 
+// Sound and Layers are the two working views. Library and Share are places
+// you visit: their buttons light while you are there, and pressing either
+// again (or the switch) goes back to the working view you came from.
 function setView(view) {
   state.view = view;
-  if (view !== 'library') state.lastView = view;
+  const visiting = view === 'library' || view === 'share';
+  if (!visiting) state.lastView = view;
   for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== view;
   ui.el('libraryBtn').setAttribute('aria-pressed', String(view === 'library'));
+  ui.el('shareBtn').setAttribute('aria-pressed', String(view === 'share'));
   // The switch shows where it goes, not where you are: from Sound it offers
-  // Layers, from Layers it offers Sound, and from the library it offers the
-  // way back to whichever of the two you came from.
-  const target = view === 'library' ? state.lastView : (view === 'sounds' ? 'layers' : 'sounds');
+  // Layers, from Layers it offers Sound, and from Library or Share it offers
+  // the way back to whichever of the two you came from.
+  const target = visiting ? state.lastView : (view === 'sounds' ? 'layers' : 'sounds');
   const vb = ui.el('viewBtn');
   ui.setIcon(vb, target);
   const label = target === 'sounds' ? 'Show sound controls' : 'Show layers';
@@ -375,6 +380,14 @@ function startRename() {
 
 // -------------------------------------------------------------- albums
 
+// Out of album mode without stopping the music: Next makes new loops again.
+function leaveAlbum() {
+  state.playlist = null;
+  refreshCard();
+  library.refresh();
+  ui.toast('Album stopped; Next makes new loops again');
+}
+
 function playAlbum(albumId, index = 0) {
   const album = store.loadAlbums().find((a) => a.id === albumId);
   if (!album) return;
@@ -424,10 +437,9 @@ async function offerCode(code, label) {
     await navigator.clipboard.writeText(code);
     ui.toast('Code copied');
   } catch {
-    // The box lives under Library > More; take them to it.
-    setView('library');
-    library.showMore();
-    ui.toast('Copy it from the box under Share');
+    // The box lives in the Share view; take them to it.
+    setView('share');
+    ui.toast('Copy it from the box below');
   }
 }
 
@@ -689,7 +701,7 @@ function wire() {
   ui.setIcon(ui.el('prevBtn'), 'prev');
   ui.setIcon(ui.el('nextBtn'), 'next');
   ui.setIcon(ui.el('libraryBtn'), 'library');
-  ui.setIcon(ui.el('newBtn'), 'spark');
+  ui.setIcon(ui.el('shareBtn'), 'share');
   setPlayButton(false);
   updateSaveButton();
 
@@ -699,6 +711,7 @@ function wire() {
     savedChanged,
     playAlbum,
     addCurrentTo,
+    leaveAlbum,
     shareAlbum,
     openSaved,
     pasteCode,
@@ -709,7 +722,7 @@ function wire() {
     setView(state.view === 'library' ? state.lastView : 'library');
   });
   ui.el('viewBtn').addEventListener('click', () => {
-    if (state.view === 'library') setView(state.lastView);
+    if (state.view === 'library' || state.view === 'share') setView(state.lastView);
     else setView(state.view === 'sounds' ? 'layers' : 'sounds');
   });
 
@@ -720,7 +733,9 @@ function wire() {
   });
 
   ui.el('playBtn').addEventListener('click', togglePlay);
-  ui.el('newBtn').addEventListener('click', newLoop);
+  ui.el('shareBtn').addEventListener('click', () => {
+    setView(state.view === 'share' ? state.lastView : 'share');
+  });
   ui.el('saveBtn').addEventListener('click', saveCurrent);
   ui.el('exportMidi').addEventListener('click', () => exportMidi());
   ui.el('prevBtn').addEventListener('click', goBack);

@@ -286,6 +286,14 @@ body {
 }
 .layer.muted .icon.mute { color: var(--dim); }
 
+/* ------------------------------------------------------------ share */
+
+.share { padding-top: 10px; padding-bottom: 10px; }
+.share .section-head { margin: 10px 0 4px; }
+.share .section-head:first-child { margin-top: 4px; }
+.share .hint { margin: 0 0 4px; }
+.share .row { margin: 6px 0 4px; }
+
 /* ---------------------------------------------------------- library */
 
 .library { padding-top: 4px; padding-bottom: 4px; overflow: hidden; }
@@ -401,6 +409,21 @@ body {
   display: block;
 }
 .lrow .ghost.tiny { flex: 0 0 auto; }
+.pick {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--haze);
+  pointer-events: none;
+}
+.pick svg { width: 18px; height: 18px; }
+.lrow.in .pick { color: var(--deep); background: var(--mint); border-color: var(--mint); }
+.lrow.in .lrow-title { color: var(--mint); }
 .lrow .ghost.tiny.confirm { color: var(--rust); border-color: var(--rust); }
 
 .back {

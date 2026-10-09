@@ -362,8 +362,11 @@ const ICONS = {
   // A bookmark rather than a floppy disk: "keep this one".
   save: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M12 7.5v6"/><path d="M9 10.5h6"/>',
   saved: '<path class="solid" d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>',
-  // A spark: something new out of nothing.
-  spark: '<path d="M11 3.5 12.9 9 18.5 11l-5.6 2-1.9 5.5L9.1 13 3.5 11l5.6-2z"/><path d="M19 3v4"/><path d="M17 5h4"/>',
+  // Three joined dots: the share mark phones already use.
+  share: '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>'
+    + '<path d="m8.3 13.3 7.4 4.4"/><path d="m15.7 6.3-7.4 4.4"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   sounds: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   layers: '<path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="m2.5 16.75 9.5 4.75 9.5-4.75"/><path d="m2.5 12 9.5 4.75L21.5 12"/>',
   left: '<path d="m15 18-6-6 6-6"/>',

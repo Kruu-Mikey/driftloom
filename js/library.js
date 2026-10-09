@@ -17,6 +17,7 @@ import * as ui from './ui.js';
 const lib = {
   tab: 'albums',
   albumId: null,
+  picking: false,     // the album page's "Add loops" picker is open
   pages: {},          // remembered page per list
   app: null,
 };
@@ -67,7 +68,10 @@ export function shownAlbum() {
 export function setTab(tab) {
   // Tapping Albums while inside an album goes back up to the list; coming
   // to it from another tab returns to the album you were in.
-  if (tab === 'albums' && lib.tab === 'albums') lib.albumId = null;
+  if (tab === 'albums' && lib.tab === 'albums') {
+    lib.albumId = null;
+    lib.picking = false;
+  }
   lib.tab = tab;
   render();
   lib.app.cardChanged();
@@ -76,12 +80,14 @@ export function setTab(tab) {
 export function openAlbum(id) {
   lib.tab = 'albums';
   lib.albumId = id;
+  lib.picking = false;
   render();
   lib.app.cardChanged();
 }
 
 export function closeAlbum() {
   lib.albumId = null;
+  lib.picking = false;
   render();
   lib.app.cardChanged();
 }
@@ -104,6 +110,7 @@ function turn(step) {
 }
 
 function listKey() {
+  if (lib.tab === 'albums' && lib.albumId && lib.picking) return `pick:${lib.albumId}`;
   if (lib.tab === 'albums' && lib.albumId) return `album:${lib.albumId}`;
   return lib.tab;
 }
@@ -123,7 +130,8 @@ export function render() {
   if (lib.tab === 'albums') {
     const album = lib.albumId && store.loadAlbums().find((a) => a.id === lib.albumId);
     if (lib.albumId && !album) lib.albumId = null;
-    if (album) renderAlbum(album);
+    if (album && lib.picking) renderPicker(album);
+    else if (album) renderAlbum(album);
     else renderAlbums();
   } else {
     renderLoops();
@@ -328,8 +336,11 @@ function renderAlbum(album) {
   const here = playing && playing.albumId === album.id;
 
   foot.append(
-    ghost('Play', () => lib.app.playAlbum(album.id, 0)),
-    ghost('Add this loop', () => lib.app.addCurrentTo(album.id)),
+    // While this album is playing, the same button takes you out of it, so
+    // Next goes back to making new loops.
+    here ? ghost('Stop album', () => lib.app.leaveAlbum())
+      : ghost('Play', () => lib.app.playAlbum(album.id, 0)),
+    ghost('Add loops', () => { lib.picking = true; render(); }),
     ghost('Share', () => lib.app.shareAlbum(album.id)),
     (() => {
       const b = ghost('Delete', () => {
@@ -379,7 +390,60 @@ function renderAlbum(album) {
       render();
     }, 'Take out of this album (the loop stays saved)'));
     return r;
-  }, 'Nothing in here yet. Play a loop you like, then tap "Add this loop".', current);
+  }, 'Nothing in here yet. Tap Add loops to pick from your saved loops.', current);
+}
+
+// Pick saved loops into the album without playing them: tap a row to put it
+// in, tap again to take it out. The playing loop is offered first, saved on
+// the spot if it is not yet, since it is the one most often wanted.
+function renderPicker(album) {
+  const head = el('libHead');
+  const foot = el('libFoot');
+  head.innerHTML = '';
+  foot.innerHTML = '';
+
+  const back = document.createElement('button');
+  back.className = 'back';
+  back.innerHTML = `${ui.icon('left')}<span>${album.title}</span>`;
+  back.addEventListener('click', () => { lib.picking = false; render(); });
+  head.appendChild(back);
+
+  const s = lib.app.state.spec;
+  const { saved } = savedSpecs();
+  const playingSaved = saved.some((e) => e.id === lib.app.state.currentId);
+  if (s && !playingSaved) {
+    foot.append(ghost(`Add playing: ${s.name}`, () => {
+      lib.app.addCurrentTo(album.id);
+      render();
+    }));
+  }
+  foot.append(ghost('Done', () => { lib.picking = false; render(); }));
+
+  paged(saved, (entry) => {
+    const now = store.loadAlbums().find((a) => a.id === album.id) || album;
+    const inAlbum = now.ids.includes(entry.id);
+    const r = row(entry.spec.name, keyOf(entry.spec), () => {
+      const fresh = store.loadAlbums().find((a) => a.id === album.id);
+      if (!fresh) return;
+      const has = fresh.ids.includes(entry.id);
+      store.setAlbumIds(album.id, has
+        ? fresh.ids.filter((x) => x !== entry.id)
+        : [...fresh.ids, entry.id]);
+      lib.app.cardChanged();
+      render();
+    }, { current: entry.id === lib.app.state.currentId });
+    if (inAlbum) r.classList.add('in');
+    const mark = document.createElement('span');
+    mark.className = 'pick';
+    mark.innerHTML = ui.icon(inAlbum ? 'check' : 'plus');
+    r.appendChild(mark);
+    // The whole row is the toggle, mark included.
+    mark.style.pointerEvents = 'none';
+    r.addEventListener('click', (e) => {
+      if (e.target === r) r.querySelector('.lrow-main').click();
+    });
+    return r;
+  }, 'No saved loops yet. Press Save on a loop you like and it will show up here.');
 }
 
 // -------------------------------------------------------------- loops

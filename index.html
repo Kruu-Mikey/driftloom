@@ -55,6 +55,27 @@
       <div id="layerList" class="layer-list"></div>
     </div>
 
+    <!-- Sharing and exporting get a viewport of their own, so new ways out
+         (and in) have somewhere to go as they arrive. -->
+    <div id="viewShare" class="view share" data-view="share" aria-label="Share" hidden>
+      <h2 class="section-head">This loop</h2>
+      <p class="hint">A loop is a recipe, not a recording, so it fits in a code.
+        No internet needed at either end.</p>
+      <div class="row wrap">
+        <button id="copySong" class="ghost">Copy its code</button>
+        <button id="exportMidi" class="ghost">Export MIDI</button>
+      </div>
+
+      <h2 class="section-head">Bring one in</h2>
+      <div class="row wrap">
+        <button id="pasteCode" class="ghost">Paste a code</button>
+      </div>
+      <p class="hint">Loop codes play straight away; album codes arrive as a new
+        album in the Library.</p>
+
+      <pre id="shareOut" class="diag-out" hidden></pre>
+    </div>
+
     <div id="viewLibrary" class="view library" data-view="library" aria-label="Library" hidden>
       <div class="lib-tabs" role="tablist">
         <button role="tab" data-tab="albums">Albums</button>
@@ -69,16 +90,8 @@
       </div>
 
       <div id="libMore" class="lib-more" hidden>
-        <h2 class="section-head">Share</h2>
-        <div class="row wrap">
-          <button id="copySong" class="ghost">Copy this loop's code</button>
-          <button id="pasteCode" class="ghost">Paste a code</button>
-        </div>
-        <pre id="shareOut" class="diag-out" hidden></pre>
-
         <h2 class="section-head">Files</h2>
         <div class="row wrap">
-          <button id="exportMidi" class="ghost">Export MIDI</button>
           <button id="exportJson" class="ghost">Back up all</button>
           <button id="importBtn" class="ghost">Restore</button>
           <input type="file" id="importFile" hidden>
@@ -108,7 +121,7 @@
           </div>
         </details>
 
-        <p class="colophon">Space plays. N makes something new. S saves it.
+        <p class="colophon">Space plays. N (or Next, outside an album) makes something new. S saves it.
           1–5 re-roll a layer. Headset and lock-screen buttons work once it is
           playing. Everything is generated in the browser and stored on this device.</p>
       </div>
@@ -135,7 +148,7 @@
       <button id="saveBtn" class="pad" aria-label="Save this loop" title="Save"></button>
     </div>
     <div class="btn-row">
-      <button id="newBtn" class="pad" aria-label="New loop" title="New loop"></button>
+      <button id="shareBtn" class="pad" aria-label="Share and export" title="Share" aria-pressed="false"></button>
       <button id="viewBtn" class="pad" aria-label="Show sound" title="Sound"></button>
     </div>
   </nav>

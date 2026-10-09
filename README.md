@@ -58,9 +58,10 @@ confirm what you are actually running; bump `BUILD` in `js/main.js` and
 The screen is one page that never scrolls: the **card** at the top shows
 what is playing (tap its name to rename it), the **viewport** in the middle
 is Layers, Sound or the Library, and the **buttons** at the bottom are
-previous, play and next; Library and Save; New loop and the switch between
-Layers and Sound. The Library holds albums and saved loops in pages, and
-under More: sharing, backups, the processor switch and Diagnostics.
+previous, play and next (Next past the newest loop makes a new one); Library
+and Save; Share and the switch between Layers and Sound. Share holds loop
+codes and MIDI export. The Library holds albums and saved loops in pages,
+and under More: backups, the processor switch and Diagnostics.
 
 **Re-roll** replaces one layer and leaves the others untouched. Re-rolling the
 keys is the exception — it changes the harmony, so the bass and melody follow
