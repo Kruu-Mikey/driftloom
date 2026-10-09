@@ -1,7 +1,11 @@
 /* Driftloom
    Visual reference: the front panel of a machine that has been left in a
-   humid room for thirty years. Oxidized teal metal, a sand-coloured
-   silkscreen, and one amber lamp that tells you it is running. */
+   humid room for thirty years. Oxidized teal metal, a sand-colored
+   silkscreen, and one amber lamp that tells you it is running.
+
+   One screen, three parts, top to bottom: the card (what is playing), the
+   viewport (Sound, Layers or Library), and the buttons. The page itself
+   never scrolls; only a viewport that cannot fit a short screen does. */
 
 :root {
   --deep: #0c1618;
@@ -10,6 +14,7 @@
   --line: #2b484e;
   --line-soft: #1f383d;
   --haze: #7ba39e;
+  --dim: #48686a;
   --sand: #e3ddc9;
   --mint: #8fd3b8;
   --amber: #e4a24e;
@@ -18,7 +23,8 @@
   --mono: ui-monospace, "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 
-  --gap: 14px;
+  --gap: 10px;
+  --row-h: 52px;   /* one library row; pages are counted in these */
 }
 
 * { box-sizing: border-box; }
@@ -26,122 +32,127 @@
 html, body {
   margin: 0;
   padding: 0;
+  height: 100%;
   background: var(--deep);
   color: var(--sand);
   font-family: var(--sans);
   font-size: 16px;
   line-height: 1.5;
   -webkit-text-size-adjust: 100%;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: none;
+  overflow: hidden;
 }
 
 body {
   background-image:
     radial-gradient(120% 60% at 50% -10%, #1a3036 0%, transparent 60%);
-  background-attachment: fixed;
 }
 
 #app {
   max-width: 560px;
+  height: 100vh;
+  height: 100dvh;
   margin: 0 auto;
-  padding: 18px 14px calc(48px + env(safe-area-inset-bottom));
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: var(--gap);
 }
 
-/* ---------------------------------------------------------- readout */
+[hidden] { display: none !important; }
 
-.readout {
+/* ------------------------------------------------------------- card */
+
+.card {
+  flex: 0 0 auto;
+  display: grid;
+  /* The art is as wide as it can be without starving the viewport on a
+     short screen: never more than about a third of the height. */
+  grid-template-columns: min(54%, 30dvh) 1fr;
+  gap: 14px;
+  align-items: start;
   background: linear-gradient(180deg, #0f2024 0%, #0b1517 100%);
   border: 1px solid var(--line);
   border-top-color: #3a5f66;
   border-radius: 3px;
-  padding: 16px 16px 12px;
+  padding: 12px;
 }
+
+.card-art { min-width: 0; }
 
 /* Drawn from the same numbers as the music, so it travels inside the share
    code without an image ever being sent. */
 .cover {
   display: block;
   width: 100%;
-  max-width: 100%;
   aspect-ratio: 1 / 1;
   height: auto;
   border-radius: 2px;
-  margin-bottom: 14px;
   background: #0b1517;
-  image-rendering: auto;
 }
 
-.album-art {
-  width: 48px;
-  height: 48px;
-  border-radius: 2px;
-  display: block;
-}
-
-.album {
-  display: grid;
-  grid-template-columns: 48px 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-.album:last-of-type { border-bottom: 0; }
-.album-name {
-  font-family: var(--mono);
-  font-size: 15px;
-  background: none;
-  border: 0;
-  padding: 0;
-  text-align: left;
-  color: var(--sand);
-}
-.album-meta {
-  display: block;
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--haze);
-  margin-top: 2px;
-}
-
-.readout-top {
+.card-info {
+  min-width: 0;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  /* Contributes no height of its own, so the art sets the card's height and
+     the words fit inside it (renderReadout folds them until they do). */
+  contain: size;
+  align-self: stretch;
+  overflow: hidden;
 }
 
-.loop-name {
+.loop-name, .name-edit {
   font-family: var(--mono);
-  font-size: clamp(28px, 9vw, 40px);
+  font-size: clamp(24px, 8.5vw, 40px);
   font-weight: 500;
+  line-height: 1.1;
   letter-spacing: -0.02em;
-  margin: 0;
   color: var(--mint);
-  text-shadow: 0 0 18px rgba(143, 211, 184, 0.28);
-  overflow-wrap: anywhere;
+  margin: 0 0 8px;
 }
+.loop-name {
+  text-shadow: 0 0 18px rgba(143, 211, 184, 0.28);
+  white-space: nowrap;
+  overflow: hidden;
+  flex: 0 0 auto;
+  cursor: text;
+  border-radius: 2px;
+}
+.loop-name:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+.loop-name.wrap { white-space: normal; overflow-wrap: anywhere; }
+.name-edit {
+  width: 100%;
+  padding: 0 4px;
+  background: #0b1517;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  outline: none;
+}
+.name-edit:focus { border-color: var(--mint); }
 
 .loop-detail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: clamp(11.5px, 3.3vw, 14px);
   line-height: 1.55;
   color: var(--haze);
-  margin: 6px 0 14px;
-  white-space: pre-line;
 }
-.loop-detail::first-line {
-  color: var(--sand);
-}
+.loop-detail li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loop-detail .mix { color: var(--sand); }
+.loop-detail .feel { color: #a9c7bf; }
+.loop-detail .faint { color: var(--dim); }
+.loop-detail .album-line { color: var(--amber); }
+.loop-detail.tight { font-size: 11px; line-height: 1.4; }
 
 .playhead {
   display: grid;
   grid-template-columns: repeat(16, 1fr);
   gap: 3px;
-  height: 8px;
+  height: 7px;
+  margin-top: 9px;
 }
 
 .playhead i {
@@ -165,139 +176,77 @@ body {
   opacity: 0;
   will-change: opacity;
 }
-.playhead i.on::after {
-  opacity: 1;
-}
+.playhead i.on::after { opacity: 1; }
 
-/* -------------------------------------------------------- transport */
+/* --------------------------------------------------------- viewport */
 
-.transport {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Skip buttons flank Play, the way they do on anything else that plays
-   music, so the gesture is already familiar. */
-.transport-main {
-  display: grid;
-  grid-template-columns: 1fr 2.6fr 1fr;
-  gap: 8px;
-}
-
-.transport-sub {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.step {
-  font-family: var(--mono);
-  font-size: 26px;
-  line-height: 1;
-  padding: 14px 0;
-  color: var(--haze);
-}
-.step:not(:disabled):hover { color: var(--sand); }
-
-button {
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-  border-radius: 3px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 14px 10px;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-button:hover { background: var(--panel-hi); }
-button:active { background: #0f2226; }
-button:focus-visible {
-  outline: 2px solid var(--mint);
-  outline-offset: 2px;
-}
-
-button:disabled {
-  opacity: 0.3;
-  cursor: default;
-}
-button:disabled:hover { background: var(--panel); }
-
-.play {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  font-size: 17px;
-  border-color: #3f6a70;
-  background: linear-gradient(180deg, #1d383e, #142a2f);
-}
-.play[aria-pressed="true"] {
-  border-color: var(--amber);
-  color: var(--amber);
-}
-.play-glyph {
-  width: 0; height: 0;
-  border-left: 12px solid currentColor;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-}
-.play[aria-pressed="true"] .play-glyph {
-  width: 12px; height: 15px;
-  border: 0;
-  background: currentColor;
-  -webkit-mask: linear-gradient(#000 0 0) left/4px 100% no-repeat,
-                linear-gradient(#000 0 0) right/4px 100% no-repeat;
-          mask: linear-gradient(#000 0 0) left/4px 100% no-repeat,
-                linear-gradient(#000 0 0) right/4px 100% no-repeat;
-}
-
-.key { font-size: 15px; }
-
-/* ----------------------------------------------------------- panels */
-
-.panel, .layers {
+.viewport {
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--panel);
   border: 1px solid var(--line-soft);
   border-radius: 3px;
-  padding: 14px;
+  overflow: hidden;
+  display: flex;
 }
 
-.section-head {
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 16px;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------ sound */
+
+.sounds { justify-content: space-evenly; }
+
+.srow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  font-size: clamp(15px, 4.4vw, 18px);
+  color: var(--haze);
+  cursor: pointer;
+}
+.srow span { white-space: nowrap; transition: color 140ms ease; }
+.srow b {
   font-family: var(--mono);
-  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.08em;
-  color: var(--haze);
-  margin: 0 0 10px;
+  color: var(--sand);
 }
-
-.hint {
-  font-size: 13px;
-  color: var(--haze);
-  margin: 10px 0 0;
-  max-width: 46ch;
-}
-.panel .hint { margin: 0 0 12px; }
+/* Wander all the way left is off, and the label says so by dimming. */
+.srow.off span { color: var(--dim); }
 
 /* ----------------------------------------------------------- layers */
 
+.layer-list {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+
 .layer {
+  flex: 1 1 0;
+  min-height: 40px;
   display: grid;
-  grid-template-columns: 58px 1fr auto auto;
+  grid-template-columns: 4.6em 1fr auto auto;
   align-items: center;
-  gap: 9px;
-  padding: 9px 0;
+  gap: 10px;
   border-bottom: 1px solid var(--line-soft);
 }
 .layer:last-of-type { border-bottom: 0; }
 
 .layer-name {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: clamp(13px, 3.8vw, 16px);
   color: var(--sand);
 }
-.layer.muted .layer-name { color: #486a6d; }
+.layer.muted .layer-name { color: var(--dim); }
 
 .grid {
   position: relative;
@@ -331,12 +280,253 @@ button:disabled:hover { background: var(--panel); }
 .icon {
   padding: 8px 10px;
   font-family: var(--mono);
-  font-size: 12px;
-  min-width: 40px;
+  font-size: 13px;
+  min-width: 46px;
+  background: transparent;
 }
-.icon.on { color: var(--amber); border-color: #56463a; }
+.layer.muted .icon.mute { color: var(--dim); }
 
-/* ---------------------------------------------------------- inputs */
+/* ---------------------------------------------------------- library */
+
+.library { padding-top: 4px; padding-bottom: 4px; overflow: hidden; }
+
+.lib-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line-soft);
+  margin: 0 -4px 4px;
+}
+.lib-tabs button {
+  flex: 1 1 0;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 10px 4px 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--haze);
+}
+.lib-tabs button[aria-selected="true"] { color: var(--sand); border-bottom-color: var(--amber); }
+.lib-tabs button:hover { background: none; color: var(--sand); }
+
+.lib-pages {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lib-head:empty, .lib-foot:empty { display: none; }
+.lib-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 6px;
+}
+.lib-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.lib-foot {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+
+.lib-more {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0 8px;
+}
+.lib-more .section-head { margin: 12px 0 6px; }
+.lib-more .section-head:first-child { margin-top: 6px; }
+.lib-more .row { margin-top: 6px; }
+
+/* A row in any library list. Fixed height, so a page holds a whole number
+   of them and paging never cuts one in half. */
+.lrow {
+  height: var(--row-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.lrow:last-child { border-bottom: 0; }
+.lrow-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--sand);
+}
+.lrow-main:hover { background: none; color: var(--mint); }
+.lrow-text { min-width: 0; display: flex; flex-direction: column; }
+.lrow-title {
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lrow-meta {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--haze);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lrow.current .lrow-title { color: var(--mint); }
+.lrow.current .lrow-title::before { content: "\25B8 "; color: var(--amber); }
+.album-art {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 2px;
+  display: block;
+}
+.lrow .ghost.tiny { flex: 0 0 auto; }
+.lrow .ghost.tiny.confirm { color: var(--rust); border-color: var(--rust); }
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 6px 4px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--haze);
+  background: transparent;
+  border-color: transparent;
+}
+.back svg { width: 18px; height: 18px; }
+.back:hover { color: var(--sand); background: none; }
+
+.pager {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 4px;
+}
+.pg {
+  background: transparent;
+  border-color: transparent;
+  padding: 6px 14px;
+  color: var(--haze);
+  line-height: 0;
+}
+.pg svg { width: 20px; height: 20px; }
+.pg-label { font-family: var(--mono); font-size: 12px; color: var(--haze); }
+
+.empty {
+  font-size: 14px;
+  color: var(--haze);
+  margin: 12px 0 0;
+}
+
+/* ---------------------------------------------------------- buttons */
+
+.buttons {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+/* Skip buttons flank Play, the way they do on anything else that plays
+   music, so the gesture is already familiar. */
+.btn-row.transport { grid-template-columns: 1fr 2.6fr 1fr; }
+
+.pad {
+  height: clamp(48px, 7.4dvh, 64px);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--sand);
+}
+.pad svg {
+  width: 26px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+svg .solid { fill: currentColor; }
+.ghost.tiny svg { display: block; width: 16px; height: 16px; }
+.pad[aria-pressed="true"] { color: var(--amber); border-color: #56463a; }
+.pad.saved { color: var(--mint); }
+
+.play {
+  border-color: #3f6a70;
+  background: linear-gradient(180deg, #1d383e, #142a2f);
+}
+.play svg { width: 30px; height: 30px; }
+.play[aria-pressed="true"] { border-color: var(--amber); color: var(--amber); }
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 14px 10px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+button:hover { background: var(--panel-hi); }
+button:active { background: #0f2226; }
+button:focus-visible {
+  outline: 2px solid var(--mint);
+  outline-offset: 2px;
+}
+button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+button:disabled:hover { background: var(--panel); }
+
+/* ---------------------------------------------------------- general */
+
+.section-head {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--haze);
+  margin: 0 0 10px;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--haze);
+  margin: 10px 0 0;
+  max-width: 46ch;
+}
 
 .switch {
   display: flex;
@@ -388,7 +578,8 @@ button:disabled:hover { background: var(--panel); }
 input[type="range"] {
   appearance: none;
   width: 100%;
-  height: 26px;
+  height: 32px;
+  margin: 0;
   background: transparent;
   cursor: pointer;
 }
@@ -402,14 +593,14 @@ input[type="range"]::-moz-range-track {
 }
 input[type="range"]::-webkit-slider-thumb {
   appearance: none;
-  width: 20px; height: 20px;
-  margin-top: -9px;
+  width: 22px; height: 22px;
+  margin-top: -10px;
   border-radius: 50%;
   background: var(--sand);
   border: 1px solid #0a1416;
 }
 input[type="range"]::-moz-range-thumb {
-  width: 20px; height: 20px;
+  width: 22px; height: 22px;
   border-radius: 50%;
   background: var(--sand);
   border: 1px solid #0a1416;
@@ -434,70 +625,25 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
 .ghost:hover { color: var(--sand); background: var(--panel-hi); }
 .ghost.tiny { padding: 5px 8px; font-size: 12px; font-family: var(--mono); }
 
-.counter {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--haze);
-  margin-right: auto;
-}
-
-/* ----------------------------------------------------------- saved */
-
-.saved-list { display: flex; flex-direction: column; }
-
-.saved {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line-soft);
-}
-.saved:last-child { border-bottom: 0; }
-.saved.current .saved-name { color: var(--mint); }
-
-.saved-name {
-  font-family: var(--mono);
-  font-size: 15px;
-  background: none;
-  border: 0;
-  padding: 0;
-  text-align: left;
-  color: var(--sand);
-}
-.saved-meta {
-  display: block;
-  font-family: var(--sans);
-  font-size: 12px;
-  color: var(--haze);
-  margin-top: 2px;
-}
-
-.empty {
-  font-size: 14px;
-  color: var(--haze);
-  margin: 0;
-}
-
 .colophon {
   color: #5b7f7d;
-  font-size: 12.5px;
-  text-align: center;
-  margin-top: 6px;
+  font-size: 12px;
+  margin: 16px 0 4px;
 }
-.colophon p { margin: 3px 0; }
 
 /* ----------------------------------------------------------- toast */
 
+/* At the top, over the card, where it covers nothing you can press. */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(20px + env(safe-area-inset-bottom));
-  transform: translate(-50%, 20px);
+  top: calc(16px + env(safe-area-inset-top));
+  transform: translate(-50%, -12px);
+  max-width: calc(100% - 32px);
   background: #0a1416;
   border: 1px solid var(--line);
   color: var(--sand);
-  padding: 10px 16px;
+  padding: 9px 16px;
   border-radius: 3px;
   font-size: 14px;
   opacity: 0;
@@ -511,13 +657,20 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
   *, *::after { transition-duration: 1ms !important; }
 }
 
+/* Short phones: tighten the rows so more of a viewport fits unscrolled. */
+@media (max-height: 700px) {
+  .srow { min-height: 36px; }
+  .layer { min-height: 36px; }
+  .pad { height: 46px; }
+}
+
 @media (min-width: 620px) {
-  #app { padding-top: 32px; }
-  .layer { grid-template-columns: 70px 1fr auto auto; }
+  #app { padding-top: 24px; padding-bottom: 24px; }
 }
 
 /* ------------------------------------------------------ diagnostics */
 
+.diag { margin-top: 12px; }
 .diag summary {
   font-family: var(--mono);
   font-size: 12px;
@@ -544,29 +697,3 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
   word-break: break-word;
   overflow-x: auto;
 }
-
-/* ---------------------------------------------------- album contents */
-
-.album-open {
-  padding: 4px 0 10px 56px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.album-track {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 0;
-}
-
-.track-name {
-  font-family: var(--mono);
-  font-size: 13.5px;
-  background: none;
-  border: 0;
-  padding: 0;
-  text-align: left;
-  color: var(--sand);
-}
-.track-name:hover { color: var(--mint); }

@@ -26,50 +26,172 @@ const METER = { 12: '6/8', 16: '4/4', 20: '5/4', 14: '7/8' };
 // Both the profile blend and the feeling are mixtures, so show them as
 // mixtures. Percentages are more honest than one adjective standing in for a
 // loop that is 60% one thing and 30% another.
-function asMix(weights, nameOf, max = 3) {
+function asMixParts(weights, nameOf, max = 3) {
   return Object.entries(weights)
-    .map(([k, w]) => [k, w])
     .filter(([, w]) => w >= 0.05)
     .sort((a, b) => b[1] - a[1])
     .slice(0, max)
-    .map(([k, w]) => `${Math.round(w * 100)}% ${nameOf(k)}`)
-    .join(' · ');
+    .map(([k, w]) => `${Math.round(w * 100)}% ${nameOf(k)}`);
 }
 
-function mixLabel(spec) {
+function mixParts(spec) {
   if (!spec.mix) {
     const c = CHARACTERS[resolveKey(spec.character || 'dust')];
-    return c ? c.label : 'Dust';
+    return [c ? c.label : 'Dust'];
   }
   const named = {};
   for (const [k, w] of Object.entries(spec.mix)) {
     const key = resolveKey(k);
     named[key] = (named[key] || 0) + w;
   }
-  return asMix(named, (k) => CHARACTERS[k].label) || 'Dust';
+  const parts = asMixParts(named, (k) => CHARACTERS[k].label);
+  return parts.length ? parts : ['Dust'];
 }
 
-function feelLabel(spec) {
+function feelParts(spec) {
   if (spec.feelMix && Object.keys(spec.feelMix).length) {
-    return asMix(spec.feelMix, moodWord);
+    return asMixParts(spec.feelMix, moodWord);
   }
   // Saves from before feeling became a mixture.
-  return pointWord(spec.feel || { lift: spec.mood ?? 0.5, energy: 0.5, warmth: 0.6 });
+  return [pointWord(spec.feel || { lift: spec.mood ?? 0.5, energy: 0.5, warmth: 0.6 })];
 }
 
-export function renderReadout(spec, pattern) {
-  el('loopName').textContent = spec.name;
-  const key = `${NOTE_NAMES[spec.root]} ${SCALES[spec.scale].label}`;
+// One fact per line, as the card lays them out: the blend, the feeling,
+// then key, tempo, meter and form. `extra` adds the album being played and
+// the pass count when a track length is set; both are what someone glancing
+// at the card would otherwise have to go looking for.
+export function renderReadout(spec, pattern, extra = {}) {
+  setName(spec.name);
   const meter = METER[spec.stepsPerBar || 16] || `${spec.stepsPerBar}/16`;
-  const tail = [key, `${spec.bpm} bpm`, meter, `${spec.bars} bars`];
-  if (pattern && pattern.form) tail.push('airy');
-  if (spec.cycles) tail.push('drifting');
-  el('loopDetail').textContent = [
-    mixLabel(spec),
-    feelLabel(spec),
-    tail.join(' · '),
-  ].join('\n');
-  el('bpmVal').textContent = spec.bpm;
+  const shape = [];
+  if (pattern && pattern.form) shape.push('airy');
+  if (spec.cycles) shape.push('drifting');
+  const parts = {
+    mix: mixParts(spec),
+    feel: feelParts(spec),
+    key: `${NOTE_NAMES[spec.root]} ${SCALES[spec.scale].label}`,
+    bpm: `${spec.bpm} bpm`,
+    meter: `${meter} · ${spec.bars} bars`,
+    shape: shape.join(' · '),
+    album: extra.album || '',
+    pass: extra.pass || '',
+  };
+  // The card is as tall as its art and no taller, so a loop with a lot to
+  // say says it more compactly instead of pushing the viewport down. Each
+  // level folds a little more together; the first that fits wins.
+  for (let level = 0; level <= 5; level++) {
+    setLines(readoutLines(parts, level));
+    if (level === 5) el('loopDetail').classList.add('tight');
+    if (!overflowing()) break;
+  }
+  const bpm = el('bpmVal');
+  if (bpm) bpm.textContent = spec.bpm;
+}
+
+function readoutLines(p, level) {
+  const lines = [];
+  const mix = level >= 4 ? p.mix.slice(0, 1) : level >= 3 ? p.mix.slice(0, 2) : p.mix;
+  const feel = level >= 2 ? p.feel.slice(0, 1) : p.feel;
+  for (const m of mix) lines.push([m, 'mix']);
+  for (const f of feel) lines.push([f, 'feel']);
+  let meter = p.meter;
+  if (level >= 1) {
+    lines.push([`${p.key} · ${p.bpm}`]);
+    lines.push([p.shape ? `${meter} · ${p.shape}` : meter]);
+  } else {
+    lines.push([p.key]);
+    lines.push([p.bpm]);
+    lines.push([meter]);
+    if (p.shape) lines.push([p.shape]);
+  }
+  if (p.album) lines.push([p.album, 'album-line']);
+  if (p.pass) lines.push([p.pass, 'faint']);
+  return lines;
+}
+
+function overflowing() {
+  const info = el('loopDetail').parentElement;
+  return info.scrollHeight > info.clientHeight + 1;
+}
+
+// The card turned over to show an album: its art is drawn by the caller,
+// this fills in the words.
+export function renderAlbumCard(title, specs, extra = {}) {
+  setName(title);
+  const lines = [[`${specs.length} ${specs.length === 1 ? 'track' : 'tracks'}`, 'mix']];
+  if (specs.length) {
+    // The album's blend is the average of its loops' blends.
+    const named = {};
+    for (const spec of specs) {
+      const mix = spec.mix || { [spec.character || 'dust']: 1 };
+      for (const [k, w] of Object.entries(mix)) {
+        const key = resolveKey(k);
+        named[key] = (named[key] || 0) + w / specs.length;
+      }
+    }
+    for (const part of asMixParts(named, (k) => (CHARACTERS[k] ? CHARACTERS[k].label : k), 2)) {
+      lines.push([part, 'feel']);
+    }
+    const bpms = specs.map((s) => s.bpm);
+    const lo = Math.min(...bpms);
+    const hi = Math.max(...bpms);
+    lines.push([lo === hi ? `${lo} bpm` : `${lo}-${hi} bpm`]);
+    const secs = specs.reduce((t, s) => t + passSeconds(s), 0);
+    lines.push([`~${formatTime(secs)} once through`]);
+  }
+  if (extra.playing) lines.push([extra.playing, 'album-line']);
+  setLines(lines);
+  if (overflowing()) el('loopDetail').classList.add('tight');
+}
+
+export function passSeconds(spec) {
+  return spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
+}
+
+export function formatTime(secs) {
+  if (secs < 90) return `${Math.round(secs)}s`;
+  if (secs < 5400) return `${Math.round(secs / 60)}m`;
+  if (secs < 86400) {
+    const h = Math.floor(secs / 3600);
+    const m = Math.round((secs % 3600) / 60);
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+  const d = Math.floor(secs / 86400);
+  const h = Math.round((secs % 86400) / 3600);
+  return h ? `${d}d ${h}h` : `${d}d`;
+}
+
+// The name is as big as fits on one line of the card, down to a floor;
+// only a name too long even at the floor wraps. Breaking "mun-dain" at its
+// hyphen to keep a size reads worse than a slightly smaller name.
+export function setName(name) {
+  const h = el('loopName');
+  h.textContent = name;
+  fitName();
+}
+
+export function fitName() {
+  const h = el('loopName');
+  h.classList.remove('wrap');
+  h.style.fontSize = '';
+  let size = parseFloat(getComputedStyle(h).fontSize) || 32;
+  while (h.scrollWidth > h.clientWidth + 1 && size > 18) {
+    size -= 1;
+    h.style.fontSize = `${size}px`;
+  }
+  if (h.scrollWidth > h.clientWidth + 1) h.classList.add('wrap');
+}
+
+function setLines(lines) {
+  const host = el('loopDetail');
+  host.classList.remove('tight');
+  host.innerHTML = '';
+  for (const [text, cls] of lines) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    if (cls) li.className = cls;
+    host.appendChild(li);
+  }
 }
 
 // -------------------------------------------------------------- layers
@@ -118,7 +240,7 @@ export function buildLayers(handlers, steps = STEPS_PER_BAR) {
     reroll.addEventListener('click', () => handlers.onReroll(layer));
 
     const mute = document.createElement('button');
-    mute.className = 'icon';
+    mute.className = 'icon mute';
     mute.textContent = 'on';
     mute.title = `Mute ${LAYER_LABELS[layer].toLowerCase()}`;
     mute.addEventListener('click', () => handlers.onMute(layer));
@@ -195,48 +317,6 @@ export function moveCursor(lights, cells, index) {
   lastCursor = index;
 }
 
-// --------------------------------------------------------------- saved
-
-export function renderSaved(list, currentId, handlers) {
-  const host = el('savedList');
-  host.innerHTML = '';
-  if (!list.length) {
-    const p = document.createElement('p');
-    p.className = 'empty';
-    p.textContent = 'Nothing saved yet. Find a loop you like and press Save.';
-    host.appendChild(p);
-    return;
-  }
-  for (const entry of list) {
-    const row = document.createElement('div');
-    row.className = 'saved' + (entry.id === currentId ? ' current' : '');
-
-    const open = document.createElement('button');
-    open.className = 'saved-name';
-    const key = `${NOTE_NAMES[entry.spec.root]} ${SCALES[entry.spec.scale].label}`;
-    open.innerHTML = '';
-    open.appendChild(document.createTextNode(entry.spec.name));
-    const meta = document.createElement('span');
-    meta.className = 'saved-meta';
-    meta.textContent = `${key} · ${entry.spec.bpm} bpm`;
-    open.appendChild(meta);
-    open.addEventListener('click', () => handlers.onOpen(entry));
-
-    const midi = document.createElement('button');
-    midi.className = 'ghost tiny';
-    midi.textContent = 'midi';
-    midi.addEventListener('click', () => handlers.onMidi(entry));
-
-    const del = document.createElement('button');
-    del.className = 'ghost tiny';
-    del.textContent = 'delete';
-    del.addEventListener('click', () => handlers.onDelete(entry));
-
-    row.append(open, midi, del);
-    host.appendChild(row);
-  }
-}
-
 // --------------------------------------------------------------- misc
 
 let toastTimer = null;
@@ -264,4 +344,41 @@ export function download(blob, filename) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// --------------------------------------------------------------- icons
+
+// Line icons on a 24-unit grid, drawn in the button's text color so the
+// panel's palette decides how they look, not the icon. Anything marked
+// `solid` is filled instead of stroked.
+const ICONS = {
+  prev: '<path class="solid" d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>',
+  next: '<path class="solid" d="m5 4 10 8-10 8z"/><path d="M19 5v14"/>',
+  play: '<path class="solid" d="M7 4.5v15l12.5-7.5z"/>',
+  pause: '<rect class="solid" x="6" y="4.5" width="4" height="15" rx="1"/>'
+    + '<rect class="solid" x="14" y="4.5" width="4" height="15" rx="1"/>',
+  // Books on a shelf: what Library looks like everywhere else.
+  library: '<path d="M4 4v16"/><path d="M8 7v13"/><path d="M12 5v15"/><path d="m16 6 4 14"/>',
+  // A bookmark rather than a floppy disk: "keep this one".
+  save: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M12 7.5v6"/><path d="M9 10.5h6"/>',
+  saved: '<path class="solid" d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>',
+  // A spark: something new out of nothing.
+  spark: '<path d="M11 3.5 12.9 9 18.5 11l-5.6 2-1.9 5.5L9.1 13 3.5 11l5.6-2z"/><path d="M19 3v4"/><path d="M17 5h4"/>',
+  sounds: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  layers: '<path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="m2.5 16.75 9.5 4.75 9.5-4.75"/><path d="m2.5 12 9.5 4.75L21.5 12"/>',
+  left: '<path d="m15 18-6-6 6-6"/>',
+  right: '<path d="m9 18 6-6-6-6"/>',
+};
+
+export function icon(name) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+    stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+}
+
+// Only rewrites when the icon actually changes, since it is called on every
+// load and every play/stop.
+export function setIcon(button, name) {
+  if (button.dataset.icon === name) return;
+  button.dataset.icon = name;
+  button.innerHTML = icon(name);
 }

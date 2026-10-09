@@ -508,7 +508,7 @@ node tools/perf.mjs --ab-query engine=rust   # each run twice, without the flag 
 page live in headless Chromium, the way a listener does, under CPU
 throttling (1x, 4x, 6x), full and lite, visible and with the tab hidden,
 with "Let the loop wander" on. It reports the engine's late ticks (read off
-the Diagnostics panel), the browser's own glitch counter, the audio
+the Diagnostics panel, under Library > More), the browser's own glitch counter, the audio
 thread's render time, the main thread's script, layout and paint time,
 Web Audio nodes created a second, memory over a long run, the time from a
 tap on Play to the first sound, and the page's weight on a first visit.
@@ -607,7 +607,8 @@ Albums open to show their tracks. **Adding the current loop to an album
 saves it** -- making someone press Save first was a rule the app imposed for
 its own convenience. Tracks can be replaced in place with whatever is
 playing (keeping their position in the running order), removed, or played
-from. Albums can be renamed.
+from. Albums can be renamed: open one in the Library and tap its name on
+the card, the same way a loop is renamed.
 
 An album is a named list of loops and shares the same way, at roughly 110
 characters per loop, and **plays as a playlist** -- the skip buttons walk the
@@ -679,7 +680,7 @@ changes when the album changes and travels in the album code.
 
 ## Diagnostics
 
-There is a Diagnostics panel at the bottom of the page. It reports which
+There is a Diagnostics panel under Library > More. It reports which
 audio path is live, whether the media session was granted, and a count of
 scheduler wake-ups that arrived too late to place a note — which is what a
 stutter looks like from the inside. Play with the screen off for a minute,

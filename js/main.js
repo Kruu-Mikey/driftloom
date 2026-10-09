@@ -21,9 +21,10 @@ const TRACK_LENGTHS = [
   0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
   192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 9999,
 ];
-import { drawCover, albumCoverSpec } from './cover.js';
+import { drawCover } from './cover.js';
 import * as store from './storage.js';
 import * as ui from './ui.js';
+import * as library from './library.js';
 
 const state = {
   ctx: null,
@@ -35,7 +36,14 @@ const state = {
   bar: -1,
   gridSteps: 16,
   playlist: null,
-  openAlbum: null,
+  // Which viewport is up ('sounds', 'layers' or 'library'), and the last of
+  // the first two, which is where leaving the library goes back to.
+  view: 'layers',
+  lastView: 'layers',
+  // The spec the cover was last drawn for, so the card is not redrawn when
+  // only its words change.
+  coverFor: null,
+  passCount: 0,
   frameHandle: null,
   lite: false,
   media: null,
@@ -98,8 +106,9 @@ function buildAudio() {
   state.engine.onLoop = onLoop;
   state.engine.onTrackEnd = onTrackEnd;
   state.engine.visualOffset = (parseInt(ui.el('playheadSync').value, 10) || 0) / 1000;
-  state.engine.driftOn = ui.el('driftToggle').checked;
-  state.engine.driftAmount = parseFloat(ui.el('driftAmount').value);
+  const wander = parseFloat(ui.el('driftAmount').value);
+  state.engine.driftOn = wander > 0;
+  state.engine.driftAmount = wander > 0 ? wander : 1;
   state.synth.setVolume(parseFloat(ui.el('volume').value));
   if (state.spec) {
     state.pattern = state.engine.load(state.spec);
@@ -193,11 +202,11 @@ function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false
   state.currentId = id;
   state.pattern = state.engine.load(spec, { keepPosition });
   state.bar = -1;
-  ui.renderReadout(spec, state.pattern);
+  state.passCount = 0;
   ui.renderGrids(cells, state.pattern, 0, spec.mutes);
   syncToneInputs(spec);
-  drawCoverFor(spec);
-  refreshSaved();
+  refreshCard();
+  savedChanged();
   if (pushToHistory) pushHistory(spec);
   updateHistoryButtons();
   syncMediaMetadata();
@@ -216,20 +225,7 @@ function syncMediaMetadata() {
 function describeLength(passes, spec) {
   if (!passes) return 'off';
   if (!spec) return `${passes} passes`;
-  const spb = spec.stepsPerBar || 16;
-  const secs = passes * spec.bars * spb * (60 / spec.bpm / 4);
-  let time;
-  if (secs < 90) time = `${Math.round(secs)}s`;
-  else if (secs < 5400) time = `${Math.round(secs / 60)}m`;
-  else if (secs < 86400) {
-    const h = Math.floor(secs / 3600);
-    const m = Math.round((secs % 3600) / 60);
-    time = m ? `${h}h ${m}m` : `${h}h`;
-  } else {
-    const d = Math.floor(secs / 86400);
-    const h = Math.round((secs % 86400) / 3600);
-    time = h ? `${d}d ${h}h` : `${d}d`;
-  }
+  const time = ui.formatTime(passes * ui.passSeconds(spec));
   return `${passes} ${passes === 1 ? 'pass' : 'passes'} · ~${time}`;
 }
 
@@ -243,178 +239,179 @@ function drawCoverFor(spec) {
   }
 }
 
-function refreshAlbums() {
-  const host = ui.el('albumList');
-  if (!host) return;
-  host.innerHTML = '';
-  const albums = store.loadAlbums();
-  if (!albums.length) {
-    const p = document.createElement('p');
-    p.className = 'empty';
-    p.textContent = 'No albums yet. Make one, then add the loop you are playing.';
-    host.appendChild(p);
+// ---------------------------------------------------------------- card
+
+// The card shows the album open in the library, or else the loop that is
+// playing. Everything that changes either one ends up here.
+function refreshCard() {
+  const albumId = library.shownAlbum();
+  const album = albumId && store.loadAlbums().find((a) => a.id === albumId);
+  const playhead = ui.el('playhead');
+  if (album) {
+    const byId = new Map(store.loadAll().map((e) => [e.id, e]));
+    const specs = album.ids.map((id) => byId.get(id)).filter(Boolean).map((e) => e.spec);
+    const canvas = ui.el('cover');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 320;
+    canvas.height = 320;
+    ctx.drawImage(library.albumArt(album, specs, 320), 0, 0, 320, 320);
+    state.coverFor = null;
+    const pl = state.playlist;
+    const playing = pl && pl.albumId === album.id
+      ? `playing ${pl.index + 1}/${pl.ids.length}` : '';
+    ui.renderAlbumCard(album.title, specs, { playing });
+    // Hidden rather than removed, so the card keeps its height and the
+    // viewport below does not jump.
+    playhead.style.visibility = 'hidden';
     return;
   }
-  const saved = store.loadAll();
-  const specOf = (id) => (saved.find((e) => e.id === id) || {}).spec;
-
-  for (const album of albums) {
-    const present = album.ids.filter((id) => specOf(id));
-    const open = state.openAlbum === album.id;
-
-    const row = document.createElement('div');
-    row.className = 'album';
-
-    const art = document.createElement('canvas');
-    art.className = 'album-art';
-    try {
-      const specs = present.map(specOf);
-      drawCover(art, albumCoverSpec(album.title, specs.length ? specs : [
-        { seed: 1, feel: { lift: 0.5, energy: 0.3, warmth: 0.6 }, mix: { dust: 1 } },
-      ]), 96);
-    } catch (err) {
-      console.warn('Could not draw album art', err);
-    }
-
-    const name = document.createElement('button');
-    name.className = 'album-name';
-    name.appendChild(document.createTextNode(album.title));
-    const meta = document.createElement('span');
-    meta.className = 'album-meta';
-    meta.textContent = `${present.length} loop${present.length === 1 ? '' : 's'} · tap to ${open ? 'close' : 'open'}`;
-    name.appendChild(meta);
-    name.addEventListener('click', () => {
-      state.openAlbum = open ? null : album.id;
-      refreshAlbums();
-    });
-
-    const play = document.createElement('button');
-    play.className = 'ghost tiny';
-    play.textContent = 'play';
-    play.addEventListener('click', () => {
-      if (!present.length) { ui.toast('That album is empty'); return; }
-      state.playlist = { albumId: album.id, title: album.title, ids: present.slice(), index: -1 };
-      advancePlaylist(1);
-    });
-
-    row.append(art, name, play);
-    host.appendChild(row);
-    if (!open) continue;
-
-    const panel = document.createElement('div');
-    panel.className = 'album-open';
-
-    present.forEach((id, i) => {
-      const spec = specOf(id);
-      const t = document.createElement('div');
-      t.className = 'album-track';
-
-      const label = document.createElement('button');
-      label.className = 'track-name';
-      label.textContent = `${i + 1}. ${spec.name}`;
-      label.addEventListener('click', () => {
-        state.playlist = { albumId: album.id, title: album.title, ids: present.slice(), index: i - 1 };
-        advancePlaylist(1);
-      });
-
-      // Overwrite this entry with whatever is playing now, so a loop can be
-      // tweaked and put back without losing its place in the running order.
-      const update = document.createElement('button');
-      update.className = 'ghost tiny';
-      update.textContent = 'replace';
-      update.addEventListener('click', () => {
-        if (!state.spec) return;
-        if (!store.replaceSpec(id, state.spec)) {
-          ui.toast('Could not save that change');
-          return;
-        }
-        refreshAlbums();
-        refreshSaved();
-        ui.toast(`Replaced track ${i + 1}`);
-      });
-
-      const drop = document.createElement('button');
-      drop.className = 'ghost tiny';
-      drop.textContent = 'remove';
-      drop.addEventListener('click', () => {
-        store.setAlbumIds(album.id, album.ids.filter((x) => x !== id));
-        refreshAlbums();
-        ui.toast('Removed from album');
-      });
-
-      t.append(label, update, drop);
-      panel.appendChild(t);
-    });
-
-    if (!present.length) {
-      const p = document.createElement('p');
-      p.className = 'empty';
-      p.textContent = 'Nothing in here yet.';
-      panel.appendChild(p);
-    }
-
-    const tools = document.createElement('div');
-    tools.className = 'row wrap';
-
-    const add = document.createElement('button');
-    add.className = 'ghost';
-    add.textContent = 'Add current loop';
-    add.addEventListener('click', () => {
-      if (!state.spec) return;
-      // Adding to an album IS saving it. Making someone press Save first was
-      // a rule the app imposed for its own convenience, not the user's.
-      let id = state.currentId;
-      const known = id && store.loadAll().some((e) => e.id === id);
-      if (!known) {
-        const entry = store.save(state.spec);
-        if (!entry) { ui.toast('Could not save this loop'); return; }
-        id = entry.id;
-        state.currentId = id;
-      }
-      if (album.ids.includes(id)) { ui.toast('Already in this album'); return; }
-      store.setAlbumIds(album.id, [...album.ids, id]);
-      refreshAlbums();
-      refreshSaved();
-      ui.toast(`Added to ${album.title}`);
-    });
-
-    const rename = document.createElement('button');
-    rename.className = 'ghost';
-    rename.textContent = 'Rename';
-    rename.addEventListener('click', () => {
-      const title = prompt('Rename album', album.title);
-      if (!title) return;
-      if (!store.renameAlbum(album.id, title.trim())) {
-        ui.toast('Could not rename');
-        return;
-      }
-      refreshAlbums();
-    });
-
-    const code = document.createElement('button');
-    code.className = 'ghost';
-    code.textContent = 'Share code';
-    code.addEventListener('click', async () => {
-      const specs = present.map(specOf);
-      if (!specs.length) { ui.toast('That album is empty'); return; }
-      await offerCode(share.encodeAlbum(album.title, specs), `${album.title} · ${specs.length} loops`);
-    });
-
-    const del = document.createElement('button');
-    del.className = 'ghost';
-    del.textContent = 'Delete album';
-    del.addEventListener('click', () => {
-      store.removeAlbum(album.id);
-      if (state.openAlbum === album.id) state.openAlbum = null;
-      if (state.playlist && state.playlist.albumId === album.id) state.playlist = null;
-      refreshAlbums();
-      ui.toast('Album deleted');
-    });
-
-    tools.append(add, rename, code, del);
-    panel.appendChild(tools);
-    host.appendChild(panel);
+  playhead.style.visibility = '';
+  if (!state.spec) return;
+  if (state.coverFor !== state.spec) {
+    drawCoverFor(state.spec);
+    state.coverFor = state.spec;
   }
+  renderLoopWords();
+}
+
+function renderLoopWords() {
+  const pl = state.playlist;
+  const limit = state.spec.playFor;
+  ui.renderReadout(state.spec, state.pattern, {
+    album: pl && pl.ids.length ? `${pl.title} ${pl.index + 1}/${pl.ids.length}` : '',
+    pass: limit ? `pass ${state.passCount} of ${limit}` : '',
+  });
+}
+
+// Anything saved, deleted or renamed: the lists, and whether the loop on
+// screen counts as saved.
+function savedChanged() {
+  library.refresh();
+  updateSaveButton();
+}
+
+function isSaved() {
+  return !!state.currentId && store.loadAll().some((e) => e.id === state.currentId);
+}
+
+function updateSaveButton() {
+  const saved = isSaved();
+  const b = ui.el('saveBtn');
+  ui.setIcon(b, saved ? 'saved' : 'save');
+  b.classList.toggle('saved', saved);
+  b.setAttribute('aria-label', saved ? 'Saved (tap to save changes)' : 'Save this loop');
+}
+
+// ------------------------------------------------------------ viewport
+
+function setView(view) {
+  state.view = view;
+  if (view !== 'library') state.lastView = view;
+  for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== view;
+  ui.el('libraryBtn').setAttribute('aria-pressed', String(view === 'library'));
+  // The switch shows where it goes, not where you are: from Sound it offers
+  // Layers, from Layers it offers Sound, and from the library it offers the
+  // way back to whichever of the two you came from.
+  const target = view === 'library' ? state.lastView : (view === 'sounds' ? 'layers' : 'sounds');
+  const vb = ui.el('viewBtn');
+  ui.setIcon(vb, target);
+  const label = target === 'sounds' ? 'Show sound controls' : 'Show layers';
+  vb.setAttribute('aria-label', label);
+  vb.title = target === 'sounds' ? 'Sound' : 'Layers';
+  if (view === 'library') library.render();
+  refreshCard();
+  store.setPrefs({ view: state.lastView });
+}
+
+// --------------------------------------------------------------- rename
+
+// Tap the name on the card to rename whatever the card shows: the loop, or
+// the album open in the library. It edits in place rather than in a pop-up.
+function startRename() {
+  const albumId = library.shownAlbum();
+  if (!albumId && !state.spec) return;
+  const h = ui.el('loopName');
+  const input = ui.el('nameEdit');
+  input.value = h.textContent;
+  input.style.fontSize = h.style.fontSize;
+  h.hidden = true;
+  input.hidden = false;
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    input.removeEventListener('keydown', onKey);
+    input.removeEventListener('blur', onBlur);
+    input.hidden = true;
+    h.hidden = false;
+    const name = input.value.trim().slice(0, 40);
+    if (!commit || !name || name === h.textContent) return;
+    if (albumId) {
+      if (!store.renameAlbum(albumId, name)) { ui.toast('Could not rename'); return; }
+      library.refresh();
+      refreshCard();
+      return;
+    }
+    state.spec.name = name;
+    if (state.historyIndex >= 0 && state.history[state.historyIndex]) {
+      state.history[state.historyIndex].name = name;
+    }
+    if (state.currentId) store.rename(state.currentId, name);
+    refreshCard();
+    savedChanged();
+    syncMediaMetadata();
+  };
+  const onKey = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  const onBlur = () => finish(true);
+  input.addEventListener('keydown', onKey);
+  input.addEventListener('blur', onBlur);
+}
+
+// -------------------------------------------------------------- albums
+
+function playAlbum(albumId, index = 0) {
+  const album = store.loadAlbums().find((a) => a.id === albumId);
+  if (!album) return;
+  const saved = new Set(store.loadAll().map((e) => e.id));
+  const present = album.ids.filter((id) => saved.has(id));
+  if (!present.length) { ui.toast('That album is empty'); return; }
+  state.playlist = { albumId: album.id, title: album.title, ids: present, index: index - 1 };
+  advancePlaylist(1);
+}
+
+function addCurrentTo(albumId) {
+  if (!state.spec) return;
+  const album = store.loadAlbums().find((a) => a.id === albumId);
+  if (!album) return;
+  // Adding to an album IS saving it. Making someone press Save first was
+  // a rule the app imposed for its own convenience, not the user's.
+  let id = state.currentId;
+  if (!isSaved()) {
+    const entry = store.save(state.spec);
+    if (!entry) { ui.toast('Could not save this loop'); return; }
+    id = entry.id;
+    state.currentId = id;
+  }
+  if (album.ids.includes(id)) { ui.toast('Already in this album'); return; }
+  store.setAlbumIds(album.id, [...album.ids, id]);
+  savedChanged();
+  refreshCard();
+  ui.toast(`Added to ${album.title}`);
+}
+
+async function shareAlbum(albumId) {
+  const album = store.loadAlbums().find((a) => a.id === albumId);
+  if (!album) return;
+  const byId = new Map(store.loadAll().map((e) => [e.id, e]));
+  const specs = album.ids.map((id) => byId.get(id)).filter(Boolean).map((e) => e.spec);
+  if (!specs.length) { ui.toast('That album is empty'); return; }
+  await offerCode(share.encodeAlbum(album.title, specs), `${album.title} · ${specs.length} loops`);
 }
 
 // Put a code where it can be taken. The clipboard is the quick path; the
@@ -427,7 +424,10 @@ async function offerCode(code, label) {
     await navigator.clipboard.writeText(code);
     ui.toast('Code copied');
   } catch {
-    ui.toast('Copy it from the box below');
+    // The box lives under Library > More; take them to it.
+    setView('library');
+    library.showMore();
+    ui.toast('Copy it from the box under Share');
   }
 }
 
@@ -447,32 +447,19 @@ function syncToneInputs(spec) {
   ui.el('bpmVal').textContent = spec.bpm;
 }
 
-function refreshSaved() {
-  ui.renderSaved(store.loadAll(), state.currentId, {
-    onOpen: (entry) => {
-      // One unreadable save should not take the app down with it.
-      try {
-        resetHistory(cloneSpec(entry.spec));
-        loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
-      } catch (err) {
-        console.warn('Could not open saved loop', err);
-        ui.toast('That saved loop could not be opened');
-        return;
-      }
-      if (!state.engine.playing) togglePlay();
-      ui.toast(`Loaded ${entry.spec.name}`);
-    },
-    onMidi: (entry) => exportMidi(cloneSpec(entry.spec)),
-    onDelete: (entry) => {
-      if (!store.remove(entry.id)) {
-        ui.toast('Could not delete - this browser is refusing to store data');
-        return;
-      }
-      if (state.currentId === entry.id) state.currentId = null;
-      refreshSaved();
-      ui.toast('Deleted');
-    },
-  });
+function openSaved(entry) {
+  // One unreadable save should not take the app down with it.
+  try {
+    state.playlist = null;
+    resetHistory(cloneSpec(entry.spec));
+    loadSpec(cloneSpec(entry.spec), { id: entry.id, pushToHistory: false });
+  } catch (err) {
+    console.warn('Could not open saved loop', err);
+    ui.toast('That saved loop could not be opened');
+    return;
+  }
+  if (!state.engine.playing) togglePlay();
+  ui.toast(`Loaded ${entry.spec.name}`);
 }
 
 // ------------------------------------------------------------ callbacks
@@ -501,8 +488,10 @@ function onStep(step) {
 }
 
 function onLoop(count) {
-  const limit = state.spec && state.spec.playFor;
-  ui.el('loopCounter').textContent = limit ? `pass ${count} of ${limit}` : `pass ${count}`;
+  state.passCount = count;
+  // The count only shows when a track length is set, and only on the card's
+  // loop side.
+  if (state.spec && state.spec.playFor && !library.shownAlbum()) renderLoopWords();
 }
 
 // A track that has run its length hands over: to the next loop in the album
@@ -546,8 +535,7 @@ function togglePlay() {
     state.engine.stop();
     state.media.stop();
     state.media.setPlaybackState(false);
-    ui.el('playBtn').setAttribute('aria-pressed', 'false');
-    ui.el('playLabel').textContent = 'Play';
+    setPlayButton(false);
     ui.moveCursor(lights, cells, -1);
     ui.resetCursor();
   } else {
@@ -556,9 +544,16 @@ function togglePlay() {
     if (!state.frameHandle) state.frameHandle = requestAnimationFrame(frameLoop);
     syncMediaMetadata();
     state.media.setPlaybackState(true);
-    ui.el('playBtn').setAttribute('aria-pressed', 'true');
-    ui.el('playLabel').textContent = 'Stop';
+    setPlayButton(true);
   }
+}
+
+function setPlayButton(playing) {
+  const b = ui.el('playBtn');
+  b.setAttribute('aria-pressed', String(playing));
+  b.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  b.title = playing ? 'Pause' : 'Play';
+  ui.setIcon(b, playing ? 'pause' : 'play');
 }
 
 function newLoop() {
@@ -578,7 +573,6 @@ function newLoop() {
   // Load the new spec without pushing it again
   loadSpec(s, { pushToHistory: false });
   state.engine.reset();
-  ui.el('loopCounter').textContent = 'pass 0';
   if (!state.engine.playing) togglePlay();
   ui.toast(`New loop: ${s.name}`);
   updateHistoryButtons();
@@ -609,15 +603,31 @@ function toggleMute(layer) {
   ui.renderGrids(cells, state.engine.live || state.pattern, Math.max(0, state.bar), state.spec.mutes);
 }
 
+// Saving a loop that is already saved keeps its tweaks in the same entry
+// (and so in any album it is in) instead of making a duplicate.
 function saveCurrent() {
   if (!state.spec) return;
+  if (isSaved()) {
+    const stored = store.loadAll().find((e) => e.id === state.currentId);
+    if (stored && JSON.stringify(stored.spec) === JSON.stringify(state.spec)) {
+      ui.toast(`${state.spec.name} is saved`);
+      return;
+    }
+    if (!store.replaceSpec(state.currentId, state.spec)) {
+      ui.toast('Could not save - this browser is refusing to store data');
+      return;
+    }
+    savedChanged();
+    ui.toast(`Saved changes to ${state.spec.name}`);
+    return;
+  }
   const entry = store.save(state.spec);
   if (!entry) {
     ui.toast('Could not save - this browser is refusing to store data');
     return;
   }
   state.currentId = entry.id;
-  refreshSaved();
+  savedChanged();
   ui.toast(`Saved ${state.spec.name}`);
 }
 
@@ -628,11 +638,86 @@ function exportMidi(spec = state.spec) {
   ui.toast('MIDI exported');
 }
 
+// Paste a song or album code: from the clipboard if the browser allows it,
+// otherwise from a box.
+async function pasteCode() {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    text = '';
+  }
+  if (!share.codeKind(text)) {
+    text = prompt('Paste a Driftloom code') || '';
+  }
+  const kind = share.codeKind(text);
+  if (!kind) {
+    if (text.trim()) ui.toast('That does not look like a Driftloom code');
+    return;
+  }
+  try {
+    if (kind === 'song') {
+      const spec = share.decodeSong(text);
+      const ids = store.addSpecs([spec]);
+      state.playlist = null;
+      loadSpec(spec, { id: ids ? ids[0] : null });
+      if (!state.engine.playing) togglePlay();
+      ui.toast(ids ? `Added ${spec.name}` : `Playing ${spec.name} (could not save it)`);
+    } else {
+      const { title, specs } = share.decodeAlbum(text);
+      const ids = store.addSpecs(specs);
+      if (!ids) {
+        ui.toast('Could not save those loops');
+        return;
+      }
+      const album = store.createAlbum(title);
+      if (album) store.setAlbumIds(album.id, ids);
+      savedChanged();
+      ui.toast(`Added ${title} · ${specs.length} loops`);
+    }
+  } catch (err) {
+    ui.toast(err.message || 'That code could not be read');
+  }
+}
+
 // ---------------------------------------------------------------- boot
 
 function wire() {
   lights = ui.buildPlayhead(state.gridSteps);
   cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, state.gridSteps);
+
+  ui.setIcon(ui.el('prevBtn'), 'prev');
+  ui.setIcon(ui.el('nextBtn'), 'next');
+  ui.setIcon(ui.el('libraryBtn'), 'library');
+  ui.setIcon(ui.el('newBtn'), 'spark');
+  setPlayButton(false);
+  updateSaveButton();
+
+  library.initLibrary({
+    state,
+    cardChanged: refreshCard,
+    savedChanged,
+    playAlbum,
+    addCurrentTo,
+    shareAlbum,
+    openSaved,
+    pasteCode,
+    exportMidi: (spec) => exportMidi(cloneSpec(spec)),
+  });
+
+  ui.el('libraryBtn').addEventListener('click', () => {
+    setView(state.view === 'library' ? state.lastView : 'library');
+  });
+  ui.el('viewBtn').addEventListener('click', () => {
+    if (state.view === 'library') setView(state.lastView);
+    else setView(state.view === 'sounds' ? 'layers' : 'sounds');
+  });
+
+  const nameEl = ui.el('loopName');
+  nameEl.addEventListener('click', startRename);
+  nameEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); startRename(); }
+  });
 
   ui.el('playBtn').addEventListener('click', togglePlay);
   ui.el('newBtn').addEventListener('click', newLoop);
@@ -641,31 +726,26 @@ function wire() {
   ui.el('prevBtn').addEventListener('click', goBack);
   ui.el('nextBtn').addEventListener('click', goForward);
 
-  ui.el('renameBtn').addEventListener('click', () => {
-    if (!state.spec) return;
-    const name = prompt('Name this loop', state.spec.name);
-    if (!name) return;
-    state.spec.name = name.trim().slice(0, 40);
-    ui.renderReadout(state.spec, state.pattern);
-    if (state.currentId) store.rename(state.currentId, state.spec.name);
-    refreshSaved();
-  });
-
-  ui.el('driftToggle').addEventListener('change', (e) => {
-    if (state.engine) {
-      state.engine.driftOn = e.target.checked;
-      if (!e.target.checked && state.engine.base) state.engine.live = state.engine.base;
-    }
-    store.setPrefs({ drift: e.target.checked });
-  });
+  // One slider for drift: all the way left is off, anywhere else is how far
+  // it strays. The label dims at off so the state reads at a glance.
   ui.el('driftAmount').addEventListener('input', (e) => {
-    if (state.engine) state.engine.driftAmount = parseFloat(e.target.value);
+    const v = parseFloat(e.target.value);
+    const on = v > 0;
+    if (state.engine) {
+      state.engine.driftOn = on;
+      if (on) state.engine.driftAmount = v;
+      else if (state.engine.base) state.engine.live = state.engine.base;
+    }
+    ui.el('wanderRow').classList.toggle('off', !on);
+    store.setPrefs(on ? { drift: true, driftAmount: v } : { drift: false });
   });
   ui.el('trackLen').addEventListener('input', (e) => {
     const passes = TRACK_LENGTHS[parseInt(e.target.value, 10)] || 0;
     if (state.spec) state.spec.playFor = passes || null;
     if (state.engine) state.engine.loopCount = 0;
     ui.el('lenVal').textContent = describeLength(passes, state.spec);
+    state.passCount = 0;
+    if (state.spec && !library.shownAlbum()) renderLoopWords();
   });
 
   ui.el('bpm').addEventListener('input', (e) => {
@@ -758,57 +838,7 @@ function wire() {
     }
   });
 
-  ui.el('pasteCode').addEventListener('click', async () => {
-    let text = '';
-    try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      text = '';
-    }
-    if (!share.codeKind(text)) {
-      text = prompt('Paste a Driftloom code') || '';
-    }
-    const kind = share.codeKind(text);
-    if (!kind) {
-      if (text.trim()) ui.toast('That does not look like a Driftloom code');
-      return;
-    }
-    try {
-      if (kind === 'song') {
-        const spec = share.decodeSong(text);
-        const ids = store.addSpecs([spec]);
-        refreshSaved();
-        loadSpec(spec, { id: ids ? ids[0] : null });
-        if (!state.engine.playing) togglePlay();
-        ui.toast(ids ? `Added ${spec.name}` : `Playing ${spec.name} (could not save it)`);
-      } else {
-        const { title, specs } = share.decodeAlbum(text);
-        const ids = store.addSpecs(specs);
-        if (!ids) {
-          ui.toast('Could not save those loops');
-          return;
-        }
-        const album = store.createAlbum(title);
-        if (album) store.setAlbumIds(album.id, ids);
-        refreshSaved();
-        refreshAlbums();
-        ui.toast(`Added ${title} · ${specs.length} loops`);
-      }
-    } catch (err) {
-      ui.toast(err.message || 'That code could not be read');
-    }
-  });
-
-  ui.el('newAlbum').addEventListener('click', () => {
-    const title = prompt('Name this album', 'Untitled');
-    if (!title) return;
-    if (!store.createAlbum(title.trim())) {
-      ui.toast('Could not create the album');
-      return;
-    }
-    refreshAlbums();
-    ui.toast(`Created ${title.trim()}`);
-  });
+  ui.el('pasteCode').addEventListener('click', pasteCode);
 
   ui.el('copyBackup').addEventListener('click', async () => {
     try {
@@ -829,7 +859,7 @@ function wire() {
     if (!text.trim()) return;
     try {
       const res = store.importAll(text);
-      refreshSaved();
+      savedChanged();
       if (res.failed) ui.toast('Could not save the restored loops');
       else if (res.added) ui.toast(`Restored ${res.added} loops${res.rejected ? `, skipped ${res.rejected}` : ''}`);
       else ui.toast(res.rejected ? `Skipped ${res.rejected} unreadable loops` : 'Nothing new in that backup');
@@ -842,7 +872,7 @@ function wire() {
     if (!file) return;
     try {
       const res = store.importAll(await file.text());
-      refreshSaved();
+      savedChanged();
       if (res.failed) ui.toast('Could not save the restored loops');
       else if (res.added) ui.toast(`Restored ${res.added} loops${res.rejected ? `, skipped ${res.rejected}` : ''}`);
       else ui.toast(res.rejected ? `Skipped ${res.rejected} unreadable loops` : 'Nothing new in that file');
@@ -884,7 +914,11 @@ function wire() {
   const prefs = store.getPrefs();
   state.lite = prefs.lite ?? cores <= 4;
   ui.el('liteMode').checked = state.lite;
-  ui.el('driftToggle').checked = prefs.drift ?? true;
+  // Drift was a switch plus an amount; the amount was never kept, so an old
+  // "on" comes back at the default distance.
+  const wander = prefs.drift === false ? 0 : (prefs.driftAmount ?? 1);
+  ui.el('driftAmount').value = wander;
+  ui.el('wanderRow').classList.toggle('off', !(wander > 0));
   if (prefs.volume != null) ui.el('volume').value = prefs.volume;
   const sync = prefs.playheadSync ?? 0;
   ui.el('playheadSync').value = sync;
@@ -897,13 +931,14 @@ function wire() {
   lights = ui.buildPlayhead(state.gridSteps);
   cells = ui.buildLayers({ onReroll: reroll, onMute: toggleMute }, state.gridSteps);
   ui.resetCursor();
-  drawCoverFor(state.spec);
-  refreshAlbums();
   resetHistory(state.spec);
-  ui.renderReadout(state.spec, { meta: { kit: 'none' } });
   syncToneInputs(state.spec);
-  refreshSaved();
+  setView(prefs.view === 'sounds' ? 'sounds' : 'layers');
   updateHistoryButtons();
+  updateSaveButton();
+
+  // The name's size depends on the card's width.
+  window.addEventListener('resize', () => ui.fitName());
 }
 
 wire();
