@@ -702,17 +702,25 @@ a custom wave, vibrato, slurs, a body of filters, and a filter that moves;
 every `fm()` voice, sine and tubular (item 23); the wave-table voices
 (item 24); the accordion and the nylon guitar (item 25); and the stab,
 ocarina, flute, pan flute, prepared's knock and temple bell, on the noise
-and the bandpass (item 26). Bass, textures, drums and the sung voices
-still play in JavaScript.
+and the bandpass (item 26); bass, textures and drums (item 27); and the
+sung voices (item 28), so every voice. Then the rest of the sound path:
+the mix -- the five channels, their sends, the kick's duck, the echo, the
+reverb and the tails (item 29).
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
-an AudioWorklet (`js/worklet.js`) with one output into each channel it
-serves, so a Rust note takes the same echo, reverb, ducking, mutes and
-master chain as a JavaScript one. JavaScript keeps everything else:
-scheduling, the voice budget (asked exactly as the JavaScript voice asks
-it), every `Math.random` draw, and every other voice. A note travels to the
-worklet with its absolute start time and starts on its exact sample.
+an AudioWorklet (`js/worklet.js`) with one input per channel and one output,
+the mix, which feeds the master chain (`preBus` onward) in JavaScript. Each
+channel's node, where every voice plays into, becomes the core's input for
+that channel: a note the core cannot take (before it has loaded, a sung
+note too long for it) plays there in Web Audio and reaches the core's mix
+like any other. `setTone`, `setEchoTime`, `setMute`, `duck` and the tails'
+fades go to the core as AudioParam calls, which it runs on a port of
+Chromium's own timeline (`timeline.rs`). If the core fails, the JavaScript
+mix takes everything back. JavaScript keeps everything else: scheduling,
+the voice budget (asked exactly as the JavaScript voice asks it), every
+`Math.random` draw, and the master chain. A note travels to the worklet
+with its absolute start time and starts on its exact sample.
 
 The core (`core/`) is a Rust library with no dependencies and nothing
 browser in it: a queue of waiting notes, a fixed pool of voices, and
@@ -733,7 +741,13 @@ strike plays is the synth's own -- drawn from `Math.random` as it is built
 -- so JavaScript hands its samples to the core once per synth (`noise.rs`,
 up to two seconds at 96 kHz; a faster context keeps its noise voices in
 JavaScript), and a source plays it the way Chromium plays an
-`AudioBufferSourceNode`. `cargo test` in `core/` runs its own tests.
+`AudioBufferSourceNode`. The mix (`mix.rs`) is `_build()` node for node,
+with Chromium's delay line (`delay.rs`: a buffer a block longer than the
+longest delay, read every frame in 32-bit floats) and its way with a
+feedback loop: a node renders once a block, and one pulled again while it
+renders hands over its last block, so the echo and each comb go round a
+block (128 frames) later than their delay alone. `cargo test` in `core/`
+runs its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -768,7 +782,11 @@ reports the difference against what the voice plays. Nylon is also
 strummed twice, the second strum damping the first: both scheduled before
 the render, the second scheduled mid-render (as the app does), and a damp
 that comes after its time. Notes null to about
--100 dB and loops to their own floor. Before the voices that play the
+-100 dB and loops to their own floor. Last, the mix stage on its own:
+impulses, swept sines and noise played into all five channels at once and
+read at `preBus`, with `setTone`, the echo's time, mutes, ducks on
+fractions of a frame and the tails' fades, some called mid-render, on full
+and lite; `--null --mix` runs that alone. Before the voices that play the
 noise, the noise source is proven alone: the hat's graph -- a grain through
 a highpass under a gain -- on the melody channel. That took matching Chromium where it
 is not the obvious reading of the spec, measured and then read in its

@@ -13,11 +13,20 @@
 // across is less certain on iOS Safari, the target. No SharedArrayBuffer,
 // no threads, nothing that needs special headers.
 //
-// One output per channel the core serves, each connected by the synth into
-// that channel's input, so echo, reverb, ducking, mutes, silence() and the
-// master chain treat these notes exactly as JavaScript ones.
+// Since queue item 29 the core mixes too: one input per channel, where the
+// synth's own notes for that channel arrive (a note the core could not
+// take), and one output, the mix -- the channel gains, the sends, the duck,
+// the echo and the reverb -- which the synth sends on to its master chain.
+// With `taps`, five more outputs carry each channel as it went into the mix
+// (the measure harness reads them).
 
 const QUANTUM = 128;
+const CHANNELS = 5;
+
+// `n` runs of a block each, from `at` in the core's memory.
+function runs(buffer, at, n) {
+  return Array.from({ length: n }, (_, c) => new Float32Array(buffer, at + c * QUANTUM * 4, QUANTUM));
+}
 // Core::note's answers (core/src/lib.rs, Taken).
 const LATE = 1;
 const FULL = 2;
@@ -28,11 +37,15 @@ class DriftloomCore extends AudioWorkletProcessor {
     this.alive = true;
     this.core = null;
     this.views = null;
-    this.outputs = options.numberOfOutputs;
+    this.taps = options.numberOfOutputs > 1;
     try {
       const module = new WebAssembly.Module(options.processorOptions.bytes);
       this.core = new WebAssembly.Instance(module, {}).exports;
       this.core.dl_init(sampleRate);
+      // The mix as the synth builds it: three combs on lite, six on full.
+      if (!this.core.dl_quality(options.processorOptions.quality === 'lite' ? 0 : 1)) {
+        throw new Error(`no mix at ${sampleRate} Hz`);
+      }
       // The synth's noise, once (core/src/noise.rs). Too long for the core
       // and it keeps none: the synth plays its noise voices in JS.
       const noise = options.processorOptions.noise;
@@ -75,6 +88,9 @@ class DriftloomCore extends AudioWorkletProcessor {
       case 'damp':
         if (core) core.dl_damp(m.channel, m.time);
         return;
+      case 'param':
+        if (core) core.dl_param(m.id, m.op, m.value, m.time, m.tau);
+        return;
       case 'dispose':
         // Clear everything, and let go of the instance so its memory can be
         // reclaimed: a browser holds only so many WebAssembly memories at
@@ -106,20 +122,34 @@ class DriftloomCore extends AudioWorkletProcessor {
     if (!this.alive) return false;
     const core = this.core;
     if (!core) return true;
-    const at = core.dl_process(currentFrame);
-    // Views onto the core's output buffers, made once: the buffers never
-    // move, and the memory never grows, since nothing allocates after
-    // init. A new view every block would be garbage every block.
-    if (!this.views || this.views.at !== at || this.views.buffer !== core.memory.buffer) {
+    // Views onto the core's buffers, made once: the buffers never move, and
+    // the memory never grows, since nothing allocates after init. A new
+    // view every block would be garbage every block.
+    if (!this.views || this.views.buffer !== core.memory.buffer) {
       const buffer = core.memory.buffer;
-      this.views = { at, buffer, channels: [] };
-      for (let c = 0; c < this.outputs; c++) {
-        this.views.channels.push(new Float32Array(buffer, at + c * QUANTUM * 4, QUANTUM));
-      }
+      this.views = {
+        buffer,
+        inputs: runs(buffer, core.dl_inputs(), CHANNELS),
+        bus: runs(buffer, core.dl_bus(), 1)[0],
+        channels: null,
+      };
     }
-    for (let c = 0; c < this.outputs; c++) {
-      const out = outputs[c] && outputs[c][0];
-      if (out && out.length === QUANTUM) out.set(this.views.channels[c]);
+    const views = this.views;
+    // The synth's own notes, channel by channel. An input with nothing
+    // connected has no channels; the core clears what it took.
+    for (let c = 0; c < CHANNELS; c++) {
+      const input = inputs[c] && inputs[c][0];
+      if (input && input.length === QUANTUM) views.inputs[c].set(input);
+    }
+    const at = core.dl_process(currentFrame);
+    const out = outputs[0] && outputs[0][0];
+    if (out && out.length === QUANTUM) out.set(views.bus);
+    if (this.taps) {
+      if (!views.channels) views.channels = runs(views.buffer, at, CHANNELS);
+      for (let c = 0; c < CHANNELS; c++) {
+        const tap = outputs[c + 1] && outputs[c + 1][0];
+        if (tap && tap.length === QUANTUM) tap.set(views.channels[c]);
+      }
     }
     return true;
   }

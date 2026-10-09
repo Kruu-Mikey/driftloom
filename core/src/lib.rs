@@ -18,15 +18,18 @@
 
 pub mod bass;
 pub mod breath;
+pub mod delay;
 pub mod drums;
 pub mod filter;
 pub mod folk;
 pub mod lead;
+pub mod mix;
 pub mod noise;
 pub mod osc;
 pub mod param;
 pub mod sung;
 pub mod texture;
+pub mod timeline;
 pub mod voice;
 pub mod wave;
 
@@ -38,6 +41,7 @@ use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
 use drums::Drum;
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
+use mix::Mix;
 use noise::Noise;
 use sung::{Kind3, Sung};
 use texture::Texture;
@@ -49,10 +53,11 @@ use wave::{Fft, Waves};
 /// is called; a host with another block size buffers.
 pub const QUANTUM: usize = 128;
 
-/// The channels the core plays into, in the order of its outputs. Each is
-/// one of the synth's per-layer channels, so a note from here takes the
-/// same echo, reverb, ducking and master chain as one built in JavaScript.
-/// All five of them (queue item 27).
+/// The channels the core plays into. Each is one of the synth's per-layer
+/// channels: all five of them (queue item 27). Since queue item 29 the core
+/// mixes them too (`mix`), with the host's own notes for each (`inputs`),
+/// through the channel gains, the sends, the duck, the echo and the reverb,
+/// into one bus (`bus`).
 pub const CHANNELS: usize = 5;
 pub const MELODY: u32 = 0;
 pub const CHORDS: u32 = 1;
@@ -337,6 +342,10 @@ pub struct Core {
     /// The waiting sung notes' draws, and where the next goes.
     arena: [f64; ARENA],
     arena_at: usize,
+    /// What the host plays into each channel itself, for this block: notes
+    /// it could not hand over (`inputs`).
+    inputs: [[f32; QUANTUM]; CHANNELS],
+    mix: Mix,
     late: u32,
     dropped: u32,
 }
@@ -364,6 +373,8 @@ impl Core {
             staged: 0,
             arena: [0.0; ARENA],
             arena_at: 0,
+            inputs: [[0.0; QUANTUM]; CHANNELS],
+            mix: Mix::new(),
             late: 0,
             dropped: 0,
         }
@@ -385,6 +396,47 @@ impl Core {
             }
         }
         self.strums = [0; CHANNELS];
+        self.inputs = [[0.0; QUANTUM]; CHANNELS];
+        self.mix.init(rate, true);
+    }
+
+    /// The mix as the synth builds it on lite quality (three combs, not
+    /// six) or full. Call after `init`, before the first block: it builds
+    /// the mix afresh.
+    pub fn quality(&mut self, full: bool) {
+        self.mix.init(self.rate, full);
+    }
+
+    /// Whether the core mixes at this sample rate (`mix::MAX_RATE`). A
+    /// host whose core does not plays the mix itself.
+    pub fn mixing(&self) -> bool {
+        self.mix.ready()
+    }
+
+    /// Move one of the mix's parameters (`mix::GAINS` and the rest) the way
+    /// the AudioParam call `op` would (`mix::SET`, `LINEAR`, `TARGET`,
+    /// `CANCEL`): to `value` at `time` seconds, with time constant `tau` for
+    /// a target. A time already rendered is the next block's start, as
+    /// Chromium has it. False if there is no such parameter or call, or the
+    /// parameter holds as many events as it can.
+    pub fn param(&mut self, id: u32, op: u32, value: f64, time: f64, tau: f64) -> bool {
+        if !(value.is_finite() && time.is_finite() && tau.is_finite()) || self.rate <= 0.0 {
+            return false;
+        }
+        let now = self.next as f64 / self.rate;
+        self.mix.param(id, op, value as f32, time, tau, now)
+    }
+
+    /// Where the host writes what it plays into each channel for the next
+    /// block, `QUANTUM` samples a channel; `process` adds it in and clears
+    /// it.
+    pub fn inputs(&mut self) -> &mut [[f32; QUANTUM]; CHANNELS] {
+        &mut self.inputs
+    }
+
+    /// The mix of the last block rendered: what the synth's `preBus` gets.
+    pub fn bus(&self) -> &[f32; QUANTUM] {
+        self.mix.bus()
     }
 
     /// Let every voice go at once, sounding or waiting: the host is going
@@ -830,8 +882,10 @@ impl Core {
     }
 
     /// Render the block of `QUANTUM` frames that starts at frame `block`
-    /// (a multiple of `QUANTUM`; blocks come in order), into the output
-    /// buffers, and return them, one per channel.
+    /// (a multiple of `QUANTUM`; blocks come in order): every voice into its
+    /// channel, with what the host wrote into `inputs`, and the channels
+    /// through the mix into the bus (`bus`). Returns the channels, one
+    /// buffer each, as they went into the mix.
     pub fn process(&mut self, block: u64) -> &[[f32; QUANTUM]; CHANNELS] {
         let end = block + QUANTUM as u64;
         self.next = end;
@@ -918,6 +972,14 @@ impl Core {
                 body.run(bus, out);
             }
         }
+        // The host's own notes, then the mix.
+        for (out, input) in self.out.iter_mut().zip(self.inputs.iter_mut()) {
+            for (y, x) in out.iter_mut().zip(input.iter()) {
+                *y += *x;
+            }
+            input.fill(0.0);
+        }
+        self.mix.process(block, &self.out);
         &self.out
     }
 }

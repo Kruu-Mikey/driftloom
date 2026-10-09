@@ -4,12 +4,11 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-09:** items 0-28 are done (13 stopped at its gate by
-design): every voice plays from the Rust core behind `?engine=rust`.
-Nothing is queued. Per "After item 28, stop": the brain verifies, Mikey
-listens to one labeled album across the new voices, and then he decides
-what is next. A new Claude Code session starts here: read the standing
-rules and the merge policy, then take the next item once there is one.
+**Status, 2026-10-09:** items 0-29 are done (13 stopped at its gate by
+design): every voice and the mix (channels, sends, duck, echo, reverb) play
+from the Rust core behind `?engine=rust`. Items 30-31 are queued (the
+master chain). A new Claude Code session starts here: read the standing
+rules and the merge policy, then take the next item.
 
 ## Standing rules, for every item
 
@@ -1464,3 +1463,12 @@ Mikey decides this line:
   Play a `hollow` loop and check Diagnostics reads `engine: rust  late: 0
   fallback: 0`; listen for the scoop into each note, the vowel opening on
   long ones, and the breath at the start. Core memory 12.4 MB.
+- #147, the Rust core's ninth step: the mix (item 29, v78),
+  https://8b136266-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the core mixes: the
+  channel gains and mutes, the reverb and echo sends, the kick's duck, the
+  echo, the reverb's combs and pre-delay, and the tails' fades, into the
+  master chain at `preBus` (a mix-stage null at -143 to -175 dB; whole
+  loops at the JS-against-JS floor). Play a roomy loop (haven, tide),
+  re-roll a few times, mute and unmute a layer, and check Diagnostics reads
+  `engine: rust  late: 0  fallback: 0`. Core memory 14.4 MB.

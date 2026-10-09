@@ -161,6 +161,18 @@ impl Biquad {
         self.a2 = a2 * inv;
     }
 
+    /// Take another filter's coefficients, as worked out for its last
+    /// `set`: filters that share their parameters work them out once.
+    pub fn follow(&mut self, other: &Biquad) {
+        self.b0 = other.b0;
+        self.b1 = other.b1;
+        self.b2 = other.b2;
+        self.a1 = other.a1;
+        self.a2 = other.a2;
+        self.last = other.last;
+        self.ready = other.ready;
+    }
+
     pub fn step(&mut self, x: f32) -> f32 {
         let x = x as f64;
         let y = (self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
