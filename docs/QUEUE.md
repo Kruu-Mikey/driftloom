@@ -1097,7 +1097,11 @@ that a stereo output is a later change, not a rewrite: the ears reports
 put stereo first among the next sound items; Chromium's compressor links
 its channels' detection), then `master` (`setVolume`,
 `setCharacterLevel`) and `kill` (`silence`, `unsilence`). The worklet's
-output goes straight to the destination. Prove both compressors with
+output goes straight to the destination. Performance A/Bs from here on
+alternate which build runs first (the sandbox VM freezes now and then,
+and slot order showed in item 30's first A/Bs); trace any long quantum
+(`perf.mjs --trace-dir/--trace-over`) before blaming code. Prove both
+compressors with
 level steps, bursts, and loops at the catalog's loudest (the loudest
 loops reach about 0.85 peak; find a few that push `ceiling`), and the
 whole app path: play, stop, re-roll, "let the loop wander", the hidden
