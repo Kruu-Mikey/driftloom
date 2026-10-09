@@ -141,7 +141,16 @@ class DriftloomCore extends AudioWorkletProcessor {
       const input = inputs[c] && inputs[c][0];
       if (input && input.length === QUANTUM) views.inputs[c].set(input);
     }
-    const at = core.dl_process(currentFrame);
+    // The block to render: `currentFrame`, unless it says the block before
+    // the one just rendered. Chromium sometimes hands a process() call the
+    // last block's frame while it renders the next (seen in offline
+    // renders: 9088 again where 9216 was due, then 9344), and a block
+    // rendered as the last one would play every envelope in it 128 frames
+    // late. A real gap -- a block the node was not asked for -- still moves
+    // the core on.
+    const block = this.next !== undefined && currentFrame < this.next ? this.next : currentFrame;
+    this.next = block + QUANTUM;
+    const at = core.dl_process(block);
     const out = outputs[0] && outputs[0][0];
     if (out && out.length === QUANTUM) out.set(views.bus);
     if (this.taps) {

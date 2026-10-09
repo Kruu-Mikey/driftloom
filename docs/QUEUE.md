@@ -1475,3 +1475,9 @@ Mikey decides this line:
   loops at the JS-against-JS floor). Play a roomy loop (haven, tide),
   re-roll a few times, mute and unmute a layer, and check Diagnostics reads
   `engine: rust  late: 0  fallback: 0`. Core memory 14.4 MB.
+- #150, the worklet's block count (v79),
+  https://db3590ea-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing to listen for. Chromium sometimes hands the core's worklet the last
+  block's frame number while it renders the next; the core then played that
+  block's envelopes 128 frames late (about one note in fifty on item 30's
+  build, none seen on item 29's). The worklet now keeps its own count.
