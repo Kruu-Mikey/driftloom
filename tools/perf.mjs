@@ -200,6 +200,7 @@ function parseArgs(argv) {
       case '--trace-dir': o.traceDir = path.resolve(next()); break;
       case '--trace-over': o.traceOver = Number(next()); break;
       case '--trace-extra': o.traceExtra = true; break;
+      case '--trace-all': o.traceAll = true; break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${a}`);
     }
@@ -294,6 +295,21 @@ async function launch(chromePath) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The whole machine's CPU over a window, from /proc/stat (Linux only):
+// how busy it was, and how much the host took back (steal), each as a
+// share of all CPUs' time.
+function procStat() {
+  try {
+    const f = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
+    return { total: f.reduce((a, b) => a + b, 0), idle: f[3] + f[4], steal: f[7] || 0 };
+  } catch { return null; }
+}
+function cpuShare(a, b) {
+  if (!a || !b || b.total <= a.total) return null;
+  const t = b.total - a.total;
+  return { busy: +((1 - (b.idle - a.idle) / t) * 100).toFixed(1), steal: +(((b.steal - a.steal) / t) * 100).toFixed(2) };
+}
 
 // ------------------------------------------------------- the file server
 
@@ -844,6 +860,7 @@ async function run(opts, chromePath, cfg) {
     const m0 = await tab.metrics();
     const s0 = await tab.snap();
     const fillTimes = [];
+    const cpu0 = procStat();
     const stop = await traceStart(b, opts.traceExtra);
     if (opts.gcEvery > 0) {
       await tab.send('HeapProfiler.enable');
@@ -871,13 +888,14 @@ async function run(opts, chromePath, cfg) {
     }
     const m1 = await tab.metrics();
     const s1 = await tab.snap();
+    const cpu1 = procStat();
     const events = await stop();
     const trace = readTrace(events, cfg.seconds);
     // A run with a long quantum keeps its trace (--trace-dir), the page's
     // renderer only, to read what its audio thread was doing then.
     if (opts.traceDir && trace.worstRenderMs > opts.traceOver) {
       fs.mkdirSync(opts.traceDir, { recursive: true });
-      const keep = events.filter((e) => e.pid === trace.pid);
+      const keep = opts.traceAll ? events : events.filter((e) => e.pid === trace.pid);
       const file = path.join(opts.traceDir, `${opts.side || 'run'}-${result.loop}-${cfg.quality}-${cfg.throttle}x-${Date.now()}.json`);
       fs.writeFileSync(file, JSON.stringify({ traceEvents: keep }));
       result.traceFile = file;
@@ -894,7 +912,7 @@ async function run(opts, chromePath, cfg) {
     }
     Object.assign(result, perSecond(m0, m1, s0, s1, trace, cfg.seconds), {
       lateTicks: diag.lateTicks, worstLateMs: diag.worstLateMs, ticks: diag.ticks, clock: diag.clock,
-      visibility: s1.visibility, split, fillTimes,
+      visibility: s1.visibility, split, fillTimes, machine: cpuShare(cpu0, cpu1),
     });
     return result;
   } finally {
