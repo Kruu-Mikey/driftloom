@@ -3009,6 +3009,111 @@ export class Synth {
 
   // ------------------------------------------------------------ texture
 
+  // ---------------------------------------------------- prototypes
+  // Ears batch two. Each is only called when globalThis.PROTO asks for it.
+
+  // Dub stab: a short chord through a narrow 500-900 Hz band, thrown into
+  // the echo (Basic Channel's "Quadrant Dub", Porter Ricks).
+  dubStab(notes, time, vel) {
+    if (!this._budget(time, true, 10)) return;
+    const ctx = this.ctx;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(820, time);
+    bp.frequency.exponentialRampToValueAtTime(560, time + 0.16);
+    bp.Q.value = 1.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.001, vel * 0.9), time + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.2);
+    const throwGain = ctx.createGain();
+    throwGain.gain.value = 0.9;
+    for (const m of notes) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = midiToFreq(m);
+      o.connect(bp);
+      o.start(time); o.stop(time + 0.25);
+    }
+    bp.connect(g);
+    g.connect(this.channels.chords.gain);
+    g.connect(throwGain).connect(this.echoIn);
+    this._release(time, 0.3, 10);
+  }
+
+  // Organ: soft drawbars (16', 8', 5 1/3', 4') held across the chord,
+  // with a slow swell and a gentle rotary tremolo (OPN's "Boring Angel",
+  // Harmonia).
+  organ(notes, time, dur, vel) {
+    if (!this._budget(time, true, 14)) return;
+    const ctx = this.ctx;
+    const g = ctx.createGain();
+    const peak = Math.max(0.001, vel * 0.035 / Math.sqrt(notes.length));
+    g.gain.setValueAtTime(0.0001, time);
+    g.gain.linearRampToValueAtTime(peak, time + 0.6);
+    g.gain.setValueAtTime(peak, time + Math.max(0.6, dur));
+    g.gain.linearRampToValueAtTime(0.0001, time + Math.max(0.6, dur) + 0.8);
+    const trem = ctx.createGain();
+    trem.gain.value = 1;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 5.4;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.12;
+    lfo.connect(depth).connect(trem.gain);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2400;
+    const end = time + Math.max(0.6, dur) + 0.9;
+    for (let m of notes) {
+      while (m > 67) m -= 12;
+      for (const [mult, lvl] of [[0.5, 0.7], [1, 1], [1.5, 0.45], [2, 0.3]]) {
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.value = midiToFreq(m) * mult;
+        const og = ctx.createGain();
+        og.gain.value = lvl;
+        o.connect(og).connect(lp);
+        o.start(time); o.stop(end);
+      }
+    }
+    lp.connect(trem).connect(g).connect(this.channels.chords.gain);
+    lfo.start(time); lfo.stop(end);
+    this._release(time, Math.max(0.6, dur) + 0.9, 14);
+  }
+
+  // Wash: filtered noise that swells and recedes once every `period`
+  // seconds, wide and soft (Porter Ricks' "Port Gentil").
+  startWash(t0, period = 20, seconds = 600) {
+    const ctx = this.ctx;
+    const merge = ctx.createChannelMerger(2);
+    for (const [ch, offset] of [[0, 0], [1, 0.73]]) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      src.connect(merge, 0, ch);
+      src.start(t0, offset);
+      src.stop(t0 + seconds);
+    }
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.9;
+    const g = ctx.createGain();
+    const n = 256;
+    const level = new Float32Array(n);
+    const freq = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const ph = Math.pow(Math.sin(Math.PI * i / (n - 1)), 2);
+      level[i] = 0.0001 + 0.06 * ph;
+      freq[i] = 500 * Math.pow(4, ph);
+    }
+    g.gain.value = 0.0001;
+    for (let t = t0 + period / 2; t < t0 + seconds - period; t += period) {
+      g.gain.setValueCurveAtTime(level, t, period * 0.75);
+      bp.frequency.setValueCurveAtTime(freq, t, period * 0.75);
+    }
+    merge.connect(bp).connect(g).connect(this.channels.texture.gain);
+  }
+
   texture(kind, notes, time, dur, vel, opts = {}) {
     const ctx = this.ctx;
     const out = this.channels.texture.gain;

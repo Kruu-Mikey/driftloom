@@ -17,7 +17,7 @@ const BUILD = 'v79';
 {
   const asked = new URLSearchParams(location.search).get('proto');
   if (asked) {
-    const ALL = ['roundBass', 'glass', 'floorDrop', 'stereo', 'arc'];
+    const ALL = ['roundBass', 'glass', 'floorDrop', 'stereo', 'arc', 'dubStab', 'organ', 'wash', 'longChords'];
     const names = asked === 'all' ? ALL : asked.split(',').map((s) => s.trim()).filter(Boolean);
     globalThis.PROTO = Object.fromEntries(names.map((n) => [n, true]));
   }

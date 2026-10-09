@@ -621,8 +621,13 @@ function genHarmony(spec, vary = null, besides = null) {
   const events = [];
   let prevVoicing = null;
 
+  // Prototype (ears batch two): long chords -- each chord held for about
+  // eight seconds (two to four bars by tempo) instead of one slot.
+  const hold = (globalThis.PROTO || {}).longChords
+    ? Math.max(1, Math.min(4 * chordsPerBar, Math.ceil(8 / ((spb * 60 / spec.bpm / 4) / chordsPerBar))))
+    : 1;
   for (let s = 0; s < slotCount; s++) {
-    const chord = shape[s % shape.length];
+    const chord = shape[Math.floor(s / hold) % shape.length];
     const degree = stepDegree(chord);
     // A spelled chord is built, sevenths and ninths too, in its own scale.
     const steps = typeof chord === 'number' ? scale : spelledSteps(scale, chord);
