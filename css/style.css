@@ -145,6 +145,23 @@ body {
 .loop-detail .feel { color: #a9c7bf; }
 .loop-detail .faint { color: var(--dim); }
 .loop-detail .album-line { color: var(--amber); }
+/* The album line's cross: small, but a real tap target. */
+.loop-detail li.has-action { display: flex; align-items: center; gap: 6px; }
+.line-text { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.line-action {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  margin: -2px 0;
+  color: var(--amber);
+  background: transparent;
+  border-color: #56463a;
+}
+.line-action svg { width: 14px; height: 14px; }
 .loop-detail.tight { font-size: 11px; line-height: 1.4; }
 
 .playhead {

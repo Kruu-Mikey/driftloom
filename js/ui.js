@@ -74,6 +74,7 @@ export function renderReadout(spec, pattern, extra = {}) {
     meter: `${meter} · ${spec.bars} bars`,
     shape: shape.join(' · '),
     album: extra.album || '',
+    leave: extra.onLeaveAlbum || null,
     pass: extra.pass || '',
   };
   // The card is as tall as its art and no taller, so a loop with a lot to
@@ -88,23 +89,30 @@ export function renderReadout(spec, pattern, extra = {}) {
   if (bpm) bpm.textContent = spec.bpm;
 }
 
+// Folding never joins two long facts onto one line, since the column is
+// narrow and a cut-off tempo is worse than a missing third feeling. In
+// order: the lesser feelings go, then the third style, then the form word
+// joins the tempo, then the second style, then the type gets smaller.
 function readoutLines(p, level) {
   const lines = [];
-  const mix = level >= 4 ? p.mix.slice(0, 1) : level >= 3 ? p.mix.slice(0, 2) : p.mix;
-  const feel = level >= 2 ? p.feel.slice(0, 1) : p.feel;
+  const feel = level >= 1 ? p.feel.slice(0, 1) : p.feel;
+  const mix = level >= 4 ? p.mix.slice(0, 1) : level >= 2 ? p.mix.slice(0, 2) : p.mix;
   for (const m of mix) lines.push([m, 'mix']);
   for (const f of feel) lines.push([f, 'feel']);
-  let meter = p.meter;
-  if (level >= 1) {
-    lines.push([`${p.key} · ${p.bpm}`]);
-    lines.push([p.shape ? `${meter} · ${p.shape}` : meter]);
+  lines.push([p.key]);
+  if (p.shape && level >= 3) {
+    lines.push([`${p.bpm} · ${p.shape}`]);
+    lines.push([p.meter]);
   } else {
-    lines.push([p.key]);
     lines.push([p.bpm]);
-    lines.push([meter]);
+    lines.push([p.meter]);
     if (p.shape) lines.push([p.shape]);
   }
-  if (p.album) lines.push([p.album, 'album-line']);
+  if (p.album) {
+    lines.push([p.album, 'album-line', p.leave && {
+      icon: 'close', title: 'Leave the album (Next makes new loops again)', onClick: p.leave,
+    }]);
+  }
   if (p.pass) lines.push([p.pass, 'faint']);
   return lines;
 }
@@ -139,7 +147,9 @@ export function renderAlbumCard(title, specs, extra = {}) {
     const secs = specs.reduce((t, s) => t + passSeconds(s), 0);
     lines.push([`~${formatTime(secs)} once through`]);
   }
-  if (extra.playing) lines.push([extra.playing, 'album-line']);
+  // What is playing stays on the card while you look at an album, whether
+  // or not it is one of this album's tracks.
+  if (extra.nowPlaying) lines.push([`\u25B8 ${extra.nowPlaying}`, 'album-line']);
   setLines(lines);
   if (overflowing()) el('loopDetail').classList.add('tight');
 }
@@ -186,10 +196,30 @@ function setLines(lines) {
   const host = el('loopDetail');
   host.classList.remove('tight');
   host.innerHTML = '';
-  for (const [text, cls] of lines) {
+  for (const [text, cls, action] of lines) {
     const li = document.createElement('li');
-    li.textContent = text;
     if (cls) li.className = cls;
+    if (action) {
+      // The words give way (ellipsis) so the button always fits.
+      const span = document.createElement('span');
+      span.className = 'line-text';
+      span.textContent = text;
+      li.appendChild(span);
+    } else {
+      li.textContent = text;
+    }
+    // A line can carry one small button of its own (the album line's
+    // "leave the album" cross).
+    if (action) {
+      const b = document.createElement('button');
+      b.className = 'line-action';
+      b.title = action.title;
+      b.setAttribute('aria-label', action.title);
+      b.innerHTML = icon(action.icon);
+      b.addEventListener('click', (e) => { e.stopPropagation(); action.onClick(); });
+      li.appendChild(b);
+      li.classList.add('has-action');
+    }
     host.appendChild(li);
   }
 }
@@ -366,6 +396,7 @@ const ICONS = {
   share: '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>'
     + '<path d="m8.3 13.3 7.4 4.4"/><path d="m15.7 6.3-7.4 4.4"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
+  close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   sounds: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   layers: '<path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="m2.5 16.75 9.5 4.75 9.5-4.75"/><path d="m2.5 12 9.5 4.75L21.5 12"/>',
