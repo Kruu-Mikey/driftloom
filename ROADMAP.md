@@ -753,7 +753,7 @@ notes than the catalog (mean 2.9% and 3.5% against 1.5%), the same on
 the old code. The fixes above are the likely remedy; re-measure both
 profiles when this item is done.
 
-## 16. A compiled audio engine (Rust) — **L** — *synth now (kalimba, fiddle, pad shipped; every other voice queued as items 23-28), generator after the words*
+## 16. A compiled audio engine (Rust) — **L** — *every voice in the core behind the flag (items 21-28); effects and master chain queued as items 29-31; generator after the words*
 
 **Timing, 2026-10-03 (Mikey):** start now. "Settled" never fully arrives
 on a project he'll keep growing. The synth ports first, now: the voices
