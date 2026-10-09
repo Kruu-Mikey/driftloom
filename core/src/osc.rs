@@ -205,6 +205,33 @@ impl TableOsc {
     }
 }
 
+impl TableOsc {
+    /// The block from frame `block` at a steady `freq`, as `render` would
+    /// play it, without reading the table: only its place in the table
+    /// moves. For a host that starts rendering after the oscillator began
+    /// (the wobble's LFOs, `master`).
+    pub fn skip(&mut self, block: u64, wave: &Wave, freq: f32, rate: f32) {
+        let end = block + QUANTUM as u64;
+        let first = self.start >= block && self.start < end;
+        let skip = u64::from(first && self.at > self.start as f64);
+        let lo = self.start.max(block) + skip;
+        let hi = self.stop.min(end);
+        let f = within(freq, rate / 2.0);
+        let rate_scale = wave.rate_scale();
+        if lo >= hi {
+            if skip == 1 && lo == end {
+                self.lead(f, rate_scale);
+            }
+            return;
+        }
+        if first {
+            self.lead(f, rate_scale);
+        }
+        let n = (hi - lo) as f32;
+        self.index = wrap_to(self.index + (n * (f * rate_scale)) as f64, wave.size() as f64);
+    }
+}
+
 impl Default for TableOsc {
     fn default() -> Self {
         Self::new()

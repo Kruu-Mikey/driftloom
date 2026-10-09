@@ -512,7 +512,8 @@ export class Synth {
   // voice plays into, stops being the channel's gain and becomes the
   // core's input for it, at unity: what the core takes never passes
   // through it, and what it cannot take (a fallback note) reaches the
-  // core's mix there. The core's mix goes to preBus in place of the
+  // core's mix there. The core's mix, through the wobble, saturator, tone
+  // and highpass (item 30), goes to the bus compressor in place of the
   // JavaScript one.
   _mixInCore() {
     const node = this.core.node;
@@ -523,14 +524,16 @@ export class Synth {
       g.gain.value = 1;
       g.connect(node, 0, i);
     });
-    node.connect(this.preBus, 0);
-    // The JavaScript mix now hears nothing. Cut it off from preBus, so
-    // Web Audio stops rendering it -- at once if nothing has played yet,
-    // and once its tails have died away if the core arrived mid-play.
+    node.connect(this.comp, 0);
+    this.core.param(MIX.lfoStart, SET, 0, this._lfoStart);
+    // The JavaScript mix and chain now hear nothing. Cut them off, so Web
+    // Audio stops rendering them -- at once if nothing has played yet, and
+    // once their tails have died away if the core arrived mid-play.
     const cut = () => {
       this._ringOut = null;
       try { this.tails.disconnect(); } catch { /* already detached */ }
       try { this.pumpBus.disconnect(); } catch { /* already detached */ }
+      try { this.hp.disconnect(); } catch { /* already detached */ }
     };
     if (this._raw.currentTime > 0 && typeof setTimeout === 'function') {
       this._ringOut = setTimeout(cut, RING_OUT_MS);
@@ -562,6 +565,7 @@ export class Synth {
     }
     this.tails.connect(this.preBus);
     this.pumpBus.connect(this.preBus);
+    this.hp.connect(this.comp);
     if (tone) this._toneToMix(tone, this.ctx.currentTime);
     if (echo != null) this.setEchoTime(echo);
   }
@@ -843,6 +847,9 @@ export class Synth {
     this.flutterLfo.connect(this.flutterDepth).connect(this.wobble.delayTime);
     this.wowLfo.start();
     this.flutterLfo.start();
+    // When they started, as near as the main thread can tell: the core's
+    // LFOs count their phase from here (queue item 30).
+    this._lfoStart = ctx.currentTime;
 
     this.preBus = ctx.createGain();
     this.preBus.connect(this.wobble);
@@ -967,37 +974,41 @@ export class Synth {
   }
 
   setTone(tone) {
-    const t = this.ctx.currentTime;
-    const warmth = tone.warmth ?? 0.6;
-    const wobble = tone.wobble ?? 0.4;
-
-    this.tone.frequency.setTargetAtTime(2600 + (1 - warmth) * 9000, t, 0.2);
-    this.sat.curve = tanhCurve(0.55 + warmth * 1.25);
     this._mixState().tone = tone;
-    this._toneToMix(tone, t);
-    this.wowDepth.gain.setTargetAtTime(0.0004 + wobble * 0.0038, t, 0.2);
-    this.flutterDepth.gain.setTargetAtTime(0.00004 + wobble * 0.0005, t, 0.2);
+    this._toneToMix(tone, this.ctx.currentTime);
   }
 
-  // setTone's part in the mix: the reverb's level, feedback and color.
+  // setTone's work: the tone lowpass, the saturator's curve, the reverb's
+  // level, feedback and color, and the wobble's depths -- in the core when
+  // it mixes, in Web Audio otherwise.
   _toneToMix(tone, t) {
+    const warmth = tone.warmth ?? 0.6;
     const space = tone.space ?? 0.5;
+    const wobble = tone.wobble ?? 0.4;
     // Cap room feedback to prevent resonant high-frequency feedback at large room sizes.
     const fb = Math.min(0.74, 0.66 + space * 0.2);
     const core = this._coreMix();
     if (core) {
+      core.param(MIX.tone, TARGET, 2600 + (1 - warmth) * 9000, t, 0.2);
+      core.param(MIX.drive, SET, 0.55 + warmth * 1.25, t);
       core.param(MIX.reverbOut, TARGET, 0.4 + space * 0.9, t, 0.2);
       core.param(MIX.combFb, TARGET, fb, t, 0.2);
       core.param(MIX.combFreq, TARGET, 1400 + space * 2600, t, 0.2);
       core.param(MIX.combSum, TARGET, (1 - fb) / this.combs.length, t, 0.2);
+      core.param(MIX.wow, TARGET, 0.0004 + wobble * 0.0038, t, 0.2);
+      core.param(MIX.flutter, TARGET, 0.00004 + wobble * 0.0005, t, 0.2);
       return;
     }
+    this.tone.frequency.setTargetAtTime(2600 + (1 - warmth) * 9000, t, 0.2);
+    this.sat.curve = tanhCurve(0.55 + warmth * 1.25);
     this.reverbOut.gain.setTargetAtTime(0.4 + space * 0.9, t, 0.2);
     for (const c of this.combs) {
       c.fb.gain.setTargetAtTime(fb, t, 0.2);
       c.lp.frequency.setTargetAtTime(1400 + space * 2600, t, 0.2);
     }
     this.combSum.gain.setTargetAtTime((1 - fb) / this.combs.length, t, 0.2);
+    this.wowDepth.gain.setTargetAtTime(0.0004 + wobble * 0.0038, t, 0.2);
+    this.flutterDepth.gain.setTargetAtTime(0.00004 + wobble * 0.0005, t, 0.2);
   }
 
   // Let the tail ring naturally for a moment, then take it down to nothing.

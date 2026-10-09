@@ -16,7 +16,9 @@
 // Since queue item 29 the core mixes too: one input per channel, where the
 // synth's own notes for that channel arrive (a note the core could not
 // take), and one output, the mix -- the channel gains, the sends, the duck,
-// the echo and the reverb -- which the synth sends on to its master chain.
+// the echo and the reverb -- and, since item 30, the wobble, saturator,
+// tone and highpass after it, which the synth sends on to its bus
+// compressor.
 // With `taps`, five more outputs carry each channel as it went into the mix
 // (the measure harness reads them).
 

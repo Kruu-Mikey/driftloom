@@ -1130,6 +1130,81 @@ Mikey decides this line:
 
 ## Notes from Claude Code
 
+- **Item 30, the stall hunt: no cause in item 30 found; still left
+  unmerged (2026-10-09, Session 10).** Decided by the brain (#154): the long quanta are
+  the VM's, the fill-ins even; #148 merged. As the brain asked.
+  - **What the long quanta are** (`perf.mjs --trace-extra --trace-dir`,
+    V8 GC, wasm and Web Audio per-node categories, plus a sampler reading
+    the audio thread's faults and context switches from /proc every 20 ms
+    on the trace's clock). Every quantum over 15 ms, in both builds, is
+    either off-CPU (15-322 ms of wall time for 0.5-20 ms of CPU) or
+    "CPU" that lands in whatever happened to be running: in item 29 inside
+    native DelayNode and gain processing (64 ms), in item 30 inside
+    `process()` (56 ms), once inside Chromium's own "compare topology" step
+    before any script (25 ms). The machine was 6-13% busy (31% at 4x). One
+    item-29 quantum (34 ms) coincides with the sampler itself, a separate
+    process, going 115 ms without a tick: the whole VM stopped. Others show
+    the thread preempted (involuntary switches) or blocked (voluntary, no
+    faults). The core's own `process()` takes 0.15-0.4 ms.
+  - **What item 30 could have added, checked:** the worklet's script is
+    item 29's but for comments; views are made once; the core has no
+    allocator and its memory is fixed (232 pages, item 29 230), no
+    `memory.grow`. The worklet isolate's GCs are all under 0.5 ms and none
+    fall in a long quantum. Wasm tier-ups still happen mid-play (one or two
+    a run, under 1 ms, on a background thread) and none coincide either.
+    The curve swap is 2048 `tanh`s on `setTone` only. **The old JavaScript
+    chain does not run**: with the core in, each quantum renders only the
+    two compressors, five gains, the worklet and the harness's analyser (no
+    delay, oscillator, waveshaper or biquad). The audio thread's minor
+    faults (19 a second), voluntary switches (60 a second) and preemptions
+    are the same in both builds.
+  - **The bisect** was overtaken: with the order swapped (item 30 first)
+    item 29 had the long quanta (2 of 30 against 1). So the A/B was rerun
+    counterbalanced, each build first in half the passes.
+  - **The rerun**, five loops x full/lite x 1x/4x, 80 runs a side: device
+    fill-in runs, item 30 **4** (8 events) against item 29 **2** (3); runs
+    with a quantum over 20 ms 7 against 1, all on full. Two more full-only
+    passes with the sampler, 20 a side each: fill-in runs 0 against 3, long
+    quanta 1 against 2. **All 120 a side:** fill-in runs 4 against 5
+    (one-sided p 0.75), long quanta 8 against 3 (p 0.11; full 8 of 80
+    against 2 of 80; lite 0 of 40 against 1). 90th-percentile worst quantum
+    12.0 against 8.5 ms; render +4% (full 88.9 against 83.2 ms/s, lite 61.2
+    against 63.2).
+  - Not merged. The 80-a-side rerun alone is 4 against 2 fill-in runs, and
+    the long quanta still lean against item 30 on full. Pooled with the
+    full-only passes, the fill-in rates are even, and nothing found points
+    at item 30's code. The brain's call.
+- **Item 30, rerun: still left unmerged -- its fill-in rate is worse
+  (2026-10-09, Session 10).** Decided by the brain (#154): the long quanta are
+  the VM's, the fill-ins even; #148 merged. As the brain asked: #150 (the worklet's block
+  count) merged on its own; #148's downsampler is now an FFT convolution as
+  Chromium's is (a 256-point FFT, overlap-add; within 2e-6 of the direct
+  sum; about half its cost natively), re-nulled (loops -95 to -121 dB,
+  mix stage -77 to -85 dB, as before); #148 rebased on `main` (v80). Then
+  `perf.mjs --ab`, item 29's core (`main` at #150) against item 30's,
+  interleaved run by run, five loops x full/lite x 1x/4x, 30 s windows,
+  three passes: 60 runs a side, alone on this 4-core machine.
+  - Runs with device fill-ins: item 29 **1 of 60** (1 event: hollow full
+    4x at 18.7 s); item 30 **5 of 60** (7 events: undertow lite 1x at
+    29.2 s; tide lite 1x at 2.1 s and 22.7 s (2); hollow full 4x at
+    13.7 s; shatter full 1x at 28.2 s; tide full 1x at 16.6 s). By
+    quality: full 1 / 3, lite 0 / 2. One-sided Fisher p = 0.10 on these
+    runs alone; with the earlier 40-run A/B (3 / 0), 8 of 100 against 1 of
+    100, p = 0.017. Late ticks 0 everywhere.
+  - Worst render quantum per run (Chromium's trace,
+    `RealtimeAudioDestinationHandler::Render`, the whole quantum the
+    worklet's `process()` runs in): median 4.5 / 5.5 ms, 90th percentile
+    10.6 / 28.1 ms; runs over 20 ms 1 / 7, over 10 ms 6 / 15. Four of item
+    30's five fill-in runs had a 38-71 ms quantum; the hollow one did not
+    (4.4 ms).
+  - Audio render, mean: full 82.3 -> 88.1 ms/s (+7%), lite 63.3 -> 61.4
+    (-3%). So on lite the core with the chain costs less on average than
+    item 29's core with Web Audio's chain, and still had the fill-ins and
+    the long quanta: the cost of a block alone does not explain them. A
+    block of the core is well under a millisecond; a 40-70 ms quantum is
+    the audio thread held up, by something I have not found.
+  Not merged, per the rule. #148 stays open with the work; the tally script
+  is `perf.mjs`'s JSON (`fillTimes`, `worstRenderMs` per run).
 - **Item 11, the temple bell as a chord voice: needs a decision, left as it
   is (2026-09-26).** Decided by the brain from Mikey's ear: item 15. The brief's yardstick is the chords layer's median at
   0.4 s notes, and there the chord templebell is already *above* it:
@@ -1485,3 +1560,20 @@ Mikey decides this line:
   block's frame number while it renders the next; the core then played that
   block's envelopes 128 frames late (about one note in fifty on item 30's
   build, none seen on item 29's). The worklet now keeps its own count.
+- #148, the Rust core's tenth step: wobble, saturator, tone and highpass
+  (item 30, v80),
+  https://10e757b3-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the core runs the
+  first half of the master chain after its mix: the tape wobble (its 14 ms
+  delay and the wow and flutter LFOs, phased from when the synth started
+  them), the saturator (Chromium's curve lookup, and on full its 2x
+  oversampling, the downsampler an FFT as Chromium's), the tone lowpass and
+  the 38 Hz highpass; its output goes to the bus compressor. Mix stage -77
+  to -85 dB against a JS-vs-JS floor of -78 to -97 dB (the wobble's
+  last-bit LFO differences; -116 to -136 dB with it held still); whole
+  loops at the floor. Performance, counterbalanced against item 29's core,
+  120 runs a side: device fill-in runs 4 against 5; audio render +4% (full
+  +7%, lite -3%). The long render quanta seen along the way are the
+  sandbox VM's, in both builds (Notes from Claude Code). Play a warm,
+  wobbly loop and check Diagnostics reads `engine: rust  late: 0
+  fallback: 0`. `.wasm` 149,440 bytes.

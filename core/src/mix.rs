@@ -89,7 +89,8 @@ pub const COMB_FB: u32 = 8;
 pub const COMB_FREQ: u32 = 9;
 pub const COMB_SUM: u32 = 10;
 pub const REVERB_GAIN: u32 = 11;
-/// The last parameter there is.
+/// The last of the mix's parameters; the master chain's follow
+/// (`master`), numbered by the core (`TONE_FREQ` and the rest in lib.rs).
 pub const LAST_PARAM: u32 = REVERB_GAIN;
 
 /// How a parameter is moved: the AudioParam call.
@@ -378,7 +379,7 @@ impl Mix {
     }
 }
 
-fn apply<const N: usize>(
+pub(crate) fn apply<const N: usize>(
     t: &mut Timeline<N>,
     op: u32,
     value: f32,

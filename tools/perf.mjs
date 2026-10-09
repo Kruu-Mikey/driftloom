@@ -165,6 +165,7 @@ function parseArgs(argv) {
     seconds: 60, warmup: 8, parts: ['load', 'idle', 'matrix', 'hidden', 'muted', 'split', 'memory'],
     hiddenThrottle: [1, 6], hiddenSeconds: null, gcEvery: 0, memoryMinutes: 5, jsProfile: false,
     url: null, query: '', port: 8741, chrome: null, quick: false, json: null, md: null, pick: false,
+    traceDir: null, traceOver: 20, traceExtra: false,
   };
   const list = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < argv.length; i++) {
@@ -196,6 +197,10 @@ function parseArgs(argv) {
       case '--json': o.json = next(); break;
       case '--md': o.md = next(); break;
       case '--pick': o.pick = true; break;
+      case '--trace-dir': o.traceDir = path.resolve(next()); break;
+      case '--trace-over': o.traceOver = Number(next()); break;
+      case '--trace-extra': o.traceExtra = true; break;
+      case '--trace-all': o.traceAll = true; break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`unknown option ${a}`);
     }
@@ -290,6 +295,21 @@ async function launch(chromePath) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// The whole machine's CPU over a window, from /proc/stat (Linux only):
+// how busy it was, and how much the host took back (steal), each as a
+// share of all CPUs' time.
+function procStat() {
+  try {
+    const f = fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].trim().split(/\s+/).slice(1).map(Number);
+    return { total: f.reduce((a, b) => a + b, 0), idle: f[3] + f[4], steal: f[7] || 0 };
+  } catch { return null; }
+}
+function cpuShare(a, b) {
+  if (!a || !b || b.total <= a.total) return null;
+  const t = b.total - a.total;
+  return { busy: +((1 - (b.idle - a.idle) / t) * 100).toFixed(1), steal: +(((b.steal - a.steal) / t) * 100).toFixed(2) };
+}
 
 // ------------------------------------------------------- the file server
 
@@ -625,7 +645,15 @@ const TRACE_CATEGORIES = [
   'devtools.timeline', 'disabled-by-default-devtools.timeline', 'v8', 'webaudio', 'audio', 'toplevel',
 ].join(',');
 
-async function traceStart(b) {
+// With --trace-extra, also V8's garbage collector and WebAssembly compiler
+// and Web Audio's per-node detail, to see what holds up a long quantum.
+const TRACE_EXTRA = [
+  'v8.gc', 'disabled-by-default-v8.gc', 'v8.wasm', 'disabled-by-default-v8.wasm.detailed',
+  'disabled-by-default-v8.compile', 'v8.execute', 'disabled-by-default-webaudio.audionode',
+  'disabled-by-default-audio-worklet', 'audio-worklet', 'scheduler', 'base',
+].join(',');
+
+async function traceStart(b, extra = false) {
   const events = [];
   let done;
   const finished = new Promise((r) => { done = r; });
@@ -633,7 +661,8 @@ async function traceStart(b) {
     if (d.method === 'Tracing.dataCollected') events.push(...d.params.value);
     if (d.method === 'Tracing.tracingComplete') done();
   });
-  await b.send('Tracing.start', { categories: TRACE_CATEGORIES, transferMode: 'ReportEvents' });
+  const categories = extra ? `${TRACE_CATEGORIES},${TRACE_EXTRA}` : TRACE_CATEGORIES;
+  await b.send('Tracing.start', { categories, transferMode: 'ReportEvents' });
   return async () => {
     await b.send('Tracing.end');
     await Promise.race([finished, sleep(30000)]);
@@ -654,7 +683,7 @@ function readTrace(events, seconds) {
     if (e.name === 'RealtimeAudioDestinationHandler::Render') pids.set(e.pid, (pids.get(e.pid) || 0) + 1);
   }
   const pid = [...pids.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
-  const out = { renderCalls: 0, renderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {}, paintRects: {} };
+  const out = { renderCalls: 0, renderMs: 0, worstRenderMs: 0, callbacks: 0, callbackMs: 0, worstCallbackMs: 0, paintMs: 0, gcMs: 0, renderThreads: {}, mainPaint: {}, mainTop: {}, paintRects: {} };
   const callbackDurs = [];
   for (const e of events) {
     if (e.pid !== pid || e.ph !== 'X') continue;
@@ -663,6 +692,8 @@ function readTrace(events, seconds) {
     if (e.name === 'RealtimeAudioDestinationHandler::Render') {
       out.renderCalls++;
       out.renderMs += dur;
+      // One render quantum of the whole graph, the core's process() in it.
+      if (dur > out.worstRenderMs) out.worstRenderMs = dur;
       out.renderThreads[thread] = (out.renderThreads[thread] || 0) + dur;
     } else if (e.name === 'AudioDestination::Render') {
       out.callbacks++;
@@ -690,6 +721,7 @@ function readTrace(events, seconds) {
     }
   }
   callbackDurs.sort((a, b) => a - b);
+  out.pid = pid;
   out.p99CallbackMs = callbackDurs.length ? callbackDurs[Math.floor(callbackDurs.length * 0.99)] : 0;
   out.seconds = seconds;
   return out;
@@ -827,7 +859,9 @@ async function run(opts, chromePath, cfg) {
     }
     const m0 = await tab.metrics();
     const s0 = await tab.snap();
-    const stop = await traceStart(b);
+    const fillTimes = [];
+    const cpu0 = procStat();
+    const stop = await traceStart(b, opts.traceExtra);
     if (opts.gcEvery > 0) {
       await tab.send('HeapProfiler.enable');
       const until = Date.now() + cfg.seconds * 1000;
@@ -836,11 +870,36 @@ async function run(opts, chromePath, cfg) {
         await tab.send('HeapProfiler.collectGarbage');
       }
     } else {
-      await sleep(cfg.seconds * 1000);
+      // Chromium's fill-in counter, read twice a second, so each fill-in has
+      // a time: from the window's start, and on the context's clock (from
+      // when the context started, a moment before the first note).
+      const t0 = Date.now();
+      const until = t0 + cfg.seconds * 1000;
+      let last = s0.playout && s0.playout.fallbackFramesEvents;
+      while (Date.now() < until) {
+        await sleep(Math.min(500, until - Date.now()));
+        const s = await tab.snap();
+        const now = s.playout && s.playout.fallbackFramesEvents;
+        if (now != null && last != null && now > last) {
+          fillTimes.push({ inWindow: +((Date.now() - t0) / 1000).toFixed(2), ctxTime: s.ctxTime != null ? +s.ctxTime.toFixed(2) : null, events: now - last });
+        }
+        if (now != null) last = now;
+      }
     }
     const m1 = await tab.metrics();
     const s1 = await tab.snap();
-    const trace = readTrace(await stop(), cfg.seconds);
+    const cpu1 = procStat();
+    const events = await stop();
+    const trace = readTrace(events, cfg.seconds);
+    // A run with a long quantum keeps its trace (--trace-dir), the page's
+    // renderer only, to read what its audio thread was doing then.
+    if (opts.traceDir && trace.worstRenderMs > opts.traceOver) {
+      fs.mkdirSync(opts.traceDir, { recursive: true });
+      const keep = opts.traceAll ? events : events.filter((e) => e.pid === trace.pid);
+      const file = path.join(opts.traceDir, `${opts.side || 'run'}-${result.loop}-${cfg.quality}-${cfg.throttle}x-${Date.now()}.json`);
+      fs.writeFileSync(file, JSON.stringify({ traceEvents: keep }));
+      result.traceFile = file;
+    }
     let split = null;
     if (cfg.jsProfile) {
       const { profile } = await tab.send('Profiler.stop');
@@ -853,7 +912,7 @@ async function run(opts, chromePath, cfg) {
     }
     Object.assign(result, perSecond(m0, m1, s0, s1, trace, cfg.seconds), {
       lateTicks: diag.lateTicks, worstLateMs: diag.worstLateMs, ticks: diag.ticks, clock: diag.clock,
-      visibility: s1.visibility, split,
+      visibility: s1.visibility, split, fillTimes, machine: cpuShare(cpu0, cpu1),
     });
     return result;
   } finally {
@@ -886,6 +945,7 @@ function perSecond(m0, m1, s0, s1, trace, seconds) {
     callbackMs: trace.callbacks ? trace.callbackMs / trace.callbacks : 0,
     worstCallbackMs: trace.worstCallbackMs,
     p99CallbackMs: trace.p99CallbackMs,
+    worstRenderMs: trace.worstRenderMs,
     longTasks: s1.longTasks - s0.longTasks,
     longTaskMs: s1.longTaskMs - s0.longTaskMs,
     nodesPerSec: per(s0.nodes, s1.nodes),
@@ -1293,8 +1353,8 @@ async function main() {
   }
   // The A side: another folder (--ab), or this one without the extra query
   // (--ab-query), in which case B is this folder with it.
-  const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/` } : opts.abQuery ? { ...opts } : null;
-  const optsB = opts.abQuery ? { ...opts, query: [opts.query, opts.abQuery].filter(Boolean).join('&') } : opts;
+  const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/`, side: 'A' } : opts.abQuery ? { ...opts, side: 'A' } : null;
+  const optsB = { ...opts, ...(opts.abQuery ? { query: [opts.query, opts.abQuery].filter(Boolean).join('&') } : {}), ...(optsA ? { side: 'B' } : {}) };
   const once = async (cfg) => {
     if (optsA) {
       log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''} (A)`);
@@ -1309,7 +1369,7 @@ async function main() {
     try {
       const r = { ...(await run(optsB, chromePath, cfg)), ...(optsA ? { side: 'B' } : {}) };
       data.runs.push(r);
-      log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}, render ${f1(r.renderMs)} ms/s, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
+      log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}${r.fillTimes && r.fillTimes.length ? ` at ${r.fillTimes.map((f) => `${f.inWindow}s (ctx ${f.ctxTime}s)`).join(', ')}` : ''}, render ${f1(r.renderMs)} ms/s, worst quantum ${(r.worstRenderMs ?? 0).toFixed(2)} ms, worst callback ${(r.worstCallbackMs ?? 0).toFixed(2)} ms, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
     } catch (err) {
       log(`  failed: ${err.message}`);
       data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message });

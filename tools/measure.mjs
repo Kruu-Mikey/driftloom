@@ -473,6 +473,18 @@ function dryOut(synth, layer, dest) {
   channel.connect(dest);
   return channel;
 }
+// What reaches the bus compressor, into \`dest\` instead: the JavaScript
+// highpass's output, or the core's, which since queue item 29 and 30 runs
+// the mix and the chain up to there.
+function beforeComp(synth, dest) {
+  if (synth._coreMix()) {
+    synth.core.node.disconnect(synth.comp);
+    synth.core.node.connect(dest, 0);
+    return;
+  }
+  synth.hp.disconnect();
+  synth.hp.connect(dest);
+}
 // A layer as it leaves its channel gain, into \`dest\`'s input \`input\`,
 // beside everything else: the JavaScript channel gain's output, or the
 // core's tap through a gain at the channel's own level, which is the same
@@ -571,8 +583,7 @@ async function renderLoop(spec, seconds, opts, bypass) {
   if (engine.clock.worker) engine.clock.worker.terminate();
 
   if (bypass) {
-    synth.hp.disconnect();
-    synth.hp.connect(synth.master);
+    beforeComp(synth, synth.master);
     synth.kill.disconnect();
     synth.kill.connect(ctx.destination);
   } else {
@@ -1167,10 +1178,11 @@ async function renderHat(kind, vel, at, o) {
   return rendered(ctx, synth);
 }
 
-// --null's mix stage (queue item 29): the same signals played into the
-// five channels' nodes -- where every voice plays -- through the
-// JavaScript mix and through the core's, and read at preBus, where the
-// master chain begins. Each channel gets its own: impulses scattered over
+// --null's mix stage (queue items 29 and 30): the same signals played into
+// the five channels' nodes -- where every voice plays -- through the
+// JavaScript mix and through the core's, and on through the wobble, the
+// saturator, the tone and the highpass, read where the bus compressor
+// takes them. Each channel gets its own: impulses scattered over
 // the frames of the render block, a swept sine, or bursts of noise. On top,
 // the runtime changes the app makes, at awkward times: setTone and
 // setEchoTime at the start, and in 'moving' a duck on fractions of a frame
@@ -1220,8 +1232,7 @@ async function renderMixStage(v, o, engine) {
   Math.random = mulberry32(seedFor(['mix', v.name].join('|')));
   const synth = synthFor(ctx, v.quality, engine, core);
   if (engine === 'rust' && !synth._coreMix()) throw new Error('the core is not mixing');
-  synth.preBus.disconnect();
-  synth.preBus.connect(ctx.destination);
+  beforeComp(synth, ctx.destination);
   CORE_ORDER.forEach((name, c) => {
     const buf = ctx.createBuffer(1, n, rate);
     buf.getChannelData(0).set(mixSignal(v.signal, c, n, rate));
@@ -1261,6 +1272,26 @@ async function renderMixStage(v, o, engine) {
   await settle(synth);
   return rendered(ctx, synth);
 }
+// A signal above \`hz\`, in 64-bit floats: a fourth-order Butterworth
+// highpass, two biquads. The chain's own 38 Hz highpass turns any last-bit
+// difference in what reaches it into a slow wander below its corner (its
+// recursion amplifies its own rounding near DC some 30,000 times), on
+// either engine; this shows what is left above it.
+function above(d, rate, hz) {
+  let y = Float64Array.from(d);
+  for (const q of [0.5411961, 1.3065630]) {
+    const th = Math.PI * hz / (rate / 2), alpha = Math.sin(th) / (2 * q), cw = Math.cos(th);
+    const a0 = 1 + alpha, b0 = (1 + cw) / 2 / a0, b1 = -(1 + cw) / a0, a1 = -2 * cw / a0, a2 = (1 - alpha) / a0;
+    let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    const out = new Float64Array(y.length);
+    for (let i = 0; i < y.length; i++) {
+      const v = b0 * y[i] + b1 * x1 + b0 * x2 - a1 * y1 - a2 * y2;
+      x2 = x1; x1 = y[i]; y2 = y1; y1 = v; out[i] = v;
+    }
+    y = out;
+  }
+  return y;
+}
 async function probeMixStage(o) {
   const variants = [];
   for (const quality of ['full', 'lite']) {
@@ -1275,7 +1306,11 @@ async function probeMixStage(o) {
     const js = (await renderMixStage(v, o, 'js')).getChannelData(0);
     const rust = (await renderMixStage(v, o, 'rust')).getChannelData(0);
     const again = (await renderMixStage(v, o, 'js')).getChannelData(0);
-    return { name: v.name, ...nullOf(js, rust), floor: nullOf(js, again) };
+    const hz = 100;
+    return {
+      name: v.name, ...nullOf(js, rust), floor: nullOf(js, again),
+      high: nullOf(above(js, o.rate, hz), above(rust, o.rate, hz)), highFloor: nullOf(above(js, o.rate, hz), above(again, o.rate, hz)),
+    };
   }), Math.max(1, Math.floor(o.width / 2)));
 }
 
@@ -2287,9 +2322,10 @@ function reportNull(data, opts) {
     out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
   out.push('');
-  out.push('  the mix stage: signals into the five channels, read at preBus           residual   js vs js    worst');
+  out.push('  the mix stage: signals into the five channels, read before the bus compressor');
+  out.push('                                            residual   js vs js    worst        above 100 Hz: residual  js vs js');
   for (const r of data.mix || []) {
-    out.push(`    ${r.name.padEnd(40)}                         ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS`);
+    out.push(`    ${r.name.padEnd(36)} ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS        ${fmt(db(r.high.res / r.high.sig))} dB ${fmt(db(r.highFloor.res / r.highFloor.sig))} dB`);
   }
   out.push('');
   out.push('  "core layers" is the melody, chords, bass, texture and drums taps together, against their own level: everything else in');

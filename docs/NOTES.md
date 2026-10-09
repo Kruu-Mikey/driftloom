@@ -705,12 +705,15 @@ ocarina, flute, pan flute, prepared's knock and temple bell, on the noise
 and the bandpass (item 26); bass, textures and drums (item 27); and the
 sung voices (item 28), so every voice. Then the rest of the sound path:
 the mix -- the five channels, their sends, the kick's duck, the echo, the
-reverb and the tails (item 29).
+reverb and the tails (item 29) -- and the first half of the master chain:
+the tape wobble, the saturator, the tone lowpass and the highpass (item
+30).
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
 an AudioWorklet (`js/worklet.js`) with one input per channel and one output,
-the mix, which feeds the master chain (`preBus` onward) in JavaScript. Each
+the mix through the wobble, saturator, tone and highpass, which feeds the
+bus compressor and the rest of the master chain in JavaScript. Each
 channel's node, where every voice plays into, becomes the core's input for
 that channel: a note the core cannot take (before it has loaded, a sung
 note too long for it) plays there in Web Audio and reaches the core's mix
@@ -746,8 +749,11 @@ with Chromium's delay line (`delay.rs`: a buffer a block longer than the
 longest delay, read every frame in 32-bit floats) and its way with a
 feedback loop: a node renders once a block, and one pulled again while it
 renders hands over its last block, so the echo and each comb go round a
-block (128 frames) later than their delay alone. `cargo test` in `core/`
-runs its own tests.
+block (128 frames) later than their delay alone. The master chain's half
+(`master.rs`) runs the wobble's two LFOs from when the synth built them,
+reads the saturator's curve as Chromium's WaveShaper does, and on full
+quality oversamples it with Chromium's own half-band filters
+(`resample.rs`). `cargo test` in `core/` runs its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -784,9 +790,14 @@ the render, the second scheduled mid-render (as the app does), and a damp
 that comes after its time. Notes null to about
 -100 dB and loops to their own floor. Last, the mix stage on its own:
 impulses, swept sines and noise played into all five channels at once and
-read at `preBus`, with `setTone`, the echo's time, mutes, ducks on
-fractions of a frame and the tails' fades, some called mid-render, on full
-and lite; `--null --mix` runs that alone. Before the voices that play the
+read where the bus compressor takes them, with `setTone`, the echo's time,
+mutes, ducks on fractions of a frame and the tails' fades, some called
+mid-render, on full and lite; `--null --mix` runs that alone. The 38 Hz
+highpass sets its floor: its recursion amplifies its own last-bit rounding
+near DC some thirty thousand times, so the smallest difference in what
+reaches it, even the order Chromium adds a node's inputs in, shows as a
+slow wander below 38 Hz, at -70 to -90 dB; the report gives the residual
+above 100 Hz beside it. Before the voices that play the
 noise, the noise source is proven alone: the hat's graph -- a grain through
 a highpass under a gain -- on the melody channel. That took matching Chromium where it
 is not the obvious reading of the spec, measured and then read in its
