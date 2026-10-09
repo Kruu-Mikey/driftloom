@@ -317,7 +317,7 @@ mod against_direct {
         let mut all_in = Vec::new();
         for _ in 0..30 {
             for x in high.iter_mut() {
-                seed = seed * 6364136223846793005 + 1442695040888963407;
+                seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                 *x = ((seed >> 40) as f32 / (1u64 << 24) as f32) - 0.5;
             }
             all_in.extend_from_slice(&high);
