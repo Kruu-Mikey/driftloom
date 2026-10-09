@@ -120,7 +120,16 @@ body {
   border-radius: 2px;
 }
 .loop-name:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
-.loop-name.wrap { white-space: normal; overflow-wrap: anywhere; }
+.loop-name.wrap {
+  /* Break between words only: a word that does not fit makes fitName
+     shrink the name rather than splitting the word. */
+  white-space: normal;
+  overflow-wrap: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.loop-name.wrap.break { overflow-wrap: anywhere; }
 .name-edit {
   width: 100%;
   padding: 0 4px;
@@ -142,6 +151,8 @@ body {
 }
 .loop-detail li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .loop-detail .mix { color: var(--sand); }
+/* Some scale names are long ("Minor pentatonic"); wrap rather than cut. */
+.loop-detail .key { white-space: normal; }
 .loop-detail .feel { color: #a9c7bf; }
 .loop-detail .faint { color: var(--dim); }
 .loop-detail .album-line { color: var(--amber); }
@@ -201,19 +212,28 @@ body {
 
 /* ------------------------------------------------------------ sound */
 
-.sounds { justify-content: space-evenly; }
-
-.srow {
+/* One grid for all the rows, so the label column is as wide as the widest
+   label and stays put. When each row sized its own label, a value changing
+   under a moving thumb ("Track length 4m" to "1h 30m") widened the label
+   and slid the slider out from under your finger. */
+.sounds {
   display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 14px;
+  grid-template-columns: max-content 1fr;
+  align-content: space-evenly;
+  column-gap: 14px;
+}
+.srow { display: contents; cursor: pointer; }
+.srow span {
   min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  white-space: nowrap;
   font-size: clamp(15px, 4.4vw, 18px);
   color: var(--haze);
-  cursor: pointer;
+  transition: color 140ms ease;
 }
-.srow span { white-space: nowrap; transition: color 140ms ease; }
+.srow input { align-self: center; }
 .srow b {
   font-family: var(--mono);
   font-weight: 500;
@@ -286,17 +306,91 @@ body {
 }
 .layer.muted .icon.mute { color: var(--dim); }
 
+/* ------------------------------------------------------ now playing */
+
+/* Calm on purpose: one big number, one thin line, a few words. */
+.now {
+  justify-content: space-between;
+  padding: 14px 20px 12px;
+  text-align: center;
+}
+.now-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.now-big {
+  font-family: var(--mono);
+  font-size: clamp(44px, 16vw, 72px);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--sand);
+  font-variant-numeric: tabular-nums;
+}
+.now-sub {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--haze);
+}
+.now-bar {
+  width: min(78%, 320px);
+  height: 3px;
+  margin-top: 18px;
+  background: var(--line-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.now-bar i {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 1s linear;
+}
+.now-album {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 10px;
+}
+.now-album-name { font-family: var(--mono); font-size: 14px; color: var(--amber); }
+.now-dots { font-size: 11px; letter-spacing: 0.15em; color: var(--haze); }
+.now-next {
+  margin: 12px 0 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--haze);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The one control, at the bottom edge: a thumb's reach from the buttons. */
+.now-action {
+  margin-top: 12px;
+  width: 100%;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--amber);
+  border-color: #56463a;
+  background: transparent;
+}
+
 /* ------------------------------------------------------------ share */
 
-.share { padding-top: 10px; padding-bottom: 10px; }
-.share .section-head { margin: 10px 0 4px; }
-.share .section-head:first-child { margin-top: 4px; }
-.share .hint { margin: 0 0 4px; }
-.share .row { margin: 6px 0 4px; }
+#keepShare .hint { margin: 0 0 4px; }
 
 /* ---------------------------------------------------------- library */
 
-.library { padding-top: 4px; padding-bottom: 4px; overflow: hidden; }
+.paged-view { padding-top: 4px; padding-bottom: 4px; overflow: hidden; }
 
 .lib-tabs {
   flex: 0 0 auto;
@@ -424,6 +518,20 @@ body {
 .pick svg { width: 18px; height: 18px; }
 .lrow.in .pick { color: var(--deep); background: var(--mint); border-color: var(--mint); }
 .lrow.in .lrow-title { color: var(--mint); }
+.pick.warn { color: var(--rust); border-color: var(--rust); }
+.lrow.in .pick.warn { background: transparent; }
+
+/* Keep: a line of explanation, or the changed-since-kept choice. */
+.lib-head .keep-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--haze);
+  flex: 1 1 100%;
+}
+.lib-head.changed { flex-wrap: wrap; gap: 6px 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
+.lib-head.changed .keep-note { color: var(--amber); }
+.lib-head .ghost { padding: 7px 10px; font-size: 13px; }
+
 .lrow .ghost.tiny.confirm { color: var(--rust); border-color: var(--rust); }
 
 .back {
@@ -682,7 +790,7 @@ input[type="range"]:focus-visible { outline: 2px solid var(--mint); outline-offs
 
 /* Short phones: tighten the rows so more of a viewport fits unscrolled. */
 @media (max-height: 700px) {
-  .srow { min-height: 36px; }
+  .srow span { min-height: 36px; }
   .layer { min-height: 36px; }
   .pad { height: 46px; }
 }

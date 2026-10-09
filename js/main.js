@@ -9,17 +9,18 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v80';
+const BUILD = 'v81';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
 let swState = 'unsupported';
-// Curated stops rather than a linear range: 0 to 9999 on a slider gives you
-// no useful control at the short end, and short lengths are what anyone
-// actually sets. The top end still reaches well past a day on a two-bar loop.
-const TRACK_LENGTHS = [
-  0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128,
-  192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 9999,
+// Track length is chosen as a time, which is how anyone thinks of it, and
+// stored as passes (a track ends on a whole loop), worked out at this tempo
+// when the slider moves. The stops are curated: fine at the short end, where
+// people actually set it, and reaching a whole day at the top.
+const TRACK_TIMES = [
+  0, 60, 120, 180, 300, 600, 900, 1200, 1800, 2700,
+  3600, 5400, 7200, 10800, 14400, 21600, 28800, 43200, 86400,
 ];
 import { drawCover } from './cover.js';
 import * as store from './storage.js';
@@ -36,10 +37,16 @@ const state = {
   bar: -1,
   gridSteps: 16,
   playlist: null,
-  // Which viewport is up ('sounds', 'layers' or 'library'), and the last of
-  // the first two, which is where leaving the library goes back to.
-  view: 'layers',
-  lastView: 'layers',
+  // Which viewport is up ('now', 'sounds', 'layers', 'library' or 'keep');
+  // the last of the first three, where leaving Library or Keep goes back
+  // to; and the last of Sound and Layers, which the switch offers.
+  view: 'now',
+  lastView: 'now',
+  lastEdit: 'layers',
+  // The album most recently left, so Now Playing can offer the way back.
+  lastAlbum: null,
+  // The loop step last lit, for Now Playing's progress.
+  lastStep: 0,
   // The spec the cover was last drawn for, so the card is not redrawn when
   // only its words change.
   coverFor: null,
@@ -222,11 +229,12 @@ function syncMediaMetadata() {
 
 // Passes are the honest unit -- a track ends on a whole loop -- but nobody
 // thinks in passes, so show the time it comes to at this tempo as well.
+// The time a length actually comes to (whole passes at this tempo), kept
+// short: it sits beside the slider and must not change width much.
 function describeLength(passes, spec) {
   if (!passes) return 'off';
-  if (!spec) return `${passes} passes`;
-  const time = ui.formatTime(passes * ui.passSeconds(spec));
-  return `${passes} ${passes === 1 ? 'pass' : 'passes'} · ~${time}`;
+  if (!spec) return `${passes}×`;
+  return ui.formatTime(passes * ui.passSeconds(spec));
 }
 
 function drawCoverFor(spec) {
@@ -274,58 +282,224 @@ function refreshCard() {
   renderLoopWords();
 }
 
+// Time left and album position live in Now Playing; the card keeps only
+// which album is playing, as a reminder of where Next goes.
 function renderLoopWords() {
   const pl = state.playlist;
-  const limit = state.spec.playFor;
   ui.renderReadout(state.spec, state.pattern, {
     album: pl && pl.ids.length ? `${pl.title} ${pl.index + 1}/${pl.ids.length}` : '',
-    pass: limit ? `pass ${state.passCount} of ${limit}` : '',
   });
 }
 
-// Anything saved, deleted or renamed: the lists, and whether the loop on
-// screen counts as saved.
+// Anything kept, deleted or renamed: the lists, and whether the loop on
+// screen counts as kept.
 function savedChanged() {
   library.refresh();
-  updateSaveButton();
+  updateKeepButton();
+  if (state.view === 'now') renderNow();
 }
 
-function isSaved() {
+// ------------------------------------------------------------------ keep
+
+// A kept loop lives in at least one album; keeping is putting it in one.
+function isKept() {
   return !!state.currentId && store.loadAll().some((e) => e.id === state.currentId);
 }
 
-function updateSaveButton() {
-  const saved = isSaved();
-  const b = ui.el('saveBtn');
-  ui.setIcon(b, saved ? 'saved' : 'save');
-  b.classList.toggle('saved', saved);
-  b.setAttribute('aria-label', saved ? 'Saved (tap to save changes)' : 'Save this loop');
+function isChanged() {
+  if (!isKept() || !state.spec) return false;
+  const stored = store.loadAll().find((e) => e.id === state.currentId);
+  return !!stored && !store.sameSpec(stored.spec, state.spec);
+}
+
+// Keep the playing loop in an album, keeping (saving) it first if it is not
+// kept anywhere yet.
+function keepIn(albumId) {
+  if (!state.spec) return;
+  if (!isKept()) {
+    const entry = store.save(state.spec);
+    if (!entry) { ui.toast('Could not keep it - this browser is refusing to store data'); return; }
+    state.currentId = entry.id;
+  }
+  if (!store.addToAlbum(albumId, state.currentId)) { ui.toast('Could not change that album'); return; }
+  const album = store.loadAlbums().find((a) => a.id === albumId);
+  ui.toast(`Kept in ${album ? album.title : 'the album'}`);
+  savedChanged();
+  refreshCard();
+}
+
+function unkeepFrom(albumId) {
+  if (!isKept()) return;
+  const name = state.spec.name;
+  const res = store.removeFromAlbum(albumId, state.currentId);
+  if (!res.ok) { ui.toast('Could not change that album'); return; }
+  if (res.deleted) {
+    state.currentId = null;
+    ui.toast(`Deleted ${name}`);
+  } else {
+    ui.toast('Taken out of that album');
+  }
+  savedChanged();
+  refreshCard();
+}
+
+function updateKept() {
+  if (!isKept()) return;
+  if (!store.replaceSpec(state.currentId, state.spec)) {
+    ui.toast('Could not save - this browser is refusing to store data');
+    return;
+  }
+  ui.toast(`Updated ${state.spec.name}`);
+  savedChanged();
+}
+
+// The changed loop becomes a loop of its own, in Favorite Loops; the one it
+// came from stays as it was.
+function keepAsNew() {
+  if (!state.spec) return;
+  const entry = store.save(state.spec);
+  if (!entry) { ui.toast('Could not save - this browser is refusing to store data'); return; }
+  state.currentId = entry.id;
+  store.addToAlbum(store.FAVORITES, entry.id);
+  ui.toast(`Kept ${state.spec.name} as a new loop in Favorite Loops`);
+  savedChanged();
+}
+
+// S on a keyboard: keep in Favorite Loops, or save the changes to a kept loop.
+function keepQuick() {
+  if (!state.spec) return;
+  if (!isKept()) keepIn(store.FAVORITES);
+  else if (isChanged()) updateKept();
+  else ui.toast(`${state.spec.name} is kept`);
+}
+
+// The heart is filled once the loop lives in an album, and gets a dot when
+// the kept loop has been changed since.
+function updateKeepButton() {
+  const kept = isKept();
+  const b = ui.el('keepBtn');
+  ui.setIcon(b, kept ? (isChanged() ? 'heartChanged' : 'heartFull') : 'heart');
+  b.classList.toggle('saved', kept);
+  b.setAttribute('aria-label', kept ? 'Kept: albums and sharing' : 'Keep and share');
 }
 
 // ------------------------------------------------------------ viewport
 
-// Sound and Layers are the two working views. Library and Share are places
-// you visit: their buttons light while you are there, and pressing either
-// again (or the switch) goes back to the working view you came from.
+// Now Playing, Sound and Layers are where you stay; Library and Keep are
+// places you visit, whose buttons light while you are there. Pressing a lit
+// button again (or the switch) goes back to where you were.
+const BASE_VIEWS = ['now', 'sounds', 'layers'];
+
 function setView(view) {
   state.view = view;
-  const visiting = view === 'library' || view === 'share';
+  const visiting = !BASE_VIEWS.includes(view);
   if (!visiting) state.lastView = view;
+  if (view === 'sounds' || view === 'layers') state.lastEdit = view;
   for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== view;
   ui.el('libraryBtn').setAttribute('aria-pressed', String(view === 'library'));
-  ui.el('shareBtn').setAttribute('aria-pressed', String(view === 'share'));
+  ui.el('keepBtn').setAttribute('aria-pressed', String(view === 'keep'));
+  ui.el('nowBtn').setAttribute('aria-pressed', String(view === 'now'));
   // The switch shows where it goes, not where you are: from Sound it offers
-  // Layers, from Layers it offers Sound, and from Library or Share it offers
-  // the way back to whichever of the two you came from.
-  const target = visiting ? state.lastView : (view === 'sounds' ? 'layers' : 'sounds');
+  // Layers, from Layers it offers Sound, and from anywhere else it offers
+  // whichever of the two you used last.
+  const target = view === 'sounds' ? 'layers' : view === 'layers' ? 'sounds' : state.lastEdit;
   const vb = ui.el('viewBtn');
   ui.setIcon(vb, target);
-  const label = target === 'sounds' ? 'Show sound controls' : 'Show layers';
-  vb.setAttribute('aria-label', label);
+  vb.setAttribute('aria-label', target === 'sounds' ? 'Show sound controls' : 'Show layers');
   vb.title = target === 'sounds' ? 'Sound' : 'Layers';
   if (view === 'library') library.render();
+  if (view === 'keep') library.renderKeep();
+  if (view === 'now') renderNow();
+  syncNowTimer();
   refreshCard();
-  store.setPrefs({ view: state.lastView });
+  store.setPrefs({ view: state.lastView, edit: state.lastEdit });
+}
+
+// ----------------------------------------------------------- now playing
+
+// Big and plain: how long is left (or that it is endless), how far through,
+// where in an album, and what Next will do. The one control sits at the
+// bottom of the view, a thumb's reach from the buttons.
+function renderNow() {
+  if (state.view !== 'now' || !state.spec) return;
+  const spec = state.spec;
+  const passSecs = ui.passSeconds(spec);
+  const total = state.pattern && state.pattern.totalSteps;
+  const frac = total && state.engine && state.engine.playing ? (state.lastStep % total) / total : 0;
+  const done = state.passCount + frac;
+  const big = ui.el('nowBig');
+  const sub = ui.el('nowSub');
+  const fill = ui.el('nowFill');
+  if (spec.playFor) {
+    const left = Math.max(0, (spec.playFor - done) * passSecs);
+    big.textContent = clock(left);
+    sub.textContent = 'left';
+    fill.style.transform = `scaleX(${Math.min(1, done / spec.playFor)})`;
+  } else {
+    big.textContent = '∞';
+    sub.textContent = state.engine && state.engine.playing
+      ? `endless · ${clock(done * passSecs)} in` : 'endless';
+    fill.style.transform = `scaleX(${frac})`;
+  }
+
+  const pl = state.playlist;
+  const albumRow = ui.el('nowAlbum');
+  albumRow.hidden = !(pl && pl.ids.length);
+  if (pl && pl.ids.length) {
+    ui.el('nowAlbumName').textContent = pl.title;
+    const n = pl.ids.length;
+    ui.el('nowDots').textContent = n <= 12
+      ? Array.from({ length: n }, (_, i) => (i === pl.index ? '●' : '○')).join(' ')
+      : `${pl.index + 1} of ${n}`;
+  }
+
+  ui.el('nowNext').textContent = `Next: ${nextName()}`;
+
+  const action = ui.el('nowAction');
+  if (pl && pl.ids.length) {
+    action.hidden = false;
+    action.textContent = 'Leave album';
+    action.onclick = leaveAlbum;
+  } else if (state.lastAlbum) {
+    const album = store.loadAlbums().find((a) => a.id === state.lastAlbum.albumId);
+    action.hidden = !album;
+    if (album) {
+      action.textContent = `Back to ${album.title}`;
+      action.onclick = () => playAlbum(album.id, state.lastAlbum.index);
+    }
+  } else {
+    action.hidden = true;
+  }
+}
+
+function nextName() {
+  const pl = state.playlist;
+  if (pl && pl.ids.length) {
+    const id = pl.ids[(pl.index + 1) % pl.ids.length];
+    const entry = store.loadAll().find((e) => e.id === id);
+    return entry ? entry.spec.name : 'the next track';
+  }
+  if (state.historyIndex < state.history.length - 1) {
+    return state.history[state.historyIndex + 1].name;
+  }
+  return 'something new';
+}
+
+function clock(secs) {
+  const s = Math.max(0, Math.round(secs));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
+}
+
+// The clock ticks once a second, and only while it is on screen and playing.
+let nowTimer = null;
+function syncNowTimer() {
+  const want = state.view === 'now' && state.engine && state.engine.playing
+    && document.visibilityState === 'visible';
+  if (want && !nowTimer) nowTimer = setInterval(renderNow, 1000);
+  if (!want && nowTimer) { clearInterval(nowTimer); nowTimer = null; }
 }
 
 // --------------------------------------------------------------- rename
@@ -352,7 +526,7 @@ function startRename() {
     input.removeEventListener('blur', onBlur);
     input.hidden = true;
     h.hidden = false;
-    const name = input.value.trim().slice(0, 40);
+    const name = input.value.trim().slice(0, store.NAME_MAX);
     if (!commit || !name || name === h.textContent) return;
     if (albumId) {
       if (!store.renameAlbum(albumId, name)) { ui.toast('Could not rename'); return; }
@@ -381,11 +555,16 @@ function startRename() {
 // -------------------------------------------------------------- albums
 
 // Out of album mode without stopping the music: Next makes new loops again.
+// Out of album mode without stopping the music: Next makes new loops again,
+// and Now Playing offers the way back.
 function leaveAlbum() {
+  const pl = state.playlist;
+  if (pl) state.lastAlbum = { albumId: pl.albumId, index: Math.max(0, pl.index) };
   state.playlist = null;
   refreshCard();
   library.refresh();
-  ui.toast('Album stopped; Next makes new loops again');
+  renderNow();
+  ui.toast('Left the album. Next makes new loops');
 }
 
 function playAlbum(albumId, index = 0) {
@@ -396,26 +575,6 @@ function playAlbum(albumId, index = 0) {
   if (!present.length) { ui.toast('That album is empty'); return; }
   state.playlist = { albumId: album.id, title: album.title, ids: present, index: index - 1 };
   advancePlaylist(1);
-}
-
-function addCurrentTo(albumId) {
-  if (!state.spec) return;
-  const album = store.loadAlbums().find((a) => a.id === albumId);
-  if (!album) return;
-  // Adding to an album IS saving it. Making someone press Save first was
-  // a rule the app imposed for its own convenience, not the user's.
-  let id = state.currentId;
-  if (!isSaved()) {
-    const entry = store.save(state.spec);
-    if (!entry) { ui.toast('Could not save this loop'); return; }
-    id = entry.id;
-    state.currentId = id;
-  }
-  if (album.ids.includes(id)) { ui.toast('Already in this album'); return; }
-  store.setAlbumIds(album.id, [...album.ids, id]);
-  savedChanged();
-  refreshCard();
-  ui.toast(`Added to ${album.title}`);
 }
 
 async function shareAlbum(albumId) {
@@ -437,8 +596,9 @@ async function offerCode(code, label) {
     await navigator.clipboard.writeText(code);
     ui.toast('Code copied');
   } catch {
-    // The box lives in the Share view; take them to it.
-    setView('share');
+    // The box lives under Keep > Share; take them to it.
+    setView('keep');
+    library.showShare();
     ui.toast('Copy it from the box below');
   }
 }
@@ -446,11 +606,9 @@ async function offerCode(code, label) {
 function syncToneInputs(spec) {
   ui.el('bpm').value = spec.bpm;
   const len = spec.playFor || 0;
-  let idx = TRACK_LENGTHS.indexOf(len);
-  if (idx < 0) {
-    idx = TRACK_LENGTHS.reduce((best, v, i) =>
-      Math.abs(v - len) < Math.abs(TRACK_LENGTHS[best] - len) ? i : best, 0);
-  }
+  const secs = len * ui.passSeconds(spec);
+  const idx = len ? TRACK_TIMES.reduce((best, v, i) =>
+    (i && Math.abs(v - secs) < Math.abs(TRACK_TIMES[best] - secs) ? i : best), 1) : 0;
   ui.el('trackLen').value = idx;
   ui.el('lenVal').textContent = describeLength(len, spec);
   ui.el('warmth').value = spec.tone.warmth;
@@ -490,6 +648,7 @@ function frameLoop() {
 
 function onStep(step) {
   if (!state.engine.playing) return;
+  state.lastStep = step;
   const spb = state.gridSteps;
   const bar = Math.floor(step / spb);
   if (bar !== state.bar) {
@@ -501,9 +660,7 @@ function onStep(step) {
 
 function onLoop(count) {
   state.passCount = count;
-  // The count only shows when a track length is set, and only on the card's
-  // loop side.
-  if (state.spec && state.spec.playFor && !library.shownAlbum()) renderLoopWords();
+  if (state.view === 'now') renderNow();
 }
 
 // A track that has run its length hands over: to the next loop in the album
@@ -561,6 +718,8 @@ function togglePlay() {
 }
 
 function setPlayButton(playing) {
+  syncNowTimer();
+  renderNow();
   const b = ui.el('playBtn');
   b.setAttribute('aria-pressed', String(playing));
   b.setAttribute('aria-label', playing ? 'Pause' : 'Play');
@@ -597,7 +756,9 @@ function reroll(layer) {
   // And because it is a revision it REPLACES the current history entry
   // instead of adding one. Otherwise Previous walks back through your own
   // rolls of the same loop rather than reaching the loop before it.
-  loadSpec(next, { keepPosition: true, id: null, pushToHistory: false });
+  // It keeps its place among the kept loops: Keep then offers to update the
+  // kept one or keep this as a new loop, rather than silently forgetting it.
+  loadSpec(next, { keepPosition: true, id: state.currentId, pushToHistory: false });
   if (state.historyIndex >= 0 && state.history[state.historyIndex]) {
     state.history[state.historyIndex] = cloneSpec(next);
   }
@@ -613,34 +774,6 @@ function toggleMute(layer) {
   state.spec.mutes[layer] = !state.spec.mutes[layer];
   state.synth.setMute(layer, state.spec.mutes[layer]);
   ui.renderGrids(cells, state.engine.live || state.pattern, Math.max(0, state.bar), state.spec.mutes);
-}
-
-// Saving a loop that is already saved keeps its tweaks in the same entry
-// (and so in any album it is in) instead of making a duplicate.
-function saveCurrent() {
-  if (!state.spec) return;
-  if (isSaved()) {
-    const stored = store.loadAll().find((e) => e.id === state.currentId);
-    if (stored && JSON.stringify(stored.spec) === JSON.stringify(state.spec)) {
-      ui.toast(`${state.spec.name} is saved`);
-      return;
-    }
-    if (!store.replaceSpec(state.currentId, state.spec)) {
-      ui.toast('Could not save - this browser is refusing to store data');
-      return;
-    }
-    savedChanged();
-    ui.toast(`Saved changes to ${state.spec.name}`);
-    return;
-  }
-  const entry = store.save(state.spec);
-  if (!entry) {
-    ui.toast('Could not save - this browser is refusing to store data');
-    return;
-  }
-  state.currentId = entry.id;
-  savedChanged();
-  ui.toast(`Saved ${state.spec.name}`);
 }
 
 function exportMidi(spec = state.spec) {
@@ -669,12 +802,22 @@ async function pasteCode() {
   }
   try {
     if (kind === 'song') {
+      // A loop code lands in Imported Loops, unless this exact loop is kept
+      // already, in which case it plays from where it lives.
       const spec = share.decodeSong(text);
-      const ids = store.addSpecs([spec]);
+      const same = store.findSame(spec);
       state.playlist = null;
-      loadSpec(spec, { id: ids ? ids[0] : null });
+      if (same) {
+        loadSpec(cloneSpec(same.spec), { id: same.id });
+        const home = store.albumsOf(same.id)[0];
+        ui.toast(`Already kept${home ? ` in ${home.title}` : ''}`);
+      } else {
+        const ids = store.addSpecs([spec]);
+        if (ids) store.addToAlbum(store.IMPORTED, ids[0]);
+        loadSpec(spec, { id: ids ? ids[0] : null });
+        ui.toast(ids ? `Added ${spec.name} to Imported Loops` : `Playing ${spec.name} (could not keep it)`);
+      }
       if (!state.engine.playing) togglePlay();
-      ui.toast(ids ? `Added ${spec.name}` : `Playing ${spec.name} (could not save it)`);
     } else {
       const { title, specs } = share.decodeAlbum(text);
       const ids = store.addSpecs(specs);
@@ -701,17 +844,23 @@ function wire() {
   ui.setIcon(ui.el('prevBtn'), 'prev');
   ui.setIcon(ui.el('nextBtn'), 'next');
   ui.setIcon(ui.el('libraryBtn'), 'library');
-  ui.setIcon(ui.el('shareBtn'), 'share');
+  ui.setIcon(ui.el('nowBtn'), 'now');
   setPlayButton(false);
-  updateSaveButton();
+  store.ensureAlbums();
+  updateKeepButton();
 
   library.initLibrary({
     state,
     cardChanged: refreshCard,
     savedChanged,
     playAlbum,
-    addCurrentTo,
     leaveAlbum,
+    isKept,
+    isChanged,
+    keepIn,
+    unkeepFrom,
+    updateKept,
+    keepAsNew,
     shareAlbum,
     openSaved,
     pasteCode,
@@ -721,9 +870,18 @@ function wire() {
   ui.el('libraryBtn').addEventListener('click', () => {
     setView(state.view === 'library' ? state.lastView : 'library');
   });
+  ui.el('keepBtn').addEventListener('click', () => {
+    setView(state.view === 'keep' ? state.lastView : 'keep');
+  });
+  // Now Playing is home: its button goes there, and from there back to
+  // whichever of Sound and Layers you were using.
+  ui.el('nowBtn').addEventListener('click', () => {
+    setView(state.view === 'now' ? state.lastEdit : 'now');
+  });
   ui.el('viewBtn').addEventListener('click', () => {
-    if (state.view === 'library' || state.view === 'share') setView(state.lastView);
-    else setView(state.view === 'sounds' ? 'layers' : 'sounds');
+    if (state.view === 'sounds') setView('layers');
+    else if (state.view === 'layers') setView('sounds');
+    else setView(state.lastEdit);
   });
 
   const nameEl = ui.el('loopName');
@@ -733,10 +891,6 @@ function wire() {
   });
 
   ui.el('playBtn').addEventListener('click', togglePlay);
-  ui.el('shareBtn').addEventListener('click', () => {
-    setView(state.view === 'share' ? state.lastView : 'share');
-  });
-  ui.el('saveBtn').addEventListener('click', saveCurrent);
   ui.el('exportMidi').addEventListener('click', () => exportMidi());
   ui.el('prevBtn').addEventListener('click', goBack);
   ui.el('nextBtn').addEventListener('click', goForward);
@@ -755,18 +909,23 @@ function wire() {
     store.setPrefs(on ? { drift: true, driftAmount: v } : { drift: false });
   });
   ui.el('trackLen').addEventListener('input', (e) => {
-    const passes = TRACK_LENGTHS[parseInt(e.target.value, 10)] || 0;
-    if (state.spec) state.spec.playFor = passes || null;
+    if (!state.spec) return;
+    const secs = TRACK_TIMES[parseInt(e.target.value, 10)] || 0;
+    const passes = secs ? Math.max(1, Math.round(secs / ui.passSeconds(state.spec))) : 0;
+    state.spec.playFor = passes || null;
     if (state.engine) state.engine.loopCount = 0;
     ui.el('lenVal').textContent = describeLength(passes, state.spec);
     state.passCount = 0;
-    if (state.spec && !library.shownAlbum()) renderLoopWords();
+    renderNow();
+    updateKeepButton();
   });
 
   ui.el('bpm').addEventListener('input', (e) => {
     if (!state.spec) return;
     state.spec.bpm = parseInt(e.target.value, 10);
     ui.el('bpmVal').textContent = state.spec.bpm;
+    // The same number of passes takes a different time at a new tempo.
+    ui.el('lenVal').textContent = describeLength(state.spec.playFor || 0, state.spec);
     if (state.synth) state.synth.setEchoTime((60 / state.spec.bpm) * 0.75);
   });
 
@@ -903,7 +1062,7 @@ function wire() {
       e.preventDefault();
       togglePlay();
     } else if (e.key === 'n') newLoop();
-    else if (e.key === 's') saveCurrent();
+    else if (e.key === 's') keepQuick();
     else if (e.key >= '1' && e.key <= '5') reroll(LAYERS[parseInt(e.key, 10) - 1]);
     else if (e.code === 'MediaNextTrack') {
       e.preventDefault();
@@ -919,6 +1078,7 @@ function wire() {
   document.addEventListener('visibilitychange', () => {
     if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume();
     if (state.engine) state.engine.retune();
+    syncNowTimer();
     if (document.visibilityState === 'visible' && state.media && state.engine
         && state.engine.playing) {
       state.media.resume();
@@ -948,9 +1108,11 @@ function wire() {
   ui.resetCursor();
   resetHistory(state.spec);
   syncToneInputs(state.spec);
-  setView(prefs.view === 'sounds' ? 'sounds' : 'layers');
+  state.lastEdit = prefs.edit === 'sounds' ? 'sounds' : 'layers';
+  // Now Playing is where a first visit starts.
+  setView(BASE_VIEWS.includes(prefs.view) ? prefs.view : 'now');
   updateHistoryButtons();
-  updateSaveButton();
+  updateKeepButton();
 
   // The name's size depends on the card's width.
   window.addEventListener('resize', () => ui.fitName());

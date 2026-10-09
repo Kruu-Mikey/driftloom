@@ -88,22 +88,24 @@ export function renderReadout(spec, pattern, extra = {}) {
   if (bpm) bpm.textContent = spec.bpm;
 }
 
+// Folding never joins two long facts onto one line, since the column is
+// narrow and a cut-off tempo is worse than a missing third feeling. In
+// order: the lesser feelings go, then the third style, then the form word
+// joins the tempo, then the second style, then the type gets smaller.
 function readoutLines(p, level) {
   const lines = [];
-  const mix = level >= 4 ? p.mix.slice(0, 1) : level >= 3 ? p.mix.slice(0, 2) : p.mix;
-  const feel = level >= 2 ? p.feel.slice(0, 1) : p.feel;
+  const feel = level >= 1 ? p.feel.slice(0, 1) : p.feel;
+  const mix = level >= 4 ? p.mix.slice(0, 1) : level >= 2 ? p.mix.slice(0, 2) : p.mix;
   for (const m of mix) lines.push([m, 'mix']);
   for (const f of feel) lines.push([f, 'feel']);
-  let meter = p.meter;
-  if (level >= 1) {
-    lines.push([`${p.key} · ${p.bpm}`]);
-    lines.push([p.shape ? `${meter} · ${p.shape}` : meter]);
+  lines.push([p.key, 'key']);
+  if (p.shape && level >= 3) {
+    lines.push([`${p.bpm} · ${p.shape}`]);
   } else {
-    lines.push([p.key]);
     lines.push([p.bpm]);
-    lines.push([meter]);
-    if (p.shape) lines.push([p.shape]);
   }
+  lines.push([p.meter]);
+  if (p.shape && level < 3) lines.push([p.shape]);
   if (p.album) lines.push([p.album, 'album-line']);
   if (p.pass) lines.push([p.pass, 'faint']);
   return lines;
@@ -172,14 +174,47 @@ export function setName(name) {
 
 export function fitName() {
   const h = el('loopName');
-  h.classList.remove('wrap');
+  if (h.hidden || !h.clientWidth) return;
+  h.classList.remove('wrap', 'break');
   h.style.fontSize = '';
-  let size = parseFloat(getComputedStyle(h).fontSize) || 32;
-  while (h.scrollWidth > h.clientWidth + 1 && size > 18) {
-    size -= 1;
-    h.style.fontSize = `${size}px`;
-  }
-  if (h.scrollWidth > h.clientWidth + 1) h.classList.add('wrap');
+  const max = parseFloat(getComputedStyle(h).fontSize) || 32;
+  let size = max;
+  const set = (px) => { size = px; h.style.fontSize = `${px}px`; };
+  // One line, as large as fits, down to a size that still reads as a title.
+  const oneLine = () => h.scrollWidth <= h.clientWidth + 1;
+  while (!oneLine() && size > NAME_ONE_LINE_MIN) set(size - 1);
+  if (oneLine()) return;
+  // Otherwise two lines, as large as lets both fit. Names are capped at
+  // NAME_MAX characters, so this always lands well above the floor; the
+  // CSS clamps to two lines in case an old, longer name does not.
+  h.classList.add('wrap');
+  set(max);
+  const twoLines = () => h.scrollWidth <= h.clientWidth + 1
+    && h.scrollHeight <= Math.ceil(size * 1.1 * 2) + 2;
+  while (!twoLines() && size > NAME_TWO_LINE_MIN) set(size - 1);
+  // One unbroken word too long even at the floor: only then split it.
+  h.classList.toggle('break', !twoLines());
+}
+
+const NAME_ONE_LINE_MIN = 21;
+const NAME_TWO_LINE_MIN = 14;
+
+// Refit when the card changes width (rotation, a resized window, fonts
+// arriving late), not just when the name changes.
+if (typeof ResizeObserver !== 'undefined') {
+  let lastWidth = 0;
+  const ro = new ResizeObserver((entries) => {
+    const w = entries[0].contentRect.width;
+    if (Math.abs(w - lastWidth) < 1) return;
+    lastWidth = w;
+    fitName();
+  });
+  const watch = () => {
+    const host = el('loopName');
+    if (host && host.parentElement) ro.observe(host.parentElement);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch);
+  else watch();
 }
 
 function setLines(lines) {
@@ -359,14 +394,23 @@ const ICONS = {
     + '<rect class="solid" x="14" y="4.5" width="4" height="15" rx="1"/>',
   // Books on a shelf: what Library looks like everywhere else.
   library: '<path d="M4 4v16"/><path d="M8 7v13"/><path d="M12 5v15"/><path d="m16 6 4 14"/>',
+  // Keep: a heart, filled once the loop lives in an album, with a dot when
+  // the kept loop has been changed since.
+  heart: '<path d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>',
+  heartFull: '<path class="solid" d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>',
+  heartChanged: '<path d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>'
+    + '<circle class="solid" cx="12" cy="12.2" r="2.4"/>',
+  // A record: what is playing now.
+  now: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M7.5 12a4.5 4.5 0 0 1 4.5-4.5"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   // A bookmark rather than a floppy disk: "keep this one".
   save: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M12 7.5v6"/><path d="M9 10.5h6"/>',
   saved: '<path class="solid" d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>',
   // Three joined dots: the share mark phones already use.
   share: '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>'
     + '<path d="m8.3 13.3 7.4 4.4"/><path d="m15.7 6.3-7.4 4.4"/>',
-  check: '<path d="M20 6 9 17l-5-5"/>',
-  plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
   sounds: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
   layers: '<path d="M12 2.5 2.5 7.25 12 12l9.5-4.75z"/><path d="m2.5 16.75 9.5 4.75 9.5-4.75"/><path d="m2.5 12 9.5 4.75L21.5 12"/>',
   left: '<path d="m15 18-6-6 6-6"/>',
