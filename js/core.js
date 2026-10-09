@@ -4,9 +4,10 @@
 // here runs. With it on, the synth hands every voice to an AudioWorkletNode
 // running js/dlcore.wasm, and since queue item 29 the mix as well: the
 // channels, sends, duck, echo and reverb; since item 30 the wobble, the
-// saturator, the tone and the highpass. It keeps everything else:
-// scheduling, the voice budget, every Math.random draw, and the master
-// chain from the bus compressor on.
+// saturator, the tone and the highpass; since item 31 the bus compressor,
+// the master and kill gains and the ceiling, so its output goes straight to
+// the speakers. It keeps everything else: scheduling, the voice budget and
+// every Math.random draw.
 // The JavaScript synth stays the reference the core is proven against
 // (tools/measure.mjs --null).
 
@@ -58,18 +59,24 @@ export const KALIMBA_BODY = 2;
 // knows them by (core/src/mix.rs, core/src/lib.rs): each one AudioParam of
 // the synth's graph (the combs' one of each comb, which setTone moves
 // together). `gains` is the first of five, one per channel in the core's
-// order. Two are not AudioParams: `drive`, the value setTone hands
-// tanhCurve() for the saturator's new curve, and `lfoStart`, when the
-// synth started the wobble's LFOs (the call's time).
+// order. `master` is the master gain (setVolume, setCharacterLevel) and
+// `kill` the kill gain (silence, unsilence). Three are not AudioParams:
+// `drive`, the value setTone hands tanhCurve() for the saturator's new
+// curve; `lfoStart`, when the synth started the wobble's LFOs (the call's
+// time); and `bypass`, which routes around both compressors when its value
+// is not 0 (the measure harness's 'bypass').
 export const MIX = {
   gains: 0, pump: 5, tails: 6, echo: 7, combFb: 8, combFreq: 9, combSum: 10, reverbOut: 11,
-  tone: 12, wow: 13, flutter: 14, drive: 15, lfoStart: 16,
+  tone: 12, wow: 13, flutter: 14, drive: 15, lfoStart: 16, master: 17, kill: 18, bypass: 19,
 };
-// The AudioParam calls a parameter takes.
+// The AudioParam calls a parameter takes. HOLD is two: cancelScheduledValues
+// at the time, then setValueAtTime there with the parameter's `value`
+// attribute, holding it where it is.
 export const SET = 0;
 export const LINEAR = 1;
 export const TARGET = 2;
 export const CANCEL = 3;
+export const HOLD = 4;
 
 const WASM_URL = new URL('./dlcore.wasm', import.meta.url);
 const WORKLET_URL = new URL('./worklet.js', import.meta.url);
@@ -113,9 +120,10 @@ const NO_EXTRA = [];
 // the core's order, each a voice's destination: what a voice the core
 // takes would have played into, and, for a note it cannot take, where the
 // synth plays it instead -- connected by the synth into the node's input
-// for that channel. The node's one output is the mix through the first
-// half of the master chain, for the bus compressor; with `taps`, five more
-// carry the channels as they went into the mix.
+// for that channel. The node's one output is the mix through the whole
+// master chain, for the speakers; with `taps`, five more carry the channels
+// as they went into the mix, and one more the signal as it reached the bus
+// compressor.
 // `noise` is the synth's noise samples, handed to the core once.
 // `quality` is the synth's: the mix has six combs on 'full', three on
 // 'lite'.
@@ -130,10 +138,15 @@ export class CoreHost {
     this.noise = !!noise && noise.length <= CORE_NOISE_MAX;
     this.late = 0;
     this.dropped = 0;
+    // The compressors' gain reduction in dB, as of the last flush(); and
+    // how hard the signal has pressed each since this node was built, the
+    // deepest its curve has gone under the line.
+    this.reduction = [0, 0];
+    this.deepest = [0, 0];
     this.failed = null;
     this._pings = new Map();
     this._ping = 0;
-    const outputs = taps ? 1 + dests.length : 1;
+    const outputs = taps ? 2 + dests.length : 1;
     this.node = new AudioWorkletNode(ctx, 'driftloom-core', {
       numberOfInputs: dests.length,
       numberOfOutputs: outputs,
@@ -150,6 +163,12 @@ export class CoreHost {
   // The output carrying channel `channel` as it went into the mix (`taps`).
   tapOf(channel) {
     return this.taps ? 1 + channel : -1;
+  }
+
+  // The output carrying the signal as it reached the bus compressor
+  // (`taps`).
+  beforeComp() {
+    return this.taps ? 1 + this.dests.length : -1;
   }
 
   // Move one of the mix's parameters (MIX) by an AudioParam call (SET,
@@ -200,6 +219,8 @@ export class CoreHost {
       this.dropped = m.dropped;
     }
     if (m.type === 'pong') {
+      if (m.reduction) this.reduction = m.reduction;
+      if (m.deepest) this.deepest = this.deepest.map((d, i) => Math.min(d, m.deepest[i]));
       const resolve = this._pings.get(m.id);
       this._pings.delete(m.id);
       if (resolve) resolve(m);

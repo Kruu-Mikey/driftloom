@@ -4,9 +4,11 @@
 //! Plain numbers in and out, nothing else -- no imports, no strings, no
 //! allocator. Samples move through linear memory: before each block the
 //! host writes its own notes for each channel at the address `dl_inputs`
-//! returns, `CHANNELS` runs of `QUANTUM` floats; after it, the mix is at
-//! `dl_bus`, one run, and the channels as they went into it at the address
-//! `dl_process` returns, `CHANNELS` runs.
+//! returns, `CHANNELS` runs of `QUANTUM` floats; after it, what goes to the
+//! speakers is at `dl_out`, a run an output channel (`master::OUT`), what
+//! reached the bus compressor at `dl_bus`, as many, and the channels as
+//! they went into the mix at the address `dl_process` returns, `CHANNELS`
+//! runs.
 
 use core::cell::UnsafeCell;
 
@@ -121,14 +123,39 @@ pub extern "C" fn dl_inputs() -> *mut f32 {
     core().inputs().as_mut_ptr().cast()
 }
 
-/// Where the last block's mix is.
+/// Where the last block's output is, a run an output channel.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_out() -> *const f32 {
+    core().output().as_ptr().cast()
+}
+
+/// The number of output channels.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_outputs() -> u32 {
+    crate::master::OUT as u32
+}
+
+/// Where the last block was as it reached the bus compressor.
 #[unsafe(no_mangle)]
 pub extern "C" fn dl_bus() -> *const f32 {
-    core().bus().as_ptr()
+    core().bus().as_ptr().cast()
+}
+
+/// The bus compressor's `reduction` (0) or the ceiling's (1), in dB.
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_reduction(which: u32) -> f32 {
+    core().reduction(which as usize)
+}
+
+/// How hard the signal has pressed the bus compressor (0) or the ceiling
+/// (1) since this was last asked, in dB (`Compressor::deepest`).
+#[unsafe(no_mangle)]
+pub extern "C" fn dl_deepest(which: u32) -> f32 {
+    core().deepest(which as usize)
 }
 
 /// Render the block that starts at frame `block` and return where its
-/// channels are (the mix is at `dl_bus`).
+/// channels are (the output is at `dl_out`).
 #[unsafe(no_mangle)]
 pub extern "C" fn dl_process(block: f64) -> *const f32 {
     let frame = if block > 0.0 { block as u64 } else { 0 };

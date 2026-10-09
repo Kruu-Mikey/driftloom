@@ -18,6 +18,7 @@
 
 pub mod bass;
 pub mod breath;
+pub mod compressor;
 pub mod delay;
 pub mod drums;
 pub mod filter;
@@ -43,7 +44,7 @@ use breath::{Panflute, Stab, Struck, TEMPLE_SINES, TempleBell, Wind};
 use drums::Drum;
 use folk::{Accordion, Body, Nylon};
 use lead::{Lead, LeadKind, Tone};
-use master::Master;
+use master::{Master, OUT};
 use mix::Mix;
 use noise::Noise;
 use sung::{Kind3, Sung};
@@ -60,9 +61,10 @@ pub const QUANTUM: usize = 128;
 /// channels: all five of them (queue item 27). Since queue item 29 the core
 /// mixes them too (`mix`), with the host's own notes for each (`inputs`),
 /// through the channel gains, the sends, the duck, the echo and the reverb;
-/// and since item 30 runs the mix through the first half of the master
-/// chain (`master`), the wobble, the saturator, the tone and the highpass,
-/// into one bus (`bus`): what the bus compressor takes.
+/// and since items 30 and 31 runs the mix through the whole master chain
+/// (`master`): the wobble, the saturator, the tone and the highpass, the bus
+/// compressor, the master and kill gains and the ceiling, out to the
+/// speakers (`output`).
 pub const CHANNELS: usize = 5;
 pub const MELODY: u32 = 0;
 pub const CHORDS: u32 = 1;
@@ -100,12 +102,16 @@ fn plays_noise(voice: u32, parts: u32) -> bool {
 
 /// The master chain's parameters (`Core::param`), after the mix's
 /// (`mix::LAST_PARAM`): the tone lowpass's frequency, the wobble's two
-/// depths, the saturator's drive and the LFOs' start.
+/// depths, the saturator's drive and the LFOs' start; the master gain and
+/// the kill gain; and whether the compressors are routed around.
 pub const TONE_FREQ: u32 = mix::LAST_PARAM + 1;
 pub const WOW_DEPTH: u32 = TONE_FREQ + 1;
 pub const FLUTTER_DEPTH: u32 = TONE_FREQ + 2;
 pub const SAT_DRIVE: u32 = TONE_FREQ + 3;
 pub const LFO_START: u32 = TONE_FREQ + 4;
+pub const VOLUME: u32 = TONE_FREQ + 5;
+pub const KILL: u32 = TONE_FREQ + 6;
+pub const BYPASS: u32 = TONE_FREQ + 7;
 
 /// What the core says to a note.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -361,7 +367,6 @@ pub struct Core {
     inputs: [[f32; QUANTUM]; CHANNELS],
     mix: Mix,
     master: Master,
-    bus: [f32; QUANTUM],
     /// Whether the master chain fits at this rate.
     master_ready: bool,
     late: u32,
@@ -394,7 +399,6 @@ impl Core {
             inputs: [[0.0; QUANTUM]; CHANNELS],
             mix: Mix::new(),
             master: Master::new(),
-            bus: [0.0; QUANTUM],
             master_ready: false,
             late: 0,
             dropped: 0,
@@ -443,10 +447,11 @@ impl Core {
     /// Chromium has it. False if there is no such parameter or call, or the
     /// parameter holds as many events as it can.
     ///
-    /// Two are not AudioParams: `SAT_DRIVE` gives the saturator the curve
+    /// Three are not AudioParams: `SAT_DRIVE` gives the saturator the curve
     /// `tanhCurve(value)`, from the next block, as setting a WaveShaper's
     /// `curve` does; `LFO_START` says when the synth built the wobble's
-    /// LFOs, `time`. Both take any `op`.
+    /// LFOs, `time`; `BYPASS` routes around both compressors if `value` is
+    /// not 0, at once (the measure harness's `bypass`). All take any `op`.
     pub fn param(&mut self, id: u32, op: u32, value: f64, time: f64, tau: f64) -> bool {
         if !(value.is_finite() && time.is_finite() && tau.is_finite()) || self.rate <= 0.0 {
             return false;
@@ -465,6 +470,12 @@ impl Core {
                 self.master.start(time);
                 true
             }
+            VOLUME => mix::apply(self.master.volume(), op, v, time, tau, now),
+            KILL => mix::apply(self.master.kill(), op, v, time, tau, now),
+            BYPASS => {
+                self.master.set_bypass(value != 0.0);
+                true
+            }
             _ => self.mix.param(id, op, v, time, tau, now),
         }
     }
@@ -476,10 +487,28 @@ impl Core {
         &mut self.inputs
     }
 
-    /// The last block rendered, through the mix and the first half of the
-    /// master chain: what the synth's bus compressor gets.
-    pub fn bus(&self) -> &[f32; QUANTUM] {
-        &self.bus
+    /// The last block rendered, through the mix and the master chain: what
+    /// the speakers get, a block an output channel (`master::OUT`).
+    pub fn output(&self) -> &[[f32; QUANTUM]; OUT] {
+        self.master.output()
+    }
+
+    /// The last block as it reached the bus compressor, a block an output
+    /// channel: the measure harness reads it.
+    pub fn bus(&self) -> &[[f32; QUANTUM]; OUT] {
+        self.master.before_comp()
+    }
+
+    /// The bus compressor's `reduction` (0) or the ceiling's (1), in dB,
+    /// as of the last block.
+    pub fn reduction(&self, which: usize) -> f32 {
+        self.master.reduction(which)
+    }
+
+    /// How hard the signal has pressed the bus compressor (0) or the
+    /// ceiling (1) since this was last asked, in dB (`Compressor::deepest`).
+    pub fn deepest(&mut self, which: usize) -> f32 {
+        self.master.deepest(which)
     }
 
     /// Let every voice go at once, sounding or waiting: the host is going
@@ -1022,8 +1051,9 @@ impl Core {
             }
             input.fill(0.0);
         }
-        let mixed = *self.mix.process(block, &self.out);
-        self.bus = *self.master.process(block, &mixed, &self.waves);
+        // The graph is mono: the mix is every lane's.
+        let mixed = [*self.mix.process(block, &self.out); OUT];
+        self.master.process(block, &mixed, &self.waves);
         &self.out
     }
 }

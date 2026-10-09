@@ -6,7 +6,7 @@ import { midiToFreq } from './theory.js';
 import {
   CoreHost, CORE_VOICES, BASS_KINDS, TEXTURE_KINDS, DRUM_KINDS, HAT_KINDS, BASS_GLIDE, BASS_CHUG,
   KALIMBA_STRIKE, KALIMBA_BODY, SUNG_VOWELS, SUNG_OPEN_HUM, SUNG_LONGEST,
-  MIX, SET, LINEAR, TARGET, CANCEL,
+  MIX, SET, LINEAR, TARGET, CANCEL, HOLD,
 } from './core.js';
 
 // The channels in the core's order (core/src/lib.rs): its inputs, its
@@ -485,8 +485,9 @@ export class Synth {
     this.core = null;
     this._taps = taps;
     this._ringOut = null;
-    // What the mix was last asked for, to hand from one mix to the other.
-    this._asked = { tone: null, echo: null, mutes: {} };
+    // What the mix was last asked for, to hand from one mix to the other:
+    // and whether the output was last silenced (`silence`).
+    this._asked = { tone: null, echo: null, mutes: {}, killed: false };
     // Notes for a core voice that played in JS instead: the core had not
     // arrived, had failed, or does not serve the note's channel.
     this.fallbacks = 0;
@@ -512,9 +513,9 @@ export class Synth {
   // voice plays into, stops being the channel's gain and becomes the
   // core's input for it, at unity: what the core takes never passes
   // through it, and what it cannot take (a fallback note) reaches the
-  // core's mix there. The core's mix, through the wobble, saturator, tone
-  // and highpass (item 30), goes to the bus compressor in place of the
-  // JavaScript one.
+  // core's mix there. The core's mix goes through the whole master chain
+  // (items 30 and 31) and straight to the speakers; Web Audio carries only
+  // the fallback notes and the output.
   _mixInCore() {
     const node = this.core.node;
     CORE_CHANNELS.forEach((name, i) => {
@@ -524,8 +525,13 @@ export class Synth {
       g.gain.value = 1;
       g.connect(node, 0, i);
     });
-    node.connect(this.comp, 0);
+    node.connect(this._raw.destination, 0);
+    this.output = node;
     this.core.param(MIX.lfoStart, SET, 0, this._lfoStart);
+    // The master and kill gains where the JavaScript ones were asked to be:
+    // a glide under way lands at once.
+    this.core.param(MIX.master, SET, this._gain(), 0);
+    if (this._asked.killed) this.core.param(MIX.kill, SET, 0, 0);
     // The JavaScript mix and chain now hear nothing. Cut them off, so Web
     // Audio stops rendering them -- at once if nothing has played yet, and
     // once their tails have died away if the core arrived mid-play.
@@ -534,6 +540,7 @@ export class Synth {
       try { this.tails.disconnect(); } catch { /* already detached */ }
       try { this.pumpBus.disconnect(); } catch { /* already detached */ }
       try { this.hp.disconnect(); } catch { /* already detached */ }
+      try { this.ceiling.disconnect(); } catch { /* already detached */ }
     };
     if (this._raw.currentTime > 0 && typeof setTimeout === 'function') {
       this._ringOut = setTimeout(cut, RING_OUT_MS);
@@ -566,8 +573,14 @@ export class Synth {
     this.tails.connect(this.preBus);
     this.pumpBus.connect(this.preBus);
     this.hp.connect(this.comp);
+    this.ceiling.connect(this._raw.destination);
+    this.output = this.ceiling;
     if (tone) this._toneToMix(tone, this.ctx.currentTime);
     if (echo != null) this.setEchoTime(echo);
+    this.master.gain.cancelScheduledValues(0);
+    this.master.gain.value = this._gain();
+    this.kill.gain.cancelScheduledValues(0);
+    this.kill.gain.value = this._asked.killed ? 0 : 1;
   }
 
   // The core, when it is the one mixing.
@@ -1074,10 +1087,17 @@ export class Synth {
 
   // Silence everything already in flight. Not a mute: the transport stopped.
   silence(when = this.ctx.currentTime) {
-    const g = this.kill.gain;
-    g.cancelScheduledValues(when);
-    g.setValueAtTime(g.value, when);
-    g.linearRampToValueAtTime(0, when + 0.06);
+    this._asked.killed = true;
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.kill, HOLD, 0, when);
+      core.param(MIX.kill, LINEAR, 0, when + 0.06);
+    } else {
+      const g = this.kill.gain;
+      g.cancelScheduledValues(when);
+      g.setValueAtTime(g.value, when);
+      g.linearRampToValueAtTime(0, when + 0.06);
+    }
     // Stopped, nothing asks for notes, so nothing would let the last ones
     // go: sweep once a second until they have all gone.
     if (!this._sweeper && typeof setInterval === 'function') {
@@ -1089,6 +1109,13 @@ export class Synth {
   }
 
   unsilence(when = this.ctx.currentTime) {
+    this._asked.killed = false;
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.kill, HOLD, 0, when);
+      core.param(MIX.kill, LINEAR, 1, when + 0.02);
+      return;
+    }
     const g = this.kill.gain;
     g.cancelScheduledValues(when);
     g.setValueAtTime(g.value, when);
@@ -1130,8 +1157,17 @@ export class Synth {
     this._applyGain();
   }
 
+  _gain() {
+    return (this.userVolume ?? 0.85) * (this.characterLevel ?? 1);
+  }
+
   _applyGain() {
-    const v = (this.userVolume ?? 0.85) * (this.characterLevel ?? 1);
+    const v = this._gain();
+    const core = this._coreMix();
+    if (core) {
+      core.param(MIX.master, TARGET, v, this.ctx.currentTime, 0.08);
+      return;
+    }
     this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08);
   }
 

@@ -81,7 +81,9 @@ driftloom offline audio measurement
   --null            render the same seeded notes of every voice the core
                     plays, loops, and the mix stage, through both engines
                     and subtract
-  --mix             with --null, the mix stage alone
+  --mix             with --null, the mix and chain stages alone
+  --loud <count>    with --null, the loops are the <count> of --n from the
+                    corpus that press the ceiling hardest on the core
   --clicks          check that no voice plays a loud first sample when a
                     note starts a hair after a whole frame; with --n, also
                     count the noise starts that land there
@@ -221,6 +223,7 @@ function parseArgs(argv) {
       case '--retire': opts.retire = true; break;
       case '--null': opts.null = true; break;
       case '--mix': opts.mixOnly = true; break;
+      case '--loud': opts.loud = Math.max(1, Math.round(number())); break;
       case '--clicks': opts.clicks = true; break;
       case '--engine': {
         const e = value();
@@ -456,6 +459,31 @@ function synthFor(ctx, quality, engine, core) {
 }
 // The channels in the core's order: its taps are numbered so.
 const CORE_ORDER = ['melody', 'chords', 'bass', 'texture', 'drums'];
+// The finished output, into \`dest\`'s input \`input\` instead of the
+// speakers: the JavaScript ceiling's, or, since queue item 31, the core's,
+// which makes the whole master chain. The ceiling is stereo (Chromium's
+// compressor makes two channels of a mono input) and the core is mono, so
+// the core's goes through a gain that makes it the same two channels.
+function outputTo(synth, dest, input = 0) {
+  if (synth._coreMix()) {
+    const node = synth.core.node;
+    node.disconnect(0);
+    const two = synth._raw.createGain();
+    two.channelCount = 2;
+    two.channelCountMode = 'explicit';
+    two.channelInterpretation = 'speakers';
+    node.connect(two, 0);
+    two.connect(dest, 0, input);
+    return;
+  }
+  synth.ceiling.disconnect();
+  synth.ceiling.connect(dest, 0, input);
+}
+// Nothing out of the synth's output.
+function cutOutput(synth) {
+  if (synth._coreMix()) synth.core.node.disconnect(0);
+  else synth.ceiling.disconnect();
+}
 // A layer dry and at unity into \`dest\`, and nothing else out of the synth:
 // on JavaScript the channel's own node, cut off from the mix with its gain
 // at 1; on the core, which mixes (queue item 29), that channel's tap -- the
@@ -464,7 +492,7 @@ const CORE_ORDER = ['melody', 'chords', 'bass', 'texture', 'drums'];
 function dryOut(synth, layer, dest) {
   const channel = synth.channels[layer].gain;
   if (synth.core) {
-    synth.ceiling.disconnect();
+    cutOutput(synth);
     synth.core.node.connect(dest, synth.core.tapOf(CORE_ORDER.indexOf(layer)));
     return channel;
   }
@@ -474,12 +502,12 @@ function dryOut(synth, layer, dest) {
   return channel;
 }
 // What reaches the bus compressor, into \`dest\` instead: the JavaScript
-// highpass's output, or the core's, which since queue item 29 and 30 runs
-// the mix and the chain up to there.
+// highpass's output, or the core's tap of it (queue items 29 to 31: the core
+// runs the mix and the whole chain), with its output cut off.
 function beforeComp(synth, dest) {
   if (synth._coreMix()) {
-    synth.core.node.disconnect(synth.comp);
-    synth.core.node.connect(dest, 0);
+    cutOutput(synth);
+    synth.core.node.connect(dest, synth.core.beforeComp());
     return;
   }
   synth.hp.disconnect();
@@ -546,7 +574,7 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>measure</title>
 <script type="module">
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { loadCore } from '/js/core.js';
+import { loadCore, MIX, SET } from '/js/core.js';
 import { newSpec, characterOf, render, metreOf } from '/js/generator.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 
@@ -582,7 +610,10 @@ async function renderLoop(spec, seconds, opts, bypass) {
   // Worker; a corpus would otherwise leave one behind per render.
   if (engine.clock.worker) engine.clock.worker.terminate();
 
-  if (bypass) {
+  if (bypass && synth._coreMix()) {
+    // The core routes around its own compressors; its output is mono.
+    synth.core.param(MIX.bypass, SET, 1, 0);
+  } else if (bypass) {
     beforeComp(synth, synth.master);
     synth.kill.disconnect();
     synth.kill.connect(ctx.destination);
@@ -590,8 +621,7 @@ async function renderLoop(spec, seconds, opts, bypass) {
     const merger = ctx.createChannelMerger(channels);
     merger.connect(ctx.destination);
     const splitter = ctx.createChannelSplitter(2);
-    synth.ceiling.disconnect();
-    synth.ceiling.connect(splitter);
+    outputTo(synth, splitter);
     splitter.connect(merger, 0, 0);
     splitter.connect(merger, 1, 1);
     LAYERS.forEach((name, n) => layerTap(synth, name, merger, n + 2));
@@ -799,7 +829,7 @@ const SURVEY_LOOPS = 2000;
 const PROBE_PAGE = `
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { loadCore, CORE_VOICES } from '/js/core.js';
+import { loadCore, CORE_VOICES, MIX, SET, CANCEL } from '/js/core.js';
 import { newSpec, render } from '/js/generator.js';
 import { Rng, mulberry32 } from '/js/rng.js';
 ${PAGE_HELPERS}
@@ -1137,15 +1167,15 @@ window.probeRetire = async (o) => {
 // is the residual over the signal as a whole, and the worst single note is
 // given beside it.
 function nullOf(a, b) {
-  let sig = 0, res = 0, peak = 0, worst = 0;
+  let sig = 0, res = 0, peak = 0, worst = 0, worstAt = 0;
   for (let i = 0; i < a.length; i++) {
     const d = a[i] - b[i];
     sig += a[i] * a[i];
     res += d * d;
     if (Math.abs(a[i]) > peak) peak = Math.abs(a[i]);
-    if (Math.abs(d) > worst) worst = Math.abs(d);
+    if (Math.abs(d) > worst) { worst = Math.abs(d); worstAt = i; }
   }
-  return { sig, res, peak, worst };
+  return { sig, res, peak, worst, worstAt };
 }
 
 // The noise source alone, before any voice plays it (--null): the hat's
@@ -1215,6 +1245,29 @@ function mixSignal(kind, c, n, rate) {
       phase += 2 * Math.PI * 40 * Math.pow(400, x) / rate;
       d[i] = 0.25 * Math.sin(phase);
     }
+  } else if (kind === 'steps') {
+    // A tone whose level steps every 0.4 s, from far under the bus
+    // compressor to past where the saturator flattens it, up and down
+    // (queue item 31): each channel at its own pitch and a step behind the
+    // last, so the sum climbs and falls in steps of its own.
+    const levels = [-40, -20, -10, -4, 0, -12, -30, 2, -60, -6, 4, -16];
+    const hz = 110 * (1 + c * 0.75);
+    for (let i = 0; i < n; i++) {
+      const t = i / rate;
+      const step = Math.floor(t / 0.4) + c;
+      const a = Math.pow(10, levels[step % levels.length] / 20);
+      d[i] = a * Math.sin(2 * Math.PI * hz * t);
+    }
+  } else if (kind === 'bursts') {
+    // Loud bursts of noise, 10 to 200 ms long, at uneven times: attacks
+    // and releases of every depth.
+    let at = Math.round(0.03 * rate) + c * 311;
+    while (at < n) {
+      const len = Math.round((0.01 + 0.19 * rnd()) * rate);
+      const a = 0.2 + 0.9 * rnd();
+      for (let i = at; i < Math.min(n, at + len); i++) d[i] = a * (rnd() * 2 - 1);
+      at += len + Math.round((0.05 + 0.5 * rnd()) * rate);
+    }
   } else {
     // Bursts of noise, 0.3 s on in every 0.8.
     for (let i = 0; i < n; i++) {
@@ -1224,7 +1277,13 @@ function mixSignal(kind, c, n, rate) {
   }
   return d;
 }
-async function renderMixStage(v, o, engine) {
+// A nudge for the clean variants: the same signals, a part in ten million
+// louder, so a render whose input differs from the first's only in the last
+// bit, as the core's does. Chromium's compressors, like any, decide between
+// attack and release on a strict comparison, and how far that carries a
+// last-bit difference is the floor the core is held to.
+const NUDGE = 1 + 1e-7;
+async function renderMixStage(v, o, engine, nudge = 1) {
   const rate = o.rate;
   const n = Math.ceil(v.seconds * rate);
   const ctx = new OfflineAudioContext(1, n, rate);
@@ -1232,18 +1291,47 @@ async function renderMixStage(v, o, engine) {
   Math.random = mulberry32(seedFor(['mix', v.name].join('|')));
   const synth = synthFor(ctx, v.quality, engine, core);
   if (engine === 'rust' && !synth._coreMix()) throw new Error('the core is not mixing');
-  beforeComp(synth, ctx.destination);
+  // The chain stage (queue item 31) is read at the speakers; the mix stage
+  // where the bus compressor takes it.
+  if (v.chain) outputTo(synth, ctx.destination);
+  else beforeComp(synth, ctx.destination);
   CORE_ORDER.forEach((name, c) => {
+    // 'clean': into the melody alone (see mixVariants).
+    if (v.clean && name !== 'melody') return;
     const buf = ctx.createBuffer(1, n, rate);
-    buf.getChannelData(0).set(mixSignal(v.signal, c, n, rate));
+    buf.getChannelData(0).set(mixSignal(v.signal, c, n, rate).map((x) => x * nudge));
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(synth.channels[name].gain);
     src.start(0);
   });
+  if (v.steady) {
+    // The wobble held still, on both engines, so the compressors get the
+    // same signal on both and nothing of the LFOs' last-bit wander hides
+    // what they do to it: every setTone is followed by depths of 0.
+    const setTone = synth.setTone.bind(synth);
+    synth.setTone = (tone) => {
+      setTone(tone);
+      const now = ctx.currentTime;
+      const core = synth._coreMix();
+      if (core) {
+        for (const id of [MIX.wow, MIX.flutter]) { core.param(id, CANCEL, 0, now); core.param(id, SET, 0, now); }
+      } else {
+        for (const g of [synth.wowDepth.gain, synth.flutterDepth.gain]) { g.cancelScheduledValues(now); g.setValueAtTime(0, now); }
+      }
+    };
+    synth.setTone({ warmth: 0.6, space: 0.5, wobble: 0.4 });
+  }
   synth.setTone(MIX_TONES[0]);
   synth.setEchoTime(0.36);
-  if (v.moving) {
+  if (v.clean) {
+    // The tails at 0: the reverb and echo still run, but add exact zeros.
+    if (synth._coreMix()) synth.core.param(MIX.tails, SET, 0, 0);
+    else synth.tails.gain.value = 0;
+  }
+  const at = (t) => Math.round((t * rate) / 128) * 128 / rate;
+  const live = [];
+  if (v.moving && !v.clean) {
     // Ducks on fractions of a frame, ahead of time, as the engine asks.
     for (let k = 0; ; k++) {
       const t = 0.11 + k * 0.3731 + ((k * 0.618034) % 1) / rate;
@@ -1253,24 +1341,55 @@ async function renderMixStage(v, o, engine) {
     synth.fadeTails(3.1234567);
     synth.restoreTails(4.5678901);
     synth.setMute('texture', true);
-    const at = (t) => Math.round((t * rate) / 128) * 128 / rate;
-    const live = [
+    live.push(
       [at(1.5), () => { synth.setTone(MIX_TONES[1]); synth.setEchoTime(0.5123); synth.setMute('chords', true); }],
       [at(2.1), () => { synth.setTone(MIX_TONES[2]); synth.setMute('texture', false); }],
       [at(2.7), () => { synth.setMute('chords', false); synth.setEchoTime(0.2511); synth.duck(ctx.currentTime - 0.0123, 0.7, 0.2); }],
       [at(5.3), () => { synth.fadeTails(ctx.currentTime + 0.0001234, 0.2, 0.6); synth.setEchoTime(1.2); }],
       [at(6.1), () => { synth.restoreTails(ctx.currentTime - 0.01); }],
-    ];
-    for (const [t, call] of live) {
-      ctx.suspend(t).then(async () => {
-        call();
-        await settle(synth);
-        ctx.resume();
-      });
+    );
+  } else if (v.moving) {
+    // Clean: the tone and the saturator's curve moved, live, and nothing
+    // else of the mix's.
+    live.push(
+      [at(1.5), () => { synth.setTone(MIX_TONES[1]); }],
+      [at(2.1), () => { synth.setTone(MIX_TONES[2]); }],
+    );
+  }
+  if (v.moving) {
+    if (v.chain) {
+      // The master and kill gains (queue item 31): a volume and a
+      // character level asked for ahead, a stop and a start on fractions
+      // of a frame, and, live, a start in the middle of a stop's fade (the
+      // fade is held where it has got to), a volume moved in the middle of
+      // its own glide, and a stop long enough for Chromium's ceiling to
+      // stop rendering (its tail is 1.63 s) before the start.
+      synth.setVolume(0.95);
+      synth.silence(1.2345678);
+      synth.unsilence(1.4567891);
+      live.push(
+        [at(3.0), () => { synth.setCharacterLevel(1.2); }],
+        [at(3.3), () => { synth.silence(); }],
+        [at(3.33), () => { synth.unsilence(); }],
+        [at(5.6), () => { synth.setVolume(0.6); }],
+        [at(5.65), () => { synth.setVolume(1.0); }],
+        [at(6.4), () => { synth.silence(ctx.currentTime + 0.0004321); }],
+        [at(8.6), () => { synth.unsilence(); }],
+      );
     }
   }
+  for (const [t, call] of live) {
+    ctx.suspend(t).then(async () => {
+      call();
+      await settle(synth);
+      ctx.resume();
+    });
+  }
   await settle(synth);
-  return rendered(ctx, synth);
+  const buf = await ctx.startRendering();
+  const counts = synth.core ? await synth.core.flush() : null;
+  if (synth.core) synth.core.dispose();
+  return { buf, deepest: counts ? synth.core.deepest : null };
 }
 // A signal above \`hz\`, in 64-bit floats: a fourth-order Butterworth
 // highpass, two biquads. The chain's own 38 Hz highpass turns any last-bit
@@ -1292,23 +1411,45 @@ function above(d, rate, hz) {
   }
   return y;
 }
-async function probeMixStage(o) {
+// The mix stage's variants, then the chain stage's (queue item 31): level
+// steps, loud bursts and the sweep, read at the speakers.
+// The chain stage again 'clean': into the melody alone, the tails at 0 and
+// the wobble held still. Then what reaches the master chain is the same,
+// bit for bit, on both engines and from one JavaScript render to the next
+// (elsewhere Chromium sums preBus's three inputs in no fixed order, and the
+// LFOs differ in the last bit), so the residual is what the chain itself
+// adds -- the compressors, the gains, the saturator and the filters.
+function mixVariants() {
   const variants = [];
-  for (const quality of ['full', 'lite']) {
-    for (const signal of ['impulses', 'sweep', 'noise']) {
-      for (const moving of [false, true]) {
-        variants.push({ name: signal + ', ' + (moving ? 'moving' : 'still') + ', ' + quality, signal, moving, quality, seconds: 8 });
+  const stages = [
+    [false, false, ['impulses', 'sweep', 'noise'], 8],
+    [true, false, ['steps', 'bursts', 'sweep'], 10],
+    [true, true, ['steps', 'bursts', 'sweep'], 10],
+  ];
+  for (const [chain, clean, signals, seconds] of stages) {
+    for (const quality of ['full', 'lite']) {
+      for (const signal of signals) {
+        for (const moving of [false, true]) {
+          const name = signal + ', ' + (moving ? 'moving' : 'still') + ', ' + quality + (clean ? ', clean' : '');
+          variants.push({ name, signal, moving, quality, seconds, chain, clean, steady: clean });
+        }
       }
     }
   }
+  return variants;
+}
+async function probeMixStage(o) {
+  const variants = mixVariants();
   const mine = variants.slice(o.mixFrom ?? 0, o.mixTo ?? variants.length);
   return inParallel(mine.map((v) => async () => {
-    const js = (await renderMixStage(v, o, 'js')).getChannelData(0);
-    const rust = (await renderMixStage(v, o, 'rust')).getChannelData(0);
-    const again = (await renderMixStage(v, o, 'js')).getChannelData(0);
+    const js = (await renderMixStage(v, o, 'js')).buf.getChannelData(0);
+    const core = await renderMixStage(v, o, 'rust');
+    const rust = core.buf.getChannelData(0);
+    const again = (await renderMixStage(v, o, 'js')).buf.getChannelData(0);
     const hz = 100;
     return {
-      name: v.name, ...nullOf(js, rust), floor: nullOf(js, again),
+      name: v.name, chain: v.chain, deepest: core.deepest, ...nullOf(js, rust), floor: nullOf(js, again),
+      ...(v.clean ? { nudged: nullOf(js, (await renderMixStage(v, o, 'js', NUDGE)).buf.getChannelData(0)) } : {}),
       high: nullOf(above(js, o.rate, hz), above(rust, o.rate, hz)), highFloor: nullOf(above(js, o.rate, hz), above(again, o.rate, hz)),
     };
   }), Math.max(1, Math.floor(o.width / 2)));
@@ -1438,12 +1579,17 @@ window.probeNull = async (o) => {
   const master = new Rng(o.seed);
   const specs = [];
   const need = new Map(o.voices.map((v) => [v, Math.ceil(o.loops / o.voices.length)]));
-  for (let tries = 0; specs.length < o.loops && tries < 40000; tries++) {
+  for (let tries = 0; !o.seeds && specs.length < o.loops && tries < 40000; tries++) {
     const spec = newSpec(master.seed32());
     const found = voicesIn(spec);
     if (!found.some((v) => need.get(v) > 0)) continue;
     for (const v of found) need.set(v, (need.get(v) || 0) - 1);
     specs.push({ spec, voices: found });
+  }
+  // Or exactly these loops (--loud: the ones that press the ceiling most).
+  for (const seed of o.seeds || []) {
+    const spec = newSpec(seed);
+    specs.push({ spec, voices: voicesIn(spec) });
   }
   const renderMix = async (spec, engineName) => {
     const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
@@ -1456,8 +1602,7 @@ window.probeNull = async (o) => {
     if (engine.clock.worker) engine.clock.worker.terminate();
     const merger = ctx.createChannelMerger(CORE_TAPS.length + 1);
     merger.connect(ctx.destination);
-    synth.ceiling.disconnect();
-    synth.ceiling.connect(merger, 0, 0);
+    outputTo(synth, merger, 0);
     CORE_TAPS.forEach((name, n) => layerTap(synth, name, merger, n + 1));
     engine.load(spec);
     engine.playing = true;
@@ -1472,7 +1617,10 @@ window.probeNull = async (o) => {
     const buf = await ctx.startRendering();
     const counts = synth.core ? await synth.core.flush() : null;
     if (synth.core) synth.core.dispose();
-    return { buf, seconds, fell, late: counts ? counts.late : 0, dropped: counts ? counts.dropped : 0 };
+    return {
+      buf, seconds, fell, late: counts ? counts.late : 0, dropped: counts ? counts.dropped : 0,
+      deepest: counts ? synth.core.deepest : null,
+    };
   };
   out.loops = await inParallel(specs.slice(o.from ?? 0, o.to ?? specs.length).map(({ spec, voices }) => async () => {
     const js = await renderMix(spec, 'js');
@@ -1494,10 +1642,44 @@ window.probeNull = async (o) => {
       mix: nullOf(js.buf.getChannelData(0), rust.buf.getChannelData(0)),
       tap: nullOf(taps(js), taps(rust)),
       floor: nullOf(js.buf.getChannelData(0), again.buf.getChannelData(0)),
-      fallback: rust.fell, late: rust.late, dropped: rust.dropped,
+      fallback: rust.fell, late: rust.late, dropped: rust.dropped, deepest: rust.deepest,
     };
   }), Math.max(1, Math.floor(o.width / 2)));
   return out;
+};
+
+// --null --loud: loops from the corpus played on the core through the whole
+// master chain, each with how far its compressors pressed (their deepest
+// metered reduction) and its peak, to find the loops that reach the ceiling.
+window.probeLoud = async (o) => {
+  const master = new Rng(o.seed);
+  const seeds = Array.from({ length: o.to }, () => master.seed32()).slice(o.from);
+  return inParallel(seeds.map((seed) => async () => {
+    const spec = newSpec(seed);
+    const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
+    const seconds = Math.min(30, Math.max(loopDur * 2, 12));
+    const ctx = new OfflineAudioContext(1, Math.ceil(seconds * o.rate), o.rate);
+    const core = await coreFor(ctx, 'rust');
+    Math.random = mulberry32(spec.seed >>> 0 || 1);
+    const synth = synthFor(ctx, 'full', 'rust', core);
+    const engine = new Engine(ctx, synth);
+    if (engine.clock.worker) engine.clock.worker.terminate();
+    engine.load(spec);
+    engine.playing = true;
+    engine.nextStepTime = 0.05;
+    let guard = 0;
+    while (engine.nextStepTime < seconds && guard++ < 200000) {
+      engine._scheduleStep(engine.step, engine.nextStepTime);
+      engine._advance();
+    }
+    await settle(synth);
+    const buf = await ctx.startRendering();
+    const counts = await synth.core.flush();
+    synth.core.dispose();
+    let peak = 0;
+    for (const x of buf.getChannelData(0)) peak = Math.max(peak, Math.abs(x));
+    return { seed, name: spec.name, deepest: synth.core.deepest, peak, late: counts.late };
+  }), o.width);
 };
 
 // --clicks: each note started a hair after a whole frame and a hair before
@@ -1619,7 +1801,7 @@ window.probeEndings = async (o) => {
 const REFUSAL_PAGE = `
 import { Engine } from '/js/engine.js';
 import { Synth } from '/js/synth.js';
-import { loadCore } from '/js/core.js';
+import { loadCore, MIX, SET } from '/js/core.js';
 import { newSpec } from '/js/generator.js';
 import { decodeSong } from '/js/share.js';
 import { Rng, mulberry32 } from '/js/rng.js';
@@ -2316,16 +2498,30 @@ function reportNull(data, opts) {
   for (const [key, g] of groups) {
     out.push(`    ${key.padEnd(32)} ${String(g.notes).padStart(5)}    ${fmt(db(g.res / g.sig))} dB  ${fmt(g.worstNote)} dB    ${fmt(20 * Math.log10(g.worst || 1e-12))} dBFS`);
   }
-  out.push('');
-  out.push('  loops, the whole engine and master chain    residual: core layers    mix  js vs js   worst   late fallback');
-  for (const r of data.loops) {
-    out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
+  if (data.loud) {
+    const l = data.loud;
+    out.push('');
+    out.push(`  --loud: ${l.scanned} loops scanned on the core, ${l.pressed} pressed the ceiling; the ${l.picked.length} pressed hardest:`);
+    for (const r of l.picked) {
+      out.push(`    ${r.name.padEnd(28)} seed ${String(r.seed).padStart(10)}   ceiling ${r.deepest[1].toFixed(2).padStart(6)} dB   bus compressor ${r.deepest[0].toFixed(2).padStart(6)} dB   peak ${r.peak.toFixed(3)}`);
+    }
   }
+  const pressed = (r) => (r.deepest ? `  ${r.deepest[0].toFixed(1).padStart(5)} ${r.deepest[1].toFixed(1).padStart(5)}` : '');
   out.push('');
-  out.push('  the mix stage: signals into the five channels, read before the bus compressor');
-  out.push('                                            residual   js vs js    worst        above 100 Hz: residual  js vs js');
-  for (const r of data.mix || []) {
-    out.push(`    ${r.name.padEnd(36)} ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS        ${fmt(db(r.high.res / r.high.sig))} dB ${fmt(db(r.highFloor.res / r.highFloor.sig))} dB`);
+  out.push('  loops, the whole engine and master chain    residual: core layers    mix  js vs js   worst   late fallback   comp  ceiling (how hard, dB)');
+  for (const r of data.loops) {
+    out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${pressed(r)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
+  }
+  for (const [chain, title] of [[false, 'the mix stage: signals into the five channels, read before the bus compressor'],
+    [true, 'the chain stage: signals into the five channels, read at the speakers (how hard each pressed comp and ceiling, dB; when the worst sample is)']]) {
+    const rows = (data.mix || []).filter((r) => !!r.chain === chain);
+    if (!rows.length) continue;
+    out.push('');
+    out.push(`  ${title}`);
+    out.push('                                            residual   js vs js    worst        above 100 Hz: residual  js vs js');
+    for (const r of rows) {
+      out.push(`    ${r.name.padEnd(36)} ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS        ${fmt(db(r.high.res / r.high.sig))} dB ${fmt(db(r.highFloor.res / r.highFloor.sig))} dB${chain ? `${pressed(r)}  ${(r.worstAt / opts.rate).toFixed(3).padStart(6)} s` : ''}${r.nudged ? `   nudged: ${fmt(db(r.nudged.res / r.nudged.sig))} dB ${fmt(20 * Math.log10(r.nudged.worst || 1e-12))} dBFS` : ''}`);
+    }
   }
   out.push('');
   out.push('  "core layers" is the melody, chords, bass, texture and drums taps together, against their own level: everything else in');
@@ -2607,21 +2803,33 @@ if (opts.null) {
     voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
     rate: opts.rate, width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 12)),
   };
+  let loud = null;
+  if (opts.loud) {
+    // The corpus's --n loops on the core, ranked by how hard they press the
+    // ceiling, then by peak; the first --loud are the loops nulled.
+    const scan = (await inPages('probeLoud', ranges(opts.n, 8).map((r) => ({ ...o, ...r })))).flat();
+    scan.sort((a, b) => a.deepest[1] - b.deepest[1] || b.peak - a.peak);
+    loud = { scanned: scan.length, pressed: scan.filter((r) => r.deepest[1] < 0).length, picked: scan.slice(0, opts.loud) };
+    o.seeds = loud.picked.map((r) => r.seed);
+    o.loops = o.seeds.length;
+  }
   // A voice in a layer a page (about 160 notes on each engine), then the
   // loops four a page.
   const parts = opts.mixOnly ? [] : [
     // The noise source first, alone.
-    ...(o.voices.some((v) => NOISE_VOICES.includes(v)) ? [{ ...o, jobs: [], hat: true, from: 0, to: 0 }] : []),
-    ...batches(jobs.map((_, j) => j), 1).map((only) => ({ ...o, jobs, only, from: 0, to: 0 })),
+    ...(!loud && o.voices.some((v) => NOISE_VOICES.includes(v)) ? [{ ...o, jobs: [], hat: true, from: 0, to: 0 }] : []),
+    ...(loud ? [] : batches(jobs.map((_, j) => j), 1).map((only) => ({ ...o, jobs, only, from: 0, to: 0 }))),
     ...ranges(o.loops, 4).map((r) => ({ ...o, jobs: [], ...r })),
   ];
-  parts.push(
-    // The mix stage, four variants a page.
-    ...[0, 4, 8].map((from) => ({ ...o, jobs: [], from: 0, to: 0, mix: true, mixFrom: from, mixTo: from + 4 })),
-  );
+  if (!loud) {
+    parts.push(
+      // The mix and chain stages, four variants a page.
+      ...[0, 4, 8, 12, 16, 20, 24, 28, 32].map((from) => ({ ...o, jobs: [], from: 0, to: 0, mix: true, mixFrom: from, mixTo: from + 4 })),
+    );
+  }
   const got = await inPages('probeNull', parts);
   const data = {
-    notes: got.flatMap((g) => g.notes), loops: got.flatMap((g) => g.loops), mix: got.flatMap((g) => g.mix || []),
+    notes: got.flatMap((g) => g.notes), loops: got.flatMap((g) => g.loops), mix: got.flatMap((g) => g.mix || []), loud,
   };
   await browser.close();
   server.close();
