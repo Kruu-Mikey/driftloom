@@ -1130,6 +1130,49 @@ Mikey decides this line:
 
 ## Notes from Claude Code
 
+- **Item 30, the stall hunt: no cause in item 30 found; still left
+  unmerged (2026-10-09, Session 10).** As the brain asked.
+  - **What the long quanta are** (`perf.mjs --trace-extra --trace-dir`,
+    V8 GC, wasm and Web Audio per-node categories, plus a sampler reading
+    the audio thread's faults and context switches from /proc every 20 ms
+    on the trace's clock). Every quantum over 15 ms, in both builds, is
+    either off-CPU (15-322 ms of wall time for 0.5-20 ms of CPU) or
+    "CPU" that lands in whatever happened to be running: in item 29 inside
+    native DelayNode and gain processing (64 ms), in item 30 inside
+    `process()` (56 ms), once inside Chromium's own "compare topology" step
+    before any script (25 ms). The machine was 6-13% busy (31% at 4x). One
+    item-29 quantum (34 ms) coincides with the sampler itself, a separate
+    process, going 115 ms without a tick: the whole VM stopped. Others show
+    the thread preempted (involuntary switches) or blocked (voluntary, no
+    faults). The core's own `process()` takes 0.15-0.4 ms.
+  - **What item 30 could have added, checked:** the worklet's script is
+    item 29's but for comments; views are made once; the core has no
+    allocator and its memory is fixed (232 pages, item 29 230), no
+    `memory.grow`. The worklet isolate's GCs are all under 0.5 ms and none
+    fall in a long quantum. Wasm tier-ups still happen mid-play (one or two
+    a run, under 1 ms, on a background thread) and none coincide either.
+    The curve swap is 2048 `tanh`s on `setTone` only. **The old JavaScript
+    chain does not run**: with the core in, each quantum renders only the
+    two compressors, five gains, the worklet and the harness's analyser (no
+    delay, oscillator, waveshaper or biquad). The audio thread's minor
+    faults (19 a second), voluntary switches (60 a second) and preemptions
+    are the same in both builds.
+  - **The bisect** was overtaken: with the order swapped (item 30 first)
+    item 29 had the long quanta (2 of 30 against 1). So the A/B was rerun
+    counterbalanced, each build first in half the passes.
+  - **The rerun**, five loops x full/lite x 1x/4x, 80 runs a side: device
+    fill-in runs, item 30 **4** (8 events) against item 29 **2** (3); runs
+    with a quantum over 20 ms 7 against 1, all on full. Two more full-only
+    passes with the sampler, 20 a side each: fill-in runs 0 against 3, long
+    quanta 1 against 2. **All 120 a side:** fill-in runs 4 against 5
+    (one-sided p 0.75), long quanta 8 against 3 (p 0.11; full 8 of 80
+    against 2 of 80; lite 0 of 40 against 1). 90th-percentile worst quantum
+    12.0 against 8.5 ms; render +4% (full 88.9 against 83.2 ms/s, lite 61.2
+    against 63.2).
+  - Not merged. The 80-a-side rerun alone is 4 against 2 fill-in runs, and
+    the long quanta still lean against item 30 on full. Pooled with the
+    full-only passes, the fill-in rates are even, and nothing found points
+    at item 30's code. The brain's call.
 - **Item 30, rerun: still left unmerged -- its fill-in rate is worse
   (2026-10-09, Session 10).** As the brain asked: #150 (the worklet's block
   count) merged on its own; #148's downsampler is now an FFT convolution as
