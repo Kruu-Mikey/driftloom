@@ -578,7 +578,37 @@ channel. The generator's port still waits on the words (his 2026-10-03
 decision), unless he says otherwise. Sessions: **Session 10, hands,
 Opus 5.5, high: items 29-30; Session 11, hands, Opus 5.5, high: item
 31** (Chromium's compressor kernel and oversampling filters are the
-judgment-heavy parts). The brain verifies between them, as before. Not started: the word rankings, Depth two, the open decisions,
+judgment-heavy parts). The brain verifies between them, as before.
+
+**Session 10 (2026-10-09): item 29 merged (#147, v78); item 30 (#148)
+done but left unmerged under the block's performance rule.** 29: the
+core mixes (channels, sends, duck, echo, reverb, tails); mix stage
+nulls at -143 to -175 dB, loops at the floor; flag off byte-identical;
+main thread 8-12% lighter, no fill-ins. 30: wobble, saturator with
+Chromium's 2x oversampling, tone, highpass; nulls at -77 to -86 dB
+before the compressor (JS against JS -78 to -104 there: last-bit LFO
+differences moving the wobble's read by a fraction of a sample), loops
+at the floor. The blocker: device fill-ins in 3 of 40 runs on item 30's
+core, none in 40 on item 29's core or JavaScript. **Brain's call:** 3
+against 0 in 40 runs each is within chance (one-sided p about 0.12), and
+the runs predate the fix for the LFOs' start-up catch-up, so not yet a
+finding either way. Session 10 continues: (1) the worklet fix
+(Chromium sometimes hands `process()` the previous block's
+`currentFrame`; the core then renders that block 128 frames late; `main`
+is exposed too) lands now in its own PR; (2) the 256-tap downsampler
+becomes an FFT convolution, as Chromium does it (cheaper, and closer to
+Chromium's rounding); (3) a longer interleaved A/B, item 29's core
+against item 30's, with each fill-in's time and the worst `process()`
+block; merge if item 30's fill-in rate is no worse, else stop with the
+figures. Mikey also plays the #148 preview on his phone.
+
+**Ears reports** (Project knowledge, `claude/ears-batch-1.md`,
+`-batch-2.md`, `ears-tools.md`): a parallel sounds-and-ideas brain chat
+measured 32 albums against Driftloom (stereo, too much 60-120 Hz and
+too little 1-5 kHz, chords changing too often, loops that circle,
+short tails, full stops where records drop the floor). Its candidate
+items 1 (stereo), 2 (bass and presence) and 5 (tails, echo throws)
+touch the effects chain, so they come after item 31. Not started: the word rankings, Depth two, the open decisions,
 the iPhone check.
 
 Not started, for Mikey's own time: the word rankings, Depth two, the

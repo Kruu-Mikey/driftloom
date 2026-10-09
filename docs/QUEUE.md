@@ -1092,7 +1092,10 @@ signal before `comp`.
 The last of the graph. **`comp` and `ceiling`:** Chromium's
 DynamicsCompressor (its kernel: the knee curve, attack, the adaptive
 release, its lookahead pre-delay, its makeup gain, its metering),
-ported from Chromium's source, then `master` (`setVolume`,
+ported from Chromium's source (write it, and the stages before it, so
+that a stereo output is a later change, not a rewrite: the ears reports
+put stereo first among the next sound items; Chromium's compressor links
+its channels' detection), then `master` (`setVolume`,
 `setCharacterLevel`) and `kill` (`silence`, `unsilence`). The worklet's
 output goes straight to the destination. Prove both compressors with
 level steps, bursts, and loops at the catalog's loudest (the loudest
