@@ -36,8 +36,7 @@
     <!-- The calm one: how long is left, where you are, what Next will do. -->
     <div id="viewNow" class="view now" data-view="now" aria-label="Now playing" hidden>
       <div class="now-main">
-        <div id="nowBig" class="now-big">∞</div>
-        <div id="nowSub" class="now-sub">endless</div>
+        <div id="nowBig" class="now-big">0:00</div>
         <div class="now-bar" aria-hidden="true"><i id="nowFill"></i></div>
       </div>
       <div id="nowAlbum" class="now-album" hidden>
@@ -72,19 +71,19 @@
       <div id="layerList" class="layer-list"></div>
     </div>
 
-    <!-- Keep: which albums this loop is in (Favorite Loops first), and
+    <!-- Save: which albums this loop is in (Favorite Loops first), and
          sharing and exporting. Saving is ticking an album. -->
-    <div id="viewKeep" class="view paged-view keep" data-view="keep" aria-label="Keep and share" hidden>
+    <div id="viewSave" class="view paged-view save" data-view="save" aria-label="Save and share" hidden>
       <div class="lib-tabs" role="tablist">
-        <button role="tab" data-ktab="albums">Keep</button>
-        <button role="tab" data-ktab="share">Share</button>
+        <button role="tab" data-stab="albums" aria-label="Save to albums" title="Save"></button>
+        <button role="tab" data-stab="share" aria-label="Share and export" title="Share"></button>
       </div>
-      <div id="keepPages" class="lib-pages">
-        <div id="keepHead" class="lib-head"></div>
-        <div id="keepList" class="lib-list"></div>
-        <div id="keepFoot" class="lib-foot"></div>
+      <div id="savePages" class="lib-pages">
+        <div id="saveHead" class="lib-head"></div>
+        <div id="saveList" class="lib-list"></div>
+        <div id="saveFoot" class="lib-foot"></div>
       </div>
-      <div id="keepShare" class="lib-more" hidden>
+      <div id="saveShare" class="lib-more" hidden>
         <h2 class="section-head">This loop</h2>
         <p class="hint">A loop is a recipe, not a recording, so it fits in a code.
           No internet needed at either end.</p>
@@ -100,10 +99,10 @@
           arrives as an album of its own.</p>
         <pre id="shareOut" class="diag-out" hidden></pre>
       </div>
-      <div id="keepPager" class="pager" hidden>
-        <button id="kpPrev" class="pg" aria-label="Previous page"></button>
-        <span id="kpLabel" class="pg-label"></span>
-        <button id="kpNext" class="pg" aria-label="Next page"></button>
+      <div id="savePager" class="pager" hidden>
+        <button id="spPrev" class="pg" aria-label="Previous page"></button>
+        <span id="spLabel" class="pg-label"></span>
+        <button id="spNext" class="pg" aria-label="Next page"></button>
       </div>
     </div>
 
@@ -167,7 +166,7 @@
 
   </section>
 
-  <!-- Icons are filled in by ui.js, so the dynamic ones (play, keep, the
+  <!-- Icons are filled in by ui.js, so the dynamic ones (play, save, the
        viewport switch) and the static ones come from one place. -->
   <nav id="buttons" class="buttons" aria-label="Controls">
     <div class="btn-row transport">
@@ -177,7 +176,7 @@
     </div>
     <div class="btn-row">
       <button id="libraryBtn" class="pad" aria-label="Library" title="Library" aria-pressed="false"></button>
-      <button id="keepBtn" class="pad" aria-label="Keep and share" title="Keep and share" aria-pressed="false"></button>
+      <button id="saveBtn" class="pad" aria-label="Save and share" title="Save and share" aria-pressed="false"></button>
     </div>
     <div class="btn-row">
       <button id="nowBtn" class="pad" aria-label="Now playing" title="Now playing" aria-pressed="false"></button>

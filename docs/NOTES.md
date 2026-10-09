@@ -603,12 +603,12 @@ A song code is about 111 characters:
 
     DL1-0405P-0020G-80BBK-BG48Y-8PAG3-A9R7D-QQJEX-14P70-S3BEK-...
 
-Albums open to show their tracks. **A kept loop always lives in at least
-one album** (Mikey, 2026-10-10): keeping a loop is putting it in an album,
+Albums open to show their tracks. **A saved loop always lives in at least
+one album** (Mikey, 2026-10-10): saving a loop is putting it in an album,
 Favorite Loops by default, and taking it out of its last album deletes it.
 Favorite Loops and Imported Loops are built in, always first, and cannot be
 deleted or renamed; a pasted loop code lands in Imported Loops (or plays
-from wherever that exact recipe is already kept). Deleting an album deletes
+from wherever that exact recipe is already saved). Deleting an album deletes
 the loops that were only in it, after saying how many. Saves from before
 this rule moved into Favorite Loops on first launch (`ensureAlbums`), and
 backups now carry the albums. Tracks can be moved to another album,

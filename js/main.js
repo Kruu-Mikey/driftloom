@@ -9,7 +9,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v81';
+const BUILD = 'v82';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
@@ -37,16 +37,16 @@ const state = {
   bar: -1,
   gridSteps: 16,
   playlist: null,
-  // Which viewport is up ('now', 'sounds', 'layers', 'library' or 'keep');
-  // the last of the first three, where leaving Library or Keep goes back
+  // Which viewport is up ('now', 'sounds', 'layers', 'library' or 'save');
+  // the last of the first three, where leaving Library or Save goes back
   // to; and the last of Sound and Layers, which the switch offers.
   view: 'now',
   lastView: 'now',
   lastEdit: 'layers',
   // The album most recently left, so Now Playing can offer the way back.
   lastAlbum: null,
-  // The loop step last lit, for Now Playing's progress.
-  lastStep: 0,
+  // Now Playing's last audible position, in steps, held while paused.
+  nowSteps: 0,
   // The spec the cover was last drawn for, so the card is not redrawn when
   // only its words change.
   coverFor: null,
@@ -210,6 +210,7 @@ function loadSpec(spec, { keepPosition = false, id = null, pushToHistory = false
   state.pattern = state.engine.load(spec, { keepPosition });
   state.bar = -1;
   state.passCount = 0;
+  if (!keepPosition) state.nowSteps = 0;
   ui.renderGrids(cells, state.pattern, 0, spec.mutes);
   syncToneInputs(spec);
   refreshCard();
@@ -291,45 +292,45 @@ function renderLoopWords() {
   });
 }
 
-// Anything kept, deleted or renamed: the lists, and whether the loop on
-// screen counts as kept.
+// Anything saved, deleted or renamed: the lists, and whether the loop on
+// screen counts as saved.
 function savedChanged() {
   library.refresh();
-  updateKeepButton();
+  updateSaveButton();
   if (state.view === 'now') renderNow();
 }
 
-// ------------------------------------------------------------------ keep
+// ------------------------------------------------------------------ save
 
-// A kept loop lives in at least one album; keeping is putting it in one.
-function isKept() {
+// A saved loop lives in at least one album; saving is putting it in one.
+function isSaved() {
   return !!state.currentId && store.loadAll().some((e) => e.id === state.currentId);
 }
 
 function isChanged() {
-  if (!isKept() || !state.spec) return false;
+  if (!isSaved() || !state.spec) return false;
   const stored = store.loadAll().find((e) => e.id === state.currentId);
   return !!stored && !store.sameSpec(stored.spec, state.spec);
 }
 
-// Keep the playing loop in an album, keeping (saving) it first if it is not
-// kept anywhere yet.
-function keepIn(albumId) {
+// Save the playing loop to an album, saving it first if it is not saved
+// anywhere yet.
+function saveIn(albumId) {
   if (!state.spec) return;
-  if (!isKept()) {
+  if (!isSaved()) {
     const entry = store.save(state.spec);
-    if (!entry) { ui.toast('Could not keep it - this browser is refusing to store data'); return; }
+    if (!entry) { ui.toast('Could not save it - this browser is refusing to store data'); return; }
     state.currentId = entry.id;
   }
   if (!store.addToAlbum(albumId, state.currentId)) { ui.toast('Could not change that album'); return; }
   const album = store.loadAlbums().find((a) => a.id === albumId);
-  ui.toast(`Kept in ${album ? album.title : 'the album'}`);
+  ui.toast(`Saved to ${album ? album.title : 'the album'}`);
   savedChanged();
   refreshCard();
 }
 
-function unkeepFrom(albumId) {
-  if (!isKept()) return;
+function unsaveFrom(albumId) {
+  if (!isSaved()) return;
   const name = state.spec.name;
   const res = store.removeFromAlbum(albumId, state.currentId);
   if (!res.ok) { ui.toast('Could not change that album'); return; }
@@ -343,8 +344,8 @@ function unkeepFrom(albumId) {
   refreshCard();
 }
 
-function updateKept() {
-  if (!isKept()) return;
+function updateSaved() {
+  if (!isSaved()) return;
   if (!store.replaceSpec(state.currentId, state.spec)) {
     ui.toast('Could not save - this browser is refusing to store data');
     return;
@@ -355,37 +356,37 @@ function updateKept() {
 
 // The changed loop becomes a loop of its own, in Favorite Loops; the one it
 // came from stays as it was.
-function keepAsNew() {
+function saveAsNew() {
   if (!state.spec) return;
   const entry = store.save(state.spec);
   if (!entry) { ui.toast('Could not save - this browser is refusing to store data'); return; }
   state.currentId = entry.id;
   store.addToAlbum(store.FAVORITES, entry.id);
-  ui.toast(`Kept ${state.spec.name} as a new loop in Favorite Loops`);
+  ui.toast(`Saved ${state.spec.name} as a new loop in Favorite Loops`);
   savedChanged();
 }
 
-// S on a keyboard: keep in Favorite Loops, or save the changes to a kept loop.
-function keepQuick() {
+// S on a keyboard: save to Favorite Loops, or save the changes to a saved loop.
+function saveQuick() {
   if (!state.spec) return;
-  if (!isKept()) keepIn(store.FAVORITES);
-  else if (isChanged()) updateKept();
-  else ui.toast(`${state.spec.name} is kept`);
+  if (!isSaved()) saveIn(store.FAVORITES);
+  else if (isChanged()) updateSaved();
+  else ui.toast(`${state.spec.name} is saved`);
 }
 
-// The heart is filled once the loop lives in an album, and gets a dot when
-// the kept loop has been changed since.
-function updateKeepButton() {
-  const kept = isKept();
-  const b = ui.el('keepBtn');
-  ui.setIcon(b, kept ? (isChanged() ? 'heartChanged' : 'heartFull') : 'heart');
+// The bookmark is filled once the loop lives in an album, and becomes an
+// outline with a dot when the saved loop has been changed since.
+function updateSaveButton() {
+  const kept = isSaved();
+  const b = ui.el('saveBtn');
+  ui.setIcon(b, kept ? (isChanged() ? 'savedChanged' : 'saved') : 'save');
   b.classList.toggle('saved', kept);
-  b.setAttribute('aria-label', kept ? 'Kept: albums and sharing' : 'Keep and share');
+  b.setAttribute('aria-label', kept ? 'Saved: albums and sharing' : 'Save and share');
 }
 
 // ------------------------------------------------------------ viewport
 
-// Now Playing, Sound and Layers are where you stay; Library and Keep are
+// Now Playing, Sound and Layers are where you stay; Library and Save are
 // places you visit, whose buttons light while you are there. Pressing a lit
 // button again (or the switch) goes back to where you were.
 const BASE_VIEWS = ['now', 'sounds', 'layers'];
@@ -397,7 +398,7 @@ function setView(view) {
   if (view === 'sounds' || view === 'layers') state.lastEdit = view;
   for (const v of document.querySelectorAll('.view')) v.hidden = v.dataset.view !== view;
   ui.el('libraryBtn').setAttribute('aria-pressed', String(view === 'library'));
-  ui.el('keepBtn').setAttribute('aria-pressed', String(view === 'keep'));
+  ui.el('saveBtn').setAttribute('aria-pressed', String(view === 'save'));
   ui.el('nowBtn').setAttribute('aria-pressed', String(view === 'now'));
   // The switch shows where it goes, not where you are: from Sound it offers
   // Layers, from Layers it offers Sound, and from anywhere else it offers
@@ -408,9 +409,8 @@ function setView(view) {
   vb.setAttribute('aria-label', target === 'sounds' ? 'Show sound controls' : 'Show layers');
   vb.title = target === 'sounds' ? 'Sound' : 'Layers';
   if (view === 'library') library.render();
-  if (view === 'keep') library.renderKeep();
+  if (view === 'save') library.renderSave();
   if (view === 'now') renderNow();
-  syncNowTimer();
   refreshCard();
   store.setPrefs({ view: state.lastView, edit: state.lastEdit });
 }
@@ -422,25 +422,7 @@ function setView(view) {
 // bottom of the view, a thumb's reach from the buttons.
 function renderNow() {
   if (state.view !== 'now' || !state.spec) return;
-  const spec = state.spec;
-  const passSecs = ui.passSeconds(spec);
-  const total = state.pattern && state.pattern.totalSteps;
-  const frac = total && state.engine && state.engine.playing ? (state.lastStep % total) / total : 0;
-  const done = state.passCount + frac;
-  const big = ui.el('nowBig');
-  const sub = ui.el('nowSub');
-  const fill = ui.el('nowFill');
-  if (spec.playFor) {
-    const left = Math.max(0, (spec.playFor - done) * passSecs);
-    big.textContent = clock(left);
-    sub.textContent = 'left';
-    fill.style.transform = `scaleX(${Math.min(1, done / spec.playFor)})`;
-  } else {
-    big.textContent = '∞';
-    sub.textContent = state.engine && state.engine.playing
-      ? `endless · ${clock(done * passSecs)} in` : 'endless';
-    fill.style.transform = `scaleX(${frac})`;
-  }
+  updateNowClock();
 
   const pl = state.playlist;
   const albumRow = ui.el('nowAlbum');
@@ -485,6 +467,55 @@ function nextName() {
   return 'something new';
 }
 
+// Where the listener is in this track, in steps, read off the audio clock.
+// The scheduler's own counters (loopCount, step) run ahead of the sound by
+// its lookahead, up to three seconds while the screen is off, so counting
+// onLoop calls made the clock jump early at every pass. This takes the
+// scheduler's position and walks it back by how far its next step is ahead
+// of what is being heard, using the engine's measured output latency.
+function audibleSteps() {
+  const e = state.engine;
+  if (!e || !e.playing || !e.live || !e.spec) return null;
+  const heard = state.ctx.currentTime - (e.latency || 0);
+  const ahead = (e.nextStepTime - heard) / e.stepDur;
+  return Math.max(0, e.loopCount * e.live.totalSteps + e.step - ahead);
+}
+
+// The clock and the bar. Called every animation frame while Now Playing is
+// up and playing, so the bar glides; the text is only rewritten when the
+// second it shows changes. A set length counts down (shown with a minus, as
+// players do); an endless loop counts up. Paused, it holds where it was.
+function updateNowClock() {
+  const e = state.engine;
+  const steps = audibleSteps();
+  if (steps != null) state.nowSteps = steps;
+  const spec = state.spec;
+  if (!spec || !e || !e.live) {
+    setNowText('0:00');
+    ui.el('nowFill').style.transform = 'scaleX(0)';
+    return;
+  }
+  const total = e.live.totalSteps;
+  const pos = state.nowSteps || 0;
+  let text;
+  let frac;
+  if (spec.playFor) {
+    const end = spec.playFor * total;
+    text = `\u2212${clock(Math.max(0, end - pos) * e.stepDur)}`;
+    frac = Math.min(1, pos / end);
+  } else {
+    text = clock(pos * e.stepDur);
+    frac = (pos % total) / total;
+  }
+  setNowText(text);
+  ui.el('nowFill').style.transform = `scaleX(${frac.toFixed(4)})`;
+}
+
+function setNowText(text) {
+  const big = ui.el('nowBig');
+  if (big.textContent !== text) big.textContent = text;
+}
+
 function clock(secs) {
   const s = Math.max(0, Math.round(secs));
   const h = Math.floor(s / 3600);
@@ -493,14 +524,6 @@ function clock(secs) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}` : `${m}:${String(r).padStart(2, '0')}`;
 }
 
-// The clock ticks once a second, and only while it is on screen and playing.
-let nowTimer = null;
-function syncNowTimer() {
-  const want = state.view === 'now' && state.engine && state.engine.playing
-    && document.visibilityState === 'visible';
-  if (want && !nowTimer) nowTimer = setInterval(renderNow, 1000);
-  if (!want && nowTimer) { clearInterval(nowTimer); nowTimer = null; }
-}
 
 // --------------------------------------------------------------- rename
 
@@ -596,8 +619,8 @@ async function offerCode(code, label) {
     await navigator.clipboard.writeText(code);
     ui.toast('Code copied');
   } catch {
-    // The box lives under Keep > Share; take them to it.
-    setView('keep');
+    // The box lives under Save > Share; take them to it.
+    setView('save');
     library.showShare();
     ui.toast('Copy it from the box below');
   }
@@ -643,12 +666,12 @@ function frameLoop() {
   }
   const step = state.engine.visualStep();
   if (step != null) onStep(step);
+  if (state.view === 'now') updateNowClock();
   state.frameHandle = requestAnimationFrame(frameLoop);
 }
 
 function onStep(step) {
   if (!state.engine.playing) return;
-  state.lastStep = step;
   const spb = state.gridSteps;
   const bar = Math.floor(step / spb);
   if (bar !== state.bar) {
@@ -718,7 +741,6 @@ function togglePlay() {
 }
 
 function setPlayButton(playing) {
-  syncNowTimer();
   renderNow();
   const b = ui.el('playBtn');
   b.setAttribute('aria-pressed', String(playing));
@@ -756,8 +778,8 @@ function reroll(layer) {
   // And because it is a revision it REPLACES the current history entry
   // instead of adding one. Otherwise Previous walks back through your own
   // rolls of the same loop rather than reaching the loop before it.
-  // It keeps its place among the kept loops: Keep then offers to update the
-  // kept one or keep this as a new loop, rather than silently forgetting it.
+  // It keeps its place among the saved loops: Save then offers to update the
+  // saved one or save this as a new loop, rather than silently forgetting it.
   loadSpec(next, { keepPosition: true, id: state.currentId, pushToHistory: false });
   if (state.historyIndex >= 0 && state.history[state.historyIndex]) {
     state.history[state.historyIndex] = cloneSpec(next);
@@ -802,7 +824,7 @@ async function pasteCode() {
   }
   try {
     if (kind === 'song') {
-      // A loop code lands in Imported Loops, unless this exact loop is kept
+      // A loop code lands in Imported Loops, unless this exact loop is saved
       // already, in which case it plays from where it lives.
       const spec = share.decodeSong(text);
       const same = store.findSame(spec);
@@ -810,12 +832,12 @@ async function pasteCode() {
       if (same) {
         loadSpec(cloneSpec(same.spec), { id: same.id });
         const home = store.albumsOf(same.id)[0];
-        ui.toast(`Already kept${home ? ` in ${home.title}` : ''}`);
+        ui.toast(`Already saved${home ? ` in ${home.title}` : ''}`);
       } else {
         const ids = store.addSpecs([spec]);
         if (ids) store.addToAlbum(store.IMPORTED, ids[0]);
         loadSpec(spec, { id: ids ? ids[0] : null });
-        ui.toast(ids ? `Added ${spec.name} to Imported Loops` : `Playing ${spec.name} (could not keep it)`);
+        ui.toast(ids ? `Added ${spec.name} to Imported Loops` : `Playing ${spec.name} (could not save it)`);
       }
       if (!state.engine.playing) togglePlay();
     } else {
@@ -847,7 +869,7 @@ function wire() {
   ui.setIcon(ui.el('nowBtn'), 'now');
   setPlayButton(false);
   store.ensureAlbums();
-  updateKeepButton();
+  updateSaveButton();
 
   library.initLibrary({
     state,
@@ -855,12 +877,12 @@ function wire() {
     savedChanged,
     playAlbum,
     leaveAlbum,
-    isKept,
+    isSaved,
     isChanged,
-    keepIn,
-    unkeepFrom,
-    updateKept,
-    keepAsNew,
+    saveIn,
+    unsaveFrom,
+    updateSaved,
+    saveAsNew,
     shareAlbum,
     openSaved,
     pasteCode,
@@ -870,8 +892,8 @@ function wire() {
   ui.el('libraryBtn').addEventListener('click', () => {
     setView(state.view === 'library' ? state.lastView : 'library');
   });
-  ui.el('keepBtn').addEventListener('click', () => {
-    setView(state.view === 'keep' ? state.lastView : 'keep');
+  ui.el('saveBtn').addEventListener('click', () => {
+    setView(state.view === 'save' ? state.lastView : 'save');
   });
   // Now Playing is home: its button goes there, and from there back to
   // whichever of Sound and Layers you were using.
@@ -917,7 +939,7 @@ function wire() {
     ui.el('lenVal').textContent = describeLength(passes, state.spec);
     state.passCount = 0;
     renderNow();
-    updateKeepButton();
+    updateSaveButton();
   });
 
   ui.el('bpm').addEventListener('input', (e) => {
@@ -1062,7 +1084,7 @@ function wire() {
       e.preventDefault();
       togglePlay();
     } else if (e.key === 'n') newLoop();
-    else if (e.key === 's') keepQuick();
+    else if (e.key === 's') saveQuick();
     else if (e.key >= '1' && e.key <= '5') reroll(LAYERS[parseInt(e.key, 10) - 1]);
     else if (e.code === 'MediaNextTrack') {
       e.preventDefault();
@@ -1078,7 +1100,6 @@ function wire() {
   document.addEventListener('visibilitychange', () => {
     if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume();
     if (state.engine) state.engine.retune();
-    syncNowTimer();
     if (document.visibilityState === 'visible' && state.media && state.engine
         && state.engine.playing) {
       state.media.resume();
@@ -1112,7 +1133,7 @@ function wire() {
   // Now Playing is where a first visit starts.
   setView(BASE_VIEWS.includes(prefs.view) ? prefs.view : 'now');
   updateHistoryButtons();
-  updateKeepButton();
+  updateSaveButton();
 
   // The name's size depends on the card's width.
   window.addEventListener('resize', () => ui.fitName());

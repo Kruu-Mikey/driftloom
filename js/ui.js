@@ -394,20 +394,18 @@ const ICONS = {
     + '<rect class="solid" x="14" y="4.5" width="4" height="15" rx="1"/>',
   // Books on a shelf: what Library looks like everywhere else.
   library: '<path d="M4 4v16"/><path d="M8 7v13"/><path d="M12 5v15"/><path d="m16 6 4 14"/>',
-  // Keep: a heart, filled once the loop lives in an album, with a dot when
-  // the kept loop has been changed since.
-  heart: '<path d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>',
-  heartFull: '<path class="solid" d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>',
-  heartChanged: '<path d="M12 20s-7.2-4.4-8.8-9C2.2 7.9 4.2 5 7.3 5c1.9 0 3.5 1 4.7 2.7C13.2 6 14.8 5 16.7 5c3.1 0 5.1 2.9 4.1 6-1.6 4.6-8.8 9-8.8 9z"/>'
-    + '<circle class="solid" cx="12" cy="12.2" r="2.4"/>',
   // A record: what is playing now.
   now: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M7.5 12a4.5 4.5 0 0 1 4.5-4.5"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   close: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
-  // A bookmark rather than a floppy disk: "keep this one".
+  // Save is a bookmark, as in most apps now, not a floppy disk: with a plus
+  // while the loop is not saved, filled once it is, and outlined with a dot
+  // when the saved loop has been changed since.
   save: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><path d="M12 7.5v6"/><path d="M9 10.5h6"/>',
   saved: '<path class="solid" d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>',
+  bookmark: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/>',
+  savedChanged: '<path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"/><circle class="solid" cx="12" cy="10" r="2.4"/>',
   // Three joined dots: the share mark phones already use.
   share: '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>'
     + '<path d="m8.3 13.3 7.4 4.4"/><path d="m15.7 6.3-7.4 4.4"/>',

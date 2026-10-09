@@ -52,21 +52,22 @@ confirm what you are actually running; bump `BUILD` in `js/main.js` and
 |---|---|
 | Space | play / stop |
 | N | a completely new loop |
-| S | keep the current one in Favorite Loops |
+| S | save the current one to Favorite Loops |
 | 1–5 | re-roll drums, bass, keys, melody, air |
 
 The screen is one page that never scrolls: the **card** at the top shows
 what is playing (tap its name to rename it), the **viewport** in the middle,
 and the **buttons** at the bottom: previous, play and next (Next past the
-newest loop makes a new one); Library and Keep; Now Playing and the switch
+newest loop makes a new one); Library and Save; Now Playing and the switch
 between Layers and Sound.
 
-- **Now Playing** is the calm view: time left (or endless), album position,
+- **Now Playing** is the calm view: time left (counting down, with a minus)
+  or time playing (endless loops), album position,
   what Next will do, and Leave album / Back to album at its bottom edge.
-- **Keep** is saving and sharing. A kept loop always lives in at least one
-  album: tap Favorite Loops (or any album) to keep it there. Taking a loop
-  out of its last album deletes it. A kept loop that has changed since
-  offers Update or Keep as new. Its Share tab holds loop codes, MIDI export
+- **Save** is saving and sharing. A saved loop always lives in at least one
+  album: tap Favorite Loops (or any album) to save it there. Taking a loop
+  out of its last album deletes it. A saved loop that has changed since
+  offers Update or Save as new. Its Share tab holds loop codes, MIDI export
   and pasting a code in; a pasted loop lands in Imported Loops.
 - **Library** holds albums (Favorite Loops and Imported Loops built in),
   every loop, and under More: backups, the processor switch and Diagnostics.

@@ -308,7 +308,8 @@ body {
 
 /* ------------------------------------------------------ now playing */
 
-/* Calm on purpose: one big number, one thin line, a few words. */
+/* Calm on purpose: one number, one thin line, a few words. The line is
+   moved every frame by transform, which the compositor does cheaply. */
 .now {
   justify-content: space-between;
   padding: 14px 20px 12px;
@@ -331,13 +332,6 @@ body {
   color: var(--sand);
   font-variant-numeric: tabular-nums;
 }
-.now-sub {
-  margin-top: 6px;
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--haze);
-}
 .now-bar {
   width: min(78%, 320px);
   height: 3px;
@@ -352,7 +346,7 @@ body {
   background: var(--amber);
   transform-origin: left center;
   transform: scaleX(0);
-  transition: transform 1s linear;
+  will-change: transform;
 }
 .now-album {
   display: flex;
@@ -386,7 +380,7 @@ body {
 
 /* ------------------------------------------------------------ share */
 
-#keepShare .hint { margin: 0 0 4px; }
+#saveShare .hint { margin: 0 0 4px; }
 
 /* ---------------------------------------------------------- library */
 
@@ -513,23 +507,26 @@ body {
   border: 1px solid var(--line);
   border-radius: 3px;
   color: var(--haze);
-  pointer-events: none;
 }
 .pick svg { width: 18px; height: 18px; }
+/* Inside the row's button (so the box itself is a tap target), pushed to
+   the far end. */
+.lrow-main .pick { margin-left: auto; margin-right: 2px; }
+.lib-tabs button svg { width: 20px; height: 20px; display: block; margin: 0 auto; }
 .lrow.in .pick { color: var(--deep); background: var(--mint); border-color: var(--mint); }
 .lrow.in .lrow-title { color: var(--mint); }
 .pick.warn { color: var(--rust); border-color: var(--rust); }
 .lrow.in .pick.warn { background: transparent; }
 
-/* Keep: a line of explanation, or the changed-since-kept choice. */
-.lib-head .keep-note {
+/* Save: a line of explanation, or the changed-since-saved choice. */
+.lib-head .save-note {
   margin: 0;
   font-size: 13px;
   color: var(--haze);
   flex: 1 1 100%;
 }
 .lib-head.changed { flex-wrap: wrap; gap: 6px 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
-.lib-head.changed .keep-note { color: var(--amber); }
+.lib-head.changed .save-note { color: var(--amber); }
 .lib-head .ghost { padding: 7px 10px; font-size: 13px; }
 
 .lrow .ghost.tiny.confirm { color: var(--rust); border-color: var(--rust); }

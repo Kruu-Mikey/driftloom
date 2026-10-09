@@ -1,10 +1,10 @@
-// The Library and Keep viewports.
+// The Library and Save viewports.
 //
 // Library: albums (Favorite Loops and Imported Loops built in, first), every
-// loop, and More (backups, the processor switch, diagnostics). Keep: which
+// loop, and More (backups, the processor switch, diagnostics). Save: which
 // albums the playing loop is in, and sharing and exporting.
 //
-// A kept loop always lives in at least one album, so keeping a loop IS
+// A saved loop always lives in at least one album, so saving a loop IS
 // ticking an album, and taking it out of its last album deletes it
 // (storage.js has the rules).
 //
@@ -28,7 +28,7 @@ const lib = {
   albumId: null,
   mode: null,          // within an album: null (tracks), 'pick' or 'move'
   moving: null,        // the loop being moved
-  keepTab: 'albums',
+  saveTab: 'albums',
   pages: {},           // remembered page per list
   armed: null,         // { key, until }: a destructive tap waiting for its second
 };
@@ -40,10 +40,11 @@ export function initLibrary(app) {
   for (const b of document.querySelectorAll('[data-tab]')) {
     b.addEventListener('click', () => setTab(b.dataset.tab));
   }
-  for (const b of document.querySelectorAll('[data-ktab]')) {
-    b.addEventListener('click', () => { lib.keepTab = b.dataset.ktab; renderKeep(); });
+  for (const b of document.querySelectorAll('[data-stab]')) {
+    b.innerHTML = ui.icon(b.dataset.stab === 'share' ? 'share' : 'bookmark');
+    b.addEventListener('click', () => { lib.saveTab = b.dataset.stab; renderSave(); });
   }
-  for (const pg of [LIB_PAGER, KEEP_PAGER]) {
+  for (const pg of [LIB_PAGER, SAVE_PAGER]) {
     ui.setIcon(el(pg.prev), 'left');
     ui.setIcon(el(pg.next), 'right');
     el(pg.prev).addEventListener('click', () => turn(pg, -1));
@@ -77,8 +78,8 @@ export function isVisible() {
   return !el('viewLibrary').hidden;
 }
 
-function keepVisible() {
-  return !el('viewKeep').hidden;
+function saveVisible() {
+  return !el('viewSave').hidden;
 }
 
 // The album the card should show, or null for the playing loop.
@@ -117,18 +118,18 @@ export function closeAlbum() {
 // neither view is on screen: it does nothing.
 export function refresh() {
   if (isVisible()) render();
-  if (keepVisible()) renderKeep();
+  if (saveVisible()) renderSave();
 }
 
 export function showShare() {
-  lib.keepTab = 'share';
-  renderKeep();
+  lib.saveTab = 'share';
+  renderSave();
 }
 
 // --------------------------------------------------------------- paging
 
 const LIB_PAGER = { list: 'libList', pager: 'pager', label: 'pgLabel', prev: 'pgPrev', next: 'pgNext', key: () => libKey(), render: () => render() };
-const KEEP_PAGER = { list: 'keepList', pager: 'keepPager', label: 'kpLabel', prev: 'kpPrev', next: 'kpNext', key: () => 'keep', render: () => renderKeep() };
+const SAVE_PAGER = { list: 'saveList', pager: 'savePager', label: 'spLabel', prev: 'spPrev', next: 'spNext', key: () => 'save', render: () => renderSave() };
 
 function libKey() {
   if (lib.tab === 'albums' && lib.albumId) return `${lib.mode || 'album'}:${lib.albumId}`;
@@ -469,9 +470,9 @@ function renderPicker(album) {
   const done = () => { lib.mode = null; render(); };
   backTo(album.title, done);
   const s = lib.app.state.spec;
-  if (s && !lib.app.isKept()) {
+  if (s && !lib.app.isSaved()) {
     el('libFoot').append(ghost(`Add playing: ${s.name}`, () => {
-      lib.app.keepIn(album.id);
+      lib.app.saveIn(album.id);
       render();
     }));
   }
@@ -501,9 +502,9 @@ function renderPicker(album) {
       lib.app.cardChanged();
     }, { current: entry.id === lib.app.state.currentId });
     if (inAlbum) r.classList.add('in');
-    r.appendChild(mark(inAlbum, warn));
+    r.querySelector('.lrow-main').appendChild(mark(inAlbum, warn));
     return r;
-  }, 'No loops yet. Keep one you like and it will show up here.');
+  }, 'No loops yet. Save one you like and it will show up here.');
 }
 
 // Every loop, wherever it lives. Tap to play; changes happen in albums.
@@ -517,74 +518,74 @@ function renderLoops() {
     const where = homes.length ? homes[0].title + (homes.length > 1 ? ` +${homes.length - 1}` : '') : '';
     return row(entry.spec.name, `${keyOf(entry.spec)} · ${where}`, () => lib.app.openSaved(entry),
       { current: entry.id === currentId });
-  }, 'No loops yet. Keep one you like and it will show up here.', current);
+  }, 'No loops yet. Save one you like and it will show up here.', current);
 }
 
-// ----------------------------------------------------------------- keep
+// ----------------------------------------------------------------- save
 
-export function renderKeep() {
-  for (const b of document.querySelectorAll('[data-ktab]')) {
-    b.setAttribute('aria-selected', String(b.dataset.ktab === lib.keepTab));
+export function renderSave() {
+  for (const b of document.querySelectorAll('[data-stab]')) {
+    b.setAttribute('aria-selected', String(b.dataset.stab === lib.saveTab));
   }
-  const share = lib.keepTab === 'share';
-  el('keepShare').hidden = !share;
-  el('keepPages').hidden = share;
+  const share = lib.saveTab === 'share';
+  el('saveShare').hidden = !share;
+  el('savePages').hidden = share;
   if (share) {
-    el('keepPager').hidden = true;
+    el('savePager').hidden = true;
     return;
   }
-  const head = el('keepHead');
-  const foot = el('keepFoot');
+  const head = el('saveHead');
+  const foot = el('saveFoot');
   head.innerHTML = '';
   foot.innerHTML = '';
   const app = lib.app;
   const spec = app.state.spec;
   if (!spec) return;
-  const kept = app.isKept();
+  const kept = app.isSaved();
   const id = kept ? app.state.currentId : null;
 
-  // A kept loop that has been re-rolled or tweaked since: say so, and offer
+  // A saved loop that has been re-rolled or tweaked since: say so, and offer
   // both ways forward rather than guessing.
   if (kept && app.isChanged()) {
     const homes = store.albumsOf(id).length;
     const p = document.createElement('p');
-    p.className = 'keep-note';
-    p.textContent = 'Changed since you kept it.';
+    p.className = 'save-note';
+    p.textContent = 'Changed since you saved it.';
     head.append(p,
-      ghost(homes > 1 ? `Update in ${homes} albums` : 'Update it', () => app.updateKept()),
-      ghost('Keep as new', () => app.keepAsNew()));
+      ghost(homes > 1 ? `Update in ${homes} albums` : 'Update it', () => app.updateSaved()),
+      ghost('Save as new', () => app.saveAsNew()));
     head.classList.add('changed');
   } else {
     head.classList.remove('changed');
     if (!kept) {
       const p = document.createElement('p');
-      p.className = 'keep-note';
-      p.textContent = `Tap an album to keep ${spec.name} in it.`;
+      p.className = 'save-note';
+      p.textContent = `Tap an album to save ${spec.name} to it.`;
       head.append(p);
     }
   }
 
   foot.append(ghost('New album', () => newAlbumThen((a) => {
-    app.keepIn(a.id);
-    ui.toast(`Kept in ${a.title}`);
+    app.saveIn(a.id);
+    ui.toast(`Saved to ${a.title}`);
   })));
 
   const byId = loopsById();
   const albums = listedAlbums(store.IMPORTED);
   const shown = albums.filter((a) => a.id !== store.IMPORTED || (id && a.ids.includes(id)));
-  paged(KEEP_PAGER, shown, (album) => {
+  paged(SAVE_PAGER, shown, (album) => {
     const inAlbum = !!id && album.ids.includes(id);
     const last = inAlbum && store.albumsOf(id).length <= 1;
-    const key = `keep:${album.id}:${id}`;
+    const key = `save:${album.id}:${id}`;
     const warn = last && isArmed(key);
     const meta = warn ? 'only album: tap again to delete' : count(album.ids.filter((x) => byId.has(x)).length, 'loop');
     const r = row(album.title, meta, () => {
-      if (!inAlbum) { app.keepIn(album.id); return; }
-      if (last && !armed(key)) { renderKeep(); return; }
-      app.unkeepFrom(album.id);
+      if (!inAlbum) { app.saveIn(album.id); return; }
+      if (last && !armed(key)) { renderSave(); return; }
+      app.unsaveFrom(album.id);
     }, { art: artFor(album, byId) });
     if (inAlbum) r.classList.add('in');
-    r.appendChild(mark(inAlbum, warn));
+    r.querySelector('.lrow-main').appendChild(mark(inAlbum, warn));
     return r;
   }, 'No albums.');
 }
