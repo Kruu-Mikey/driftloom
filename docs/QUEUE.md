@@ -7,9 +7,15 @@ later, in listening albums the brain builds from the Done list.
 **Status, 2026-10-10:** items 0-31 are done (13 stopped at its gate by
 design): every voice, the mix and the whole master chain play from the
 Rust core behind `?engine=rust`, its output straight to the speakers.
-Nothing is queued: after item 31 the brain verifies and Mikey listens (see
-"After item 31, stop"). A new Claude Code session starts here: read the
+Next: item 31b. A new Claude Code session starts here: read the
 standing rules and the merge policy, then take the next item.
+
+**The engine, from here (Mikey, 2026-10-10):** the Rust core is
+Driftloom's own engine, not a copy of Chromium. Matching Chromium was
+how the port was proven; from item 31b on, the core may do better where
+better is possible (judged by measurement and Mikey's ears), and
+nulling against JavaScript is a safety net until the core is the
+default, not a goal. See `docs/BRAIN.md`, "The engine".
 
 ## Standing rules, for every item
 
@@ -1145,8 +1151,13 @@ not change), the usual checks.
 - **The handover re-glides** the tone and the wobble depths (replayed
   with `setTargetAtTime` from the core's defaults). Set the core's
   starting values at attach instantly, then glide only real changes.
-- Keep both compressors' cold start as it is: whether to warm them is
-  Mikey's call (BRAIN.md, State).
+- **Warm the core's compressors** (Mikey, 2026-10-10: the engine is ours
+  now, not a copy of Chromium; BRAIN.md, "The engine"). Start both
+  detectors as if the music had been playing, so first Play, a rebuild
+  and the core's arrival don't dip the first notes by up to 10 dB. The
+  JavaScript engine keeps its cold start; the nulls will differ in the
+  first second, and that's expected (say by how much, and that after it
+  they meet the floor again).
 
 ## Later, not queued
 

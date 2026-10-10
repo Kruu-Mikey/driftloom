@@ -16,6 +16,12 @@ Three roles.
   under the merge policy, and report.
 - **Mikey** -- the ears. His listening is the acceptance test for anything
   that changes how the app sounds. He relays between brain and hands.
+- **Ears** (since 2026-10-09) -- separate claude.ai chats that measure
+  records Mikey loves against Driftloom renders and write findings with
+  yardsticks (`docs/EARS.md`, `tools/ears/`, and the `claude/ears-*`
+  docs in the Project; read `claude/ears-sessions.md` for their scope).
+  They don't touch the queue or app code; the brain turns their findings
+  into items.
 
 The loop, since 2026-09-25:
 
@@ -164,6 +170,10 @@ Stated decisions, not inferences. Dated where the date matters.
 - **No new sound profiles or instruments for now** (2026-09-25). The base is
   solid; the focus is optimization, composition, and bettering what the
   app already makes. Fiddle, accordion and drone may get more nuance later.
+  *Partly superseded (2026-10-09/10):* the ears prototypes include new
+  sounds, and Mikey liked the first five as clips (stereo, roundBass,
+  glass, floorDrop, arc: "all the new stuff is sounding really great").
+  Build the ones he approves; no new *profiles* still.
 - **The playhead fade is gone for speed** (2026-09-27).
 
 **The words (roadmap 19)**
@@ -190,6 +200,32 @@ Stated decisions, not inferences. Dated where the date matters.
 - **Listening tests don't ask him to describe tracks freely** (too
   abstract). The word-ranking test (queue item 19) is the tool.
 - The old branches stay: he likes looking back on them.
+
+**The engine (Mikey, 2026-10-10)** -- the direction from here.
+
+- **Driftloom has its own Rust audio engine, and copying Chromium is no
+  longer the goal.** The port used Chromium as the reference so that
+  every step could be proven; now that the whole sound path runs in the
+  core, the core is the thing. Aim for what audiophiles, game developers
+  and programmers who value efficient, easy-to-run software would favor:
+  an app and an engine people marvel at for its beauty and commitment to
+  excellence. Do things better than Chromium where better is possible,
+  and in the way that fits Driftloom's own aims.
+- What that means in practice: Chromium-parity work stops unless it
+  serves a purpose (it still does as a safety net until the core is the
+  default). Improvements are judged by measurement (level, cost, tone,
+  determinism, performance on a phone) and by Mikey's ears, not by
+  nulling against Chromium. Changes to sounds he already likes still go
+  to blind A/Bs; the balance lock and the refusal checks still hold.
+- Candidates (brain, 2026-10-10, unranked): a warm compressor start (no
+  first-note dip); smooth curve and parameter changes where Chromium
+  switches abruptly (the saturator's curve swap); better oversampling
+  and a true-peak ceiling; a reverb designed for this music rather than
+  six plain combs (a sound change: blind A/B); stereo, built in the core
+  (the ears' top item); an offline renderer for audio export (roadmap
+  17) from the same core; a documented host API for native and game
+  hosts (`no_std`-friendly, sample-rate independent, deterministic);
+  the generator in Rust when the words settle.
 
 **The platform**
 
@@ -297,7 +333,35 @@ Stated decisions, not inferences. Dated where the date matters.
   Baseline in `docs/perf-baseline.md`.
 - `tools/listen.mjs` -- one-command albums; still not built (roadmap 20).
 
-## State -- 2026-10-08
+## State -- 2026-10-10
+
+### Start here (for the next brain)
+
+- **Where it is:** `main` at v81. With `?engine=rust` the whole sound
+  path runs in the Rust core (every voice, the mix, the master chain)
+  and its output goes straight to the speakers; without the flag the
+  JavaScript synth plays as before. Brain-verified through item 31.
+- **Queued:** item 31b, hardening the core path, revised for the engine
+  direction (warm compressor start in the core). Session 12, hands,
+  Sonnet 5.5 at high effort.
+- **Waiting on Mikey:** the "Rust, all voices" album (`docs/ALBUMS.md`;
+  one album now covers the whole mix), on his phone; and Depth two.
+- **Then, in order:** (1) make the core the default and retire the flag
+  (the JavaScript synth stays only as the fallback for browsers that
+  can't run the core; Rust-against-Rust determinism and the measurement
+  baselines replace nulling against JavaScript as the regression guard);
+  (2) the ears-approved sounds, built in the core: stereo first, then
+  roundBass, glass, floorDrop, arc (Mikey liked all five as clips; the
+  prototypes on draft PR #152 lost old sounds in the live app, likely
+  the voice budget, so rebuild each one at a time with the refusal and
+  level checks); dubStab, organ, wash and longChords wait on his
+  verdict; (3) the engine-excellence candidates under "The engine"
+  above; (4) the generator's port when the words settle; the word
+  rankings (`/rank`) are still the words' bottleneck.
+- **Read** "The engine" under Mikey's decisions first: it changes how
+  every Rust item is judged from here.
+
+### The log
 
 `main` at **v68**, deployed at the new address (see Session 5, below).
 No open PRs. Nothing is queued. Item 20
