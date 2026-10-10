@@ -1115,6 +1115,39 @@ album (the mix, on his phone); then he decides about making the core the
 default, and the generator's port (which waits on the words, his
 2026-10-03 decision, unless he changes it).
 
+## 31b. Hardening the core path (from the brain's check of items 30-31)
+
+Found 2026-10-10 by the brain's review; none is a bug seen in a render,
+all are paths a phone could take. One PR, flag on only (flag off must
+not change), the usual checks.
+
+- **A core that fails while playing.** `core.js` sets no
+  `onprocessorerror`, and the worklet only reports `failed` from its
+  constructor; with `panic = "abort"`, a trap in `process` would leave
+  the node silent for good, the JavaScript chain already cut, and
+  Diagnostics reading healthy. On a processor error, fall back to the
+  full JavaScript graph (`_mixInJs` already does this for a load
+  failure) and show `rust (failed: ...)`. Prove it with a test-only
+  trap.
+- **A core that fails to load** (`loadCore` rejects, or the node's
+  constructor throws): JavaScript plays correctly, but Diagnostics shows
+  `rust (loading)` forever. Show `failed`.
+- **#150's frame count can only move forward.** If Chromium ever called
+  `process()` more often than real time rather than repeating a stale
+  `currentFrame`, `next` would drift ahead and never come back. Trust
+  `currentFrame` again once `next` is more than a block or two ahead.
+- **The LFO catch-up** (`master.rs`, `while lfo_block < block`) runs in
+  one `process()` call from `_lfoStart` to the first block the core
+  renders: on a slow phone that loads the core 30 s in, about 1.3
+  million steps in one block. Compute the LFOs' phase at that block
+  directly instead of stepping to it, and null against the stepped
+  version.
+- **The handover re-glides** the tone and the wobble depths (replayed
+  with `setTargetAtTime` from the core's defaults). Set the core's
+  starting values at attach instantly, then glide only real changes.
+- Keep both compressors' cold start as it is: whether to warm them is
+  Mikey's call (BRAIN.md, State).
+
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want

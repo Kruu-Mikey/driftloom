@@ -47,7 +47,10 @@ lead; 5 pan flute; 6 fiddle with strummed nylon; 7 music box and harp;
 jingle); 10 the waves texture. Bass and drums are spread across them.
 Played twice: once on the main site, once with `?engine=rust`. Listen
 for any difference, clicks or dropouts; on the Rust pass Diagnostics
-should read `engine: rust  late: 0  fallback: 0`. Labeled, not blind:
+should read `engine: rust  late: 0  fallback: 0`. **Since v81 (items
+29-31) the Rust pass also runs the whole mix in the core** -- reverb,
+echo, wobble, saturator, both compressors -- so this one album now
+checks everything; no second album is needed. Labeled, not blind:
 the URL and Diagnostics show the engine. Best heard on the phone.
 
 ```

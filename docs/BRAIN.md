@@ -640,6 +640,45 @@ then the item-31 album). **For future A/Bs:** counterbalance the slot
 order, and use `perf.mjs --trace-dir/--trace-over` to look inside any
 long quantum before blaming code; the sandbox VM freezes now and then.
 
+**Session 10 merged #148 (item 30, v80); Session 11 merged item 31
+(#156, v81). Brain-verified 2026-10-10: with `?engine=rust` the whole
+sound path runs in the core** -- voices, mix, wobble, saturator, both
+compressors (ported from Chromium 141's DynamicsCompressorKernel),
+master and kill -- and the worklet goes straight to the speakers; Web
+Audio carries only fallback notes. Live audio nodes 62 instead of about
+1,280; audio thread lighter than item 30's; fill-ins even against item
+30 (counterbalanced). Stereo-ready (per-channel state, linked
+detection), still mono. Wasm 157,544 bytes; core memory 14.50 MB. A
+Sonnet subagent read #150, #148 and #156: no bugs; flag off unchanged;
+the JS chain cut on attach, fallback notes reach the core through its
+inputs, a load failure restores the JS graph; every runtime method
+carries the same automation. A Haiku subagent reran: tests three times,
+`--check`, the full `--null` (loops -85 to -87 dB at the JS floor, late
+and fallback 0, the ceiling pressed in the loud set; mix and chain
+stages -77 to -94 dB beside their own JS floors), `--clicks` and
+`--endings` on the core (clean). Hardening the review found, none seen
+in a render, queued as **item 31b**: a core that traps while playing
+goes silent instead of falling back; Diagnostics after a load failure;
+#150's forward-only frame count; the LFO catch-up in one block; the
+handover re-glide.
+
+**Open for Mikey: the compressors' cold start.** Chromium's compressors
+start with an empty detector, so the first tenth of a second of music
+after first Play (and after every rebuild, e.g. a quality change) can
+dip by up to about 10 dB for a few tenths of a second. The JavaScript
+app has always done this; the core copies it, and with the flag on it
+happens when the core arrives (a core arriving mid-music dips again). A
+warm start is one line in the core; in JavaScript it needs a short,
+inaudible signal into both compressors before the music. Keep, or warm
+both?
+
+**Listening:** the "Rust, all voices" album now covers the whole mix.
+
+**Next:** Session 12, hands, **Sonnet 5.5, high**: item 31b. After
+Mikey's listening: making the core the default (the flag's last step),
+then the ears reports' sound items (stereo first), and the generator's
+port when the words settle.
+
 **Ears reports** (Project knowledge, `claude/ears-batch-1.md`,
 `-batch-2.md`, `ears-tools.md`): a parallel sounds-and-ideas brain chat
 measured 32 albums against Driftloom (stereo, too much 60-120 Hz and
