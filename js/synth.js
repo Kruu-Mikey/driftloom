@@ -457,7 +457,7 @@ export class Synth {
   // that arrives later is handed over with attachCore(). `taps` gives the
   // core's node an output per channel, as it goes into the mix (the
   // measure harness reads them).
-  constructor(ctx, quality = 'full', { engine = 'js', core = null, taps = false } = {}) {
+  constructor(ctx, quality = 'full', { engine = 'js', core = null, taps = false, coreError = null } = {}) {
     this._building = null;
     this._voiceEnd = null;
     // Finished-to-be voices, earliest end first: { end, nodes }.
@@ -483,6 +483,8 @@ export class Synth {
     this.engine = engine;
     this._raw = ctx;
     this.core = null;
+    // Why the core is not coming, if it is not: Diagnostics shows it.
+    this.coreError = coreError;
     this._taps = taps;
     this._ringOut = null;
     // What the mix was last asked for, to hand from one mix to the other:
@@ -503,11 +505,20 @@ export class Synth {
         this.noise.getChannelData(0), { quality: this.quality, taps: this._taps });
     } catch (err) {
       // No worklet node here: everything stays in JS, counted as fallbacks.
-      console.warn('Rust core unavailable; playing in JS', err);
+      this.coreFailed(err);
       return;
     }
     this.core.onfail = () => this._mixInJs();
     this._mixInCore(fresh);
+  }
+
+  // The core will not come (it did not load, or its node could not be
+  // built): everything stays in JS, counted as fallbacks, and Diagnostics
+  // says so rather than reading `loading` for good.
+  coreFailed(err) {
+    if (this.core) return;
+    console.warn('Rust core unavailable; playing in JS', err);
+    this.coreError = String((err && err.message) || err);
   }
 
   // The core mixes (queue item 29). Each channel's node, where every
@@ -553,10 +564,12 @@ export class Synth {
     // And bring the core's mix to where the JavaScript one was asked to
     // be. A duck or a fade of the tails already scheduled stays with the
     // JavaScript mix: the core's starts level.
+    // Instantly: the core's own values start where the JavaScript ones are
+    // asked to be, and only changes from here on glide.
     const { tone, echo, mutes } = this._mixState();
-    if (tone) this._toneToMix(tone, this.ctx.currentTime);
-    if (echo != null) this.setEchoTime(echo);
-    for (const [layer, muted] of Object.entries(mutes)) if (muted) this.setMute(layer, true);
+    if (tone) this._toneToMix(tone, this.ctx.currentTime, true);
+    if (echo != null) this.setEchoTime(echo, true);
+    for (const [layer, muted] of Object.entries(mutes)) if (muted) this.setMute(layer, true, true);
   }
 
   // The core failed after all (too old a browser for its module): the
@@ -599,7 +612,11 @@ export class Synth {
   engineReport() {
     if (this.engine !== 'rust') return 'js';
     const c = this.core;
-    if (!c) return `rust (loading)  fallback: ${this.fallbacks}`;
+    if (!c) {
+      return this.coreError
+        ? `rust (failed: ${this.coreError})  fallback: ${this.fallbacks}`
+        : `rust (loading)  fallback: ${this.fallbacks}`;
+    }
     if (c.failed) return `rust (failed: ${c.failed})  fallback: ${this.fallbacks}`;
     return `rust  late: ${c.late}  fallback: ${this.fallbacks}${c.dropped ? `  dropped: ${c.dropped}` : ''}`;
   }
@@ -997,7 +1014,9 @@ export class Synth {
   // setTone's work: the tone lowpass, the saturator's curve, the reverb's
   // level, feedback and color, and the wobble's depths -- in the core when
   // it mixes, in Web Audio otherwise.
-  _toneToMix(tone, t) {
+  // `instant`: the core's values are set where they are asked to be, at
+  // `t`, rather than gliding there; only the handover does (`_mixInCore`).
+  _toneToMix(tone, t, instant = false) {
     const warmth = tone.warmth ?? 0.6;
     const space = tone.space ?? 0.5;
     const wobble = tone.wobble ?? 0.4;
@@ -1005,14 +1024,15 @@ export class Synth {
     const fb = Math.min(0.74, 0.66 + space * 0.2);
     const core = this._coreMix();
     if (core) {
-      core.param(MIX.tone, TARGET, 2600 + (1 - warmth) * 9000, t, 0.2);
+      const op = instant ? SET : TARGET;
+      core.param(MIX.tone, op, 2600 + (1 - warmth) * 9000, t, 0.2);
       core.param(MIX.drive, SET, 0.55 + warmth * 1.25, t);
-      core.param(MIX.reverbOut, TARGET, 0.4 + space * 0.9, t, 0.2);
-      core.param(MIX.combFb, TARGET, fb, t, 0.2);
-      core.param(MIX.combFreq, TARGET, 1400 + space * 2600, t, 0.2);
-      core.param(MIX.combSum, TARGET, (1 - fb) / this.combs.length, t, 0.2);
-      core.param(MIX.wow, TARGET, 0.0004 + wobble * 0.0038, t, 0.2);
-      core.param(MIX.flutter, TARGET, 0.00004 + wobble * 0.0005, t, 0.2);
+      core.param(MIX.reverbOut, op, 0.4 + space * 0.9, t, 0.2);
+      core.param(MIX.combFb, op, fb, t, 0.2);
+      core.param(MIX.combFreq, op, 1400 + space * 2600, t, 0.2);
+      core.param(MIX.combSum, op, (1 - fb) / this.combs.length, t, 0.2);
+      core.param(MIX.wow, op, 0.0004 + wobble * 0.0038, t, 0.2);
+      core.param(MIX.flutter, op, 0.00004 + wobble * 0.0005, t, 0.2);
       return;
     }
     this.tone.frequency.setTargetAtTime(2600 + (1 - warmth) * 9000, t, 0.2);
@@ -1066,23 +1086,23 @@ export class Synth {
     g.linearRampToValueAtTime(1, time + recover);
   }
 
-  setEchoTime(seconds) {
+  setEchoTime(seconds, instant = false) {
     this._mixState().echo = seconds;
     const core = this._coreMix();
     if (core) {
-      core.param(MIX.echo, TARGET, Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
+      core.param(MIX.echo, instant ? SET : TARGET, Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
       return;
     }
     this.echo.delayTime.setTargetAtTime(Math.min(1.9, seconds), this.ctx.currentTime, 0.05);
   }
 
-  setMute(layer, muted) {
+  setMute(layer, muted, instant = false) {
     const ch = this.channels[layer];
     if (!ch) return;
     this._mixState().mutes[layer] = muted;
     const core = this._coreMix();
     if (core) {
-      core.param(MIX.gains + CORE_CHANNELS.indexOf(layer), TARGET, muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);
+      core.param(MIX.gains + CORE_CHANNELS.indexOf(layer), instant ? SET : TARGET, muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);
       return;
     }
     ch.gain.gain.setTargetAtTime(muted ? 0 : ch.base.gain, this.ctx.currentTime, 0.03);

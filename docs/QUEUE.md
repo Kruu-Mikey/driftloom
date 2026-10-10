@@ -4,11 +4,14 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-10:** items 0-31 are done (13 stopped at its gate by
+**Status, 2026-10-10:** items 0-31b are done (13 stopped at its gate by
 design): every voice, the mix and the whole master chain play from the
-Rust core behind `?engine=rust`, its output straight to the speakers.
-Next: item 31b. A new Claude Code session starts here: read the
-standing rules and the merge policy, then take the next item.
+Rust core behind `?engine=rust`, its output straight to the speakers, and
+the core path is hardened (it falls back to JavaScript if it fails while
+playing, Diagnostics says why, and its compressors start warm). Nothing is
+queued: the brain decides what comes next (`docs/BRAIN.md`, "Start here").
+A new Claude Code session starts here: read the standing rules and the
+merge policy, then take the next item.
 
 **The engine, from here (Mikey, 2026-10-10):** the Rust core is
 Driftloom's own engine, not a copy of Chromium. Matching Chromium was
@@ -1639,4 +1642,28 @@ Mikey decides this line:
   fallback: 0`. For his ears: both engines' compressors start cold, so the
   first notes after a Play (JS) or after the core arrives (Rust) can dip for
   a few tenths of a second, as Chromium's always have. `.wasm` 157,544
+  bytes; core memory 14.50 MB.
+- #161, hardening the core path (item 31b, v82),
+  https://b26772a9-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  with `?engine=rust`, the first notes after a Play, a quality change or the
+  core's arrival no longer dip (listen to the first half second of a loud
+  loop; it used to sag by up to 9 dB, 14 at the ceiling, for about a
+  quarter second). Otherwise nothing should sound different. A core that
+  fails while playing (a trap in `process`) now hands everything to the
+  JavaScript synth and Diagnostics reads `engine: rust (failed: ...)`; a
+  core that never loads reads `failed`, not `loading`. The wobble's LFOs
+  catch up to a late core in one step, the handover sets the tone, wobble,
+  reverb, echo and mutes instantly, and the worklet's frame count finds the
+  clock again if it ever runs ahead. Proofs: `tools/core-paths.mjs` (the
+  real app, the core made to fail five ways; 13 of its checks fail on v81),
+  `test/worklet.test.mjs` (in CI), 79 core tests. With the harness's `cold`
+  start the core's renders are bit for bit v81's (6 loops, 36 stage
+  variants); warm and cold differ only until 0.25-0.28 s. Against
+  JavaScript, whose compressors still start cold, the first second differs
+  by -19.5 to -22.7 dB (its dip) and after it meets the floor (-85 to -87
+  dB against -86 to -89). Balance lock and refusals unchanged; flag off
+  moves only by the harness's own run-to-run noise. Performance, A/B
+  against v81 on the core, 15 pairs: audio render +3% on full (about +1.5
+  ms/s), +1% on lite; fill-in runs 1 of 15 against 0, the VM's usual (the
+  main thread, which this cannot touch, was +3% too). `.wasm` 158,942
   bytes; core memory 14.50 MB.

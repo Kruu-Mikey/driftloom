@@ -158,8 +158,11 @@ class DriftloomCore extends AudioWorkletProcessor {
     // renders: 9088 again where 9216 was due, then 9344), and a block
     // rendered as the last one would play every envelope in it 128 frames
     // late. A real gap -- a block the node was not asked for -- still moves
-    // the core on.
-    const block = this.next !== undefined && currentFrame < this.next ? this.next : currentFrame;
+    // the core on. And the count trusts the clock again once it is more
+    // than two blocks ahead of it: a host that called process() faster
+    // than real time would otherwise leave it running ahead for good.
+    const ahead = this.next === undefined ? 0 : this.next - currentFrame;
+    const block = ahead > 0 && ahead <= 2 * QUANTUM ? this.next : currentFrame;
     this.next = block + QUANTUM;
     const at = core.dl_process(block);
     // A run for each of the output's channels (one: the graph is mono).

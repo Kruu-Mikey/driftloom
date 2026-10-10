@@ -96,6 +96,11 @@ impl TableOsc {
         self.index = 0.0;
     }
 
+    /// Where the oscillator is in the table, in table samples.
+    pub fn index(&self) -> f64 {
+        self.index
+    }
+
     pub fn start_frame(&self) -> u64 {
         self.start
     }
@@ -229,6 +234,24 @@ impl TableOsc {
         }
         let n = (hi - lo) as f32;
         self.index = wrap_to(self.index + (n * (f * rate_scale)) as f64, wave.size() as f64);
+    }
+}
+
+impl TableOsc {
+    /// `blocks` whole blocks at a steady `freq` after `skip` last moved the
+    /// oscillator, all in one step: only its place in the table moves, as
+    /// `skip` would move it block by block. Each block moves it on by the
+    /// same `QUANTUM * incr`, a 32-bit float, and a sum of such steps is
+    /// exact in 64 bits (24 bits of mantissa a step, tens of bits of room),
+    /// so the one multiplication equals the repeated addition; what differs
+    /// from stepping is only the rounding the stepped sum collects from a
+    /// start that fell between two frames (`lead`), about 1e-14 of a table
+    /// sample per thousand blocks. Only for blocks after the one the
+    /// oscillator started in, and before it stops.
+    pub fn skip_whole(&mut self, blocks: u64, wave: &Wave, freq: f32, rate: f32) {
+        let f = within(freq, rate / 2.0);
+        let step = (QUANTUM as f32 * (f * wave.rate_scale())) as f64;
+        self.index = wrap_to(self.index + blocks as f64 * step, wave.size() as f64);
     }
 }
 

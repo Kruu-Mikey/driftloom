@@ -86,6 +86,10 @@ driftloom offline audio measurement
                     corpus that press the ceiling hardest on the core
   --volume <v>      with --null, the loops play at this volume, 0 to 1, as
                     the app's slider sets it              (default 0.85)
+  --cold            with --null, the core's compressors start as Chromium's
+                    do (cold), not warm as the core's own start has them
+                    since queue item 31b. The chain stage always starts them
+                    cold: it proves the port, not the start.
   --clicks          check that no voice plays a loud first sample when a
                     note starts a hair after a whole frame; with --n, also
                     count the noise starts that land there
@@ -227,6 +231,7 @@ function parseArgs(argv) {
       case '--mix': opts.mixOnly = true; break;
       case '--loud': opts.loud = Math.max(1, Math.round(number())); break;
       case '--volume': opts.volume = Math.max(0, Math.min(1, number())); break;
+      case '--cold': opts.cold = true; break;
       case '--clicks': opts.clicks = true; break;
       case '--engine': {
         const e = value();
@@ -435,6 +440,16 @@ function seedFor(key) {
   let h = 0x811c9dc5;
   for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   return h >>> 0;
+}
+// A render's fingerprint: FNV-1a over the words of its float samples, from
+// \`from\` to \`to\`. The core's own renders are deterministic, so the same
+// fingerprint says the same bits (unlike the JavaScript synth's, whose last
+// bits move with Chromium's order of summing).
+function hashOf(d, from = 0, to = d.length) {
+  const words = new Uint32Array(d.buffer, d.byteOffset, d.length);
+  let h = 0x811c9dc5;
+  for (let i = from; i < to; i++) { h ^= words[i]; h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 // Renders run in parallel, but a graph is built synchronously between
 // seeding and startRendering(), which is the only time the synth draws, so
@@ -1169,9 +1184,9 @@ window.probeRetire = async (o) => {
 // Energies are summed over every note (or loop) of a kind, so the figure
 // is the residual over the signal as a whole, and the worst single note is
 // given beside it.
-function nullOf(a, b) {
+function nullOf(a, b, from = 0, to = a.length) {
   let sig = 0, res = 0, peak = 0, worst = 0, worstAt = 0;
-  for (let i = 0; i < a.length; i++) {
+  for (let i = from; i < to; i++) {
     const d = a[i] - b[i];
     sig += a[i] * a[i];
     res += d * d;
@@ -1294,6 +1309,9 @@ async function renderMixStage(v, o, engine, nudge = 1) {
   Math.random = mulberry32(seedFor(['mix', v.name].join('|')));
   const synth = synthFor(ctx, v.quality, engine, core);
   if (engine === 'rust' && !synth._coreMix()) throw new Error('the core is not mixing');
+  // Both compressors start as Chromium's do: this stage proves the port, and
+  // the core's own warm start (queue item 31b) is for the loops to show.
+  if (engine === 'rust' && MIX.cold != null) synth.core.param(MIX.cold, SET, 1, 0);
   // The chain stage (queue item 31) is read at the speakers; the mix stage
   // where the bus compressor takes it.
   if (v.chain) outputTo(synth, ctx.destination);
@@ -1451,7 +1469,7 @@ async function probeMixStage(o) {
     const again = (await renderMixStage(v, o, 'js')).buf.getChannelData(0);
     const hz = 100;
     return {
-      name: v.name, chain: v.chain, deepest: core.deepest, ...nullOf(js, rust), floor: nullOf(js, again),
+      name: v.name, chain: v.chain, deepest: core.deepest, hash: hashOf(rust), ...nullOf(js, rust), floor: nullOf(js, again),
       ...(v.clean ? { nudged: nullOf(js, (await renderMixStage(v, o, 'js', NUDGE)).buf.getChannelData(0)) } : {}),
       high: nullOf(above(js, o.rate, hz), above(rust, o.rate, hz)), highFloor: nullOf(above(js, o.rate, hz), above(again, o.rate, hz)),
     };
@@ -1594,13 +1612,14 @@ window.probeNull = async (o) => {
     const spec = newSpec(seed);
     specs.push({ spec, voices: voicesIn(spec) });
   }
-  const renderMix = async (spec, engineName) => {
+  const renderMix = async (spec, engineName, cold = o.cold) => {
     const loopDur = spec.bars * (spec.stepsPerBar || 16) * (60 / spec.bpm / 4);
     const seconds = Math.min(30, Math.max(loopDur * 2, 12));
     const ctx = new OfflineAudioContext(CORE_TAPS.length + 1, Math.ceil(seconds * o.rate), o.rate);
     const core = await coreFor(ctx, engineName);
     Math.random = mulberry32(spec.seed >>> 0 || 1);
     const synth = synthFor(ctx, 'full', engineName, core);
+    if (engineName === 'rust' && cold) synth.core.param(MIX.cold, SET, 1, 0);
     const engine = new Engine(ctx, synth);
     if (engine.clock.worker) engine.clock.worker.terminate();
     const merger = ctx.createChannelMerger(CORE_TAPS.length + 1);
@@ -1641,11 +1660,33 @@ window.probeNull = async (o) => {
       }
       return d;
     };
+    // The first second apart from the rest: a warm core (queue item 31b)
+    // differs from JavaScript's cold compressors there, and only there.
+    const split = Math.min(o.rate, js.buf.length);
+    const a = js.buf.getChannelData(0), b = rust.buf.getChannelData(0), c = again.buf.getChannelData(0);
+    // And, when the core is warm, how long its warmth shows: the same loop
+    // on the core started cold, and the last frame where the two differ
+    // (at all, and by more than -120 dBFS).
+    let settled = null;
+    if (!o.cold && MIX.cold != null) {
+      const cold = (await renderMix(spec, 'rust', true)).buf.getChannelData(0);
+      let lastAny = -1, lastLoud = -1;
+      for (let i = 0; i < b.length; i++) {
+        const d = Math.abs(b[i] - cold[i]);
+        if (d > 0) lastAny = i;
+        if (d > 1e-6) lastLoud = i;
+      }
+      settled = { exact: (lastAny + 1) / o.rate, audible: (lastLoud + 1) / o.rate };
+    }
     return {
+      hash: { head: hashOf(b, 0, split), rest: hashOf(b, split) },
+      settled,
       name: spec.name, seed: spec.seed, voices, seconds: js.seconds,
-      mix: nullOf(js.buf.getChannelData(0), rust.buf.getChannelData(0)),
+      mix: nullOf(a, b),
+      first: { mix: nullOf(a, b, 0, split), floor: nullOf(a, c, 0, split) },
+      rest: { mix: nullOf(a, b, split), floor: nullOf(a, c, split) },
       tap: nullOf(taps(js), taps(rust)),
-      floor: nullOf(js.buf.getChannelData(0), again.buf.getChannelData(0)),
+      floor: nullOf(a, c),
       fallback: rust.fell, late: rust.late, dropped: rust.dropped, deepest: rust.deepest,
     };
   }), Math.max(1, Math.floor(o.width / 2)));
@@ -2517,6 +2558,16 @@ function reportNull(data, opts) {
   for (const r of data.loops) {
     out.push(`    ${(r.name + ' (' + r.voices.join(', ') + ', ' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${fmt(db(r.tap.res / r.tap.sig))} dB ${fmt(db(r.mix.res / r.mix.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.mix.worst || 1e-12))} dBFS ${String(r.late).padStart(4)} ${String(r.fallback).padStart(6)}${pressed(r)}${r.dropped ? `  dropped ${r.dropped}` : ''}`);
   }
+  if (data.loops.some((r) => r.first)) {
+    out.push('');
+    out.push(`  the same loops, split at one second: the core's compressors start ${opts.cold ? 'cold, as Chromium\'s do' : 'warm, JavaScript\'s cold'}`);
+    out.push('                                                first second: mix  js vs js   worst       after it: mix  js vs js   worst   core render: hash, first second / rest   warmth shows until');
+    for (const r of data.loops) {
+      const cell = (x) => `${fmt(db(x.mix.res / x.mix.sig))} dB ${fmt(db(x.floor.res / x.floor.sig))} dB ${fmt(20 * Math.log10(x.mix.worst || 1e-12))} dBFS`;
+      const until = r.settled ? `${r.settled.audible.toFixed(2)} s (bit for bit from ${r.settled.exact.toFixed(2)} s)` : '-';
+      out.push(`    ${(r.name + ' (' + r.seconds.toFixed(0) + ' s)').padEnd(42)}  ${cell(r.first)}   ${cell(r.rest)}   ${r.hash.head} ${r.hash.rest}   ${until}`);
+    }
+  }
   for (const [chain, title] of [[false, 'the mix stage: signals into the five channels, read before the bus compressor'],
     [true, 'the chain stage: signals into the five channels, read at the speakers (how hard each pressed comp and ceiling, dB; when the worst sample is)']]) {
     const rows = (data.mix || []).filter((r) => !!r.chain === chain);
@@ -2525,7 +2576,7 @@ function reportNull(data, opts) {
     out.push(`  ${title}`);
     out.push('                                            residual   js vs js    worst        above 100 Hz: residual  js vs js');
     for (const r of rows) {
-      out.push(`    ${r.name.padEnd(36)} ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS        ${fmt(db(r.high.res / r.high.sig))} dB ${fmt(db(r.highFloor.res / r.highFloor.sig))} dB${chain ? `${pressed(r)}  ${(r.worstAt / opts.rate).toFixed(3).padStart(6)} s` : ''}${r.nudged ? `   nudged: ${fmt(db(r.nudged.res / r.nudged.sig))} dB ${fmt(20 * Math.log10(r.nudged.worst || 1e-12))} dBFS` : ''}`);
+      out.push(`    ${r.name.padEnd(36)} ${fmt(db(r.res / r.sig))} dB ${fmt(db(r.floor.res / r.floor.sig))} dB ${fmt(20 * Math.log10(r.worst || 1e-12))} dBFS        ${fmt(db(r.high.res / r.high.sig))} dB ${fmt(db(r.highFloor.res / r.highFloor.sig))} dB${chain ? `${pressed(r)}  ${(r.worstAt / opts.rate).toFixed(3).padStart(6)} s` : ''}  core ${r.hash}${r.nudged ? `   nudged: ${fmt(db(r.nudged.res / r.nudged.sig))} dB ${fmt(20 * Math.log10(r.nudged.worst || 1e-12))} dBFS` : ''}`);
     }
   }
   out.push('');
@@ -2812,7 +2863,7 @@ if (opts.null) {
   const o = {
     voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
     rate: opts.rate, width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 12)),
-    volume: opts.volume,
+    volume: opts.volume, cold: opts.cold,
   };
   let loud = null;
   if (opts.loud) {

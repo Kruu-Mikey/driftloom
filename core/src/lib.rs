@@ -103,7 +103,8 @@ fn plays_noise(voice: u32, parts: u32) -> bool {
 /// The master chain's parameters (`Core::param`), after the mix's
 /// (`mix::LAST_PARAM`): the tone lowpass's frequency, the wobble's two
 /// depths, the saturator's drive and the LFOs' start; the master gain and
-/// the kill gain; and whether the compressors are routed around.
+/// the kill gain; whether the compressors are routed around; and how they
+/// start.
 pub const TONE_FREQ: u32 = mix::LAST_PARAM + 1;
 pub const WOW_DEPTH: u32 = TONE_FREQ + 1;
 pub const FLUTTER_DEPTH: u32 = TONE_FREQ + 2;
@@ -112,6 +113,7 @@ pub const LFO_START: u32 = TONE_FREQ + 4;
 pub const VOLUME: u32 = TONE_FREQ + 5;
 pub const KILL: u32 = TONE_FREQ + 6;
 pub const BYPASS: u32 = TONE_FREQ + 7;
+pub const COLD: u32 = TONE_FREQ + 8;
 
 /// What the core says to a note.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -447,11 +449,14 @@ impl Core {
     /// Chromium has it. False if there is no such parameter or call, or the
     /// parameter holds as many events as it can.
     ///
-    /// Three are not AudioParams: `SAT_DRIVE` gives the saturator the curve
+    /// Four are not AudioParams: `SAT_DRIVE` gives the saturator the curve
     /// `tanhCurve(value)`, from the next block, as setting a WaveShaper's
     /// `curve` does; `LFO_START` says when the synth built the wobble's
     /// LFOs, `time`; `BYPASS` routes around both compressors if `value` is
-    /// not 0, at once (the measure harness's `bypass`). All take any `op`.
+    /// not 0, at once (the measure harness's `bypass`); `COLD` starts both
+    /// compressors as Chromium's start, not warm, if `value` is not 0 (the
+    /// harness's, to null them against Chromium's own; before the first
+    /// block). All take any `op`.
     pub fn param(&mut self, id: u32, op: u32, value: f64, time: f64, tau: f64) -> bool {
         if !(value.is_finite() && time.is_finite() && tau.is_finite()) || self.rate <= 0.0 {
             return false;
@@ -474,6 +479,10 @@ impl Core {
             KILL => mix::apply(self.master.kill(), op, v, time, tau, now),
             BYPASS => {
                 self.master.set_bypass(value != 0.0);
+                true
+            }
+            COLD => {
+                self.master.set_cold(value != 0.0);
                 true
             }
             _ => self.mix.param(id, op, v, time, tau, now),
