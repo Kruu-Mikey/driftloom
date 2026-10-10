@@ -40,6 +40,11 @@ Driftloom measured at `3149af1` (JavaScript engine, 80 loops of 60 s and
 | **Tails** | -1.2 / -1.9 dB a second after a note | -4.5 to -8.8 | calm profiles toward 1–2 dB a second; dry stays possible (4 of 32 albums are) |
 | **Pauses** | full stops 0.03 / 0.06 a minute; in 43% of beat tracks with a steady low end the kick and bass drop out for ~3 s while the rest plays (0.42 a minute) | full stops 1.11 a minute (60 s loops); floor drops almost never | some full stops become floor drops, with the tails left ringing |
 
+**Stereo is out (Mikey, 2026-10-11): Driftloom stays mono, for now.**
+Mono gives a controlled soundscape that sounds the same on every system;
+stereo can sound wildly different from one to the next. Measure records'
+stereo if useful, but don't propose stereo items.
+
 A tuning difference was reported in batch one and corrected in batch
 two: only 8 of 32 albums are clearly off A440, so it's optional at most.
 
@@ -51,7 +56,7 @@ Heard as before/after clips on 2026-10-10; "all the new stuff is
 sounding really great". These are directions, not specs. Each needs
 building properly, one at a time, with nothing lost:
 
-stereo placement with a ping-pong echo; a rounder bass with harmonics
+stereo placement with a ping-pong echo (dropped 2026-10-11: mono only); a rounder bass with harmonics
 that reads on a phone; soft high bells from the chord's notes; floor
 drops instead of full stops; a slow filter arc; dub chord stabs thrown
 into the echo; a soft drawbar organ under held chords; a noise wash
