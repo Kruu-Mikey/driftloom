@@ -2533,6 +2533,11 @@ function reportNull(data, opts) {
   out.push('  them is the same on both engines. "js vs js" is the same loop rendered twice on the JavaScript synth:');
   out.push('  the mix never nulls deeper than that, whichever engine plays, because Chromium does not fix the');
   out.push('  order it sums a node\'s inputs in.');
+  out.push('  In the chain stage, "how hard" is the deepest each compressor\'s curve went under the line, in dB (0: never');
+  out.push('  past its threshold). "clean" rows play into the melody alone with the tails at 0 and the wobble still, so');
+  out.push('  the master chain gets the same signal on both engines; "nudged" is JavaScript against itself with that');
+  out.push('  signal a part in ten million louder: how far a last-bit difference carries through Chromium\'s own');
+  out.push('  compressors, which decide between attack and release on a strict comparison.');
   out.push('');
   return out.join('\n');
 }
