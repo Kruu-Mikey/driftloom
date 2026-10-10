@@ -9,9 +9,9 @@ buffer. No samples, no libraries, no build step, nothing to download. It
 runs from a single folder on a cheap Android phone.
 
 The synth is moving to a small Rust core, compiled to WebAssembly, so the
-same engine can one day run a phone app (roadmap 16). Most of the melody
-and chord voices already play from it behind `?engine=rust`; without the
-flag everything plays in JavaScript. The built `js/dlcore.wasm` is committed,
+same engine can one day run a phone app (roadmap 16). Every voice, the
+mix and the master chain already play from it behind `?engine=rust`;
+without the flag everything plays in JavaScript. The built `js/dlcore.wasm` is committed,
 so there is still no build step.
 
 Live at <https://driftloom.nowmichaelclark.workers.dev/>.

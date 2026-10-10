@@ -1092,7 +1092,10 @@ export class Synth {
     if (core) {
       core.param(MIX.kill, HOLD, 0, when);
       core.param(MIX.kill, LINEAR, 0, when + 0.06);
-    } else {
+    }
+    // And the JavaScript chain, while it carries anything: a core that
+    // arrived mid-play leaves it ringing out for a while.
+    if (!core || this._ringOut) {
       const g = this.kill.gain;
       g.cancelScheduledValues(when);
       g.setValueAtTime(g.value, when);
@@ -1114,7 +1117,7 @@ export class Synth {
     if (core) {
       core.param(MIX.kill, HOLD, 0, when);
       core.param(MIX.kill, LINEAR, 1, when + 0.02);
-      return;
+      if (!this._ringOut) return;
     }
     const g = this.kill.gain;
     g.cancelScheduledValues(when);
@@ -1166,7 +1169,7 @@ export class Synth {
     const core = this._coreMix();
     if (core) {
       core.param(MIX.master, TARGET, v, this.ctx.currentTime, 0.08);
-      return;
+      if (!this._ringOut) return;
     }
     this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.08);
   }

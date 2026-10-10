@@ -84,6 +84,8 @@ driftloom offline audio measurement
   --mix             with --null, the mix and chain stages alone
   --loud <count>    with --null, the loops are the <count> of --n from the
                     corpus that press the ceiling hardest on the core
+  --volume <v>      with --null, the loops play at this volume, 0 to 1, as
+                    the app's slider sets it              (default 0.85)
   --clicks          check that no voice plays a loud first sample when a
                     note starts a hair after a whole frame; with --n, also
                     count the noise starts that land there
@@ -224,6 +226,7 @@ function parseArgs(argv) {
       case '--null': opts.null = true; break;
       case '--mix': opts.mixOnly = true; break;
       case '--loud': opts.loud = Math.max(1, Math.round(number())); break;
+      case '--volume': opts.volume = Math.max(0, Math.min(1, number())); break;
       case '--clicks': opts.clicks = true; break;
       case '--engine': {
         const e = value();
@@ -1604,6 +1607,7 @@ window.probeNull = async (o) => {
     merger.connect(ctx.destination);
     outputTo(synth, merger, 0);
     CORE_TAPS.forEach((name, n) => layerTap(synth, name, merger, n + 1));
+    if (o.volume != null) synth.setVolume(o.volume);
     engine.load(spec);
     engine.playing = true;
     engine.nextStepTime = 0.05;
@@ -1664,6 +1668,7 @@ window.probeLoud = async (o) => {
     const synth = synthFor(ctx, 'full', 'rust', core);
     const engine = new Engine(ctx, synth);
     if (engine.clock.worker) engine.clock.worker.terminate();
+    if (o.volume != null) synth.setVolume(o.volume);
     engine.load(spec);
     engine.playing = true;
     engine.nextStepTime = 0.05;
@@ -2501,7 +2506,7 @@ function reportNull(data, opts) {
   if (data.loud) {
     const l = data.loud;
     out.push('');
-    out.push(`  --loud: ${l.scanned} loops scanned on the core, ${l.pressed} pressed the ceiling; the ${l.picked.length} pressed hardest:`);
+    out.push(`  --loud: ${l.scanned} loops scanned on the core${opts.volume != null ? ` at volume ${opts.volume}` : ''}, ${l.pressed} pressed the ceiling; the ${l.picked.length} pressed hardest:`);
     for (const r of l.picked) {
       out.push(`    ${r.name.padEnd(28)} seed ${String(r.seed).padStart(10)}   ceiling ${r.deepest[1].toFixed(2).padStart(6)} dB   bus compressor ${r.deepest[0].toFixed(2).padStart(6)} dB   peak ${r.peak.toFixed(3)}`);
     }
@@ -2802,6 +2807,7 @@ if (opts.null) {
   const o = {
     voices: [...new Set(wanted)], velocities: PROBE_VELOCITIES, lengths: [0.1, 0.4, 1.6],
     rate: opts.rate, width: opts.jobs, seed: opts.seed, loops: Math.max(2, Math.min(opts.n, 12)),
+    volume: opts.volume,
   };
   let loud = null;
   if (opts.loud) {
