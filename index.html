@@ -13,129 +13,176 @@
 </head>
 <body>
 
+<!-- One screen, three parts: the card says what is playing (or which album
+     you are looking at), the viewport is the one thing being worked on, and
+     the buttons stay where your thumb left them. Nothing scrolls the page. -->
 <main id="app">
 
-  <section class="readout" aria-label="Current loop">
-    <canvas id="cover" class="cover" width="320" height="320" aria-label="Cover art for this loop"></canvas>
-    <div class="readout-top">
-      <h1 id="loopName" class="loop-name">—</h1>
-      <button id="renameBtn" class="ghost tiny" title="Rename this loop">rename</button>
+  <section id="card" class="card" aria-label="Now playing">
+    <div class="card-art">
+      <canvas id="cover" class="cover" width="320" height="320" aria-label="Cover art"></canvas>
+      <div id="playhead" class="playhead" aria-hidden="true"></div>
     </div>
-    <p id="loopDetail" class="loop-detail">press play to begin</p>
-    <div id="playhead" class="playhead" aria-hidden="true"></div>
-  </section>
-
-  <section class="transport" aria-label="Transport">
-    <div class="transport-main">
-      <button id="prevBtn" class="step" title="Previous loop" aria-label="Previous loop">‹</button>
-      <button id="playBtn" class="play" aria-pressed="false">
-        <span class="play-glyph" aria-hidden="true"></span>
-        <span id="playLabel">Play</span>
-      </button>
-      <button id="nextBtn" class="step" title="Next loop" aria-label="Next loop">›</button>
-    </div>
-    <div class="transport-sub">
-      <button id="newBtn" class="key">New loop</button>
-      <button id="saveBtn" class="key">Save</button>
+    <div class="card-info">
+      <h1 id="loopName" class="loop-name" tabindex="0" role="button" title="Tap to rename">—</h1>
+      <input id="nameEdit" class="name-edit" type="text" maxlength="24" autocomplete="off"
+             spellcheck="false" aria-label="Name" hidden>
+      <ul id="loopDetail" class="loop-detail"><li>press play to begin</li></ul>
     </div>
   </section>
 
-  <section class="layers" aria-label="Layers">
-    <h2 class="section-head">Layers</h2>
-    <div id="layerList"></div>
-    <p class="hint">Re-roll one part and the rest stays exactly as it is.</p>
+  <section id="viewport" class="viewport" aria-live="off">
+
+    <!-- The calm one: how long is left, where you are, what Next will do. -->
+    <div id="viewNow" class="view now" data-view="now" aria-label="Now playing" hidden>
+      <div class="now-main">
+        <div id="nowBig" class="now-big">0:00</div>
+        <div class="now-bar" aria-hidden="true"><i id="nowFill"></i></div>
+      </div>
+      <div id="nowAlbum" class="now-album" hidden>
+        <span id="nowAlbumName" class="now-album-name"></span>
+        <span id="nowDots" class="now-dots" aria-hidden="true"></span>
+      </div>
+      <p id="nowNext" class="now-next"></p>
+      <button id="nowAction" class="now-action" hidden></button>
+    </div>
+
+    <div id="viewSounds" class="view sounds" data-view="sounds" aria-label="Sound" hidden>
+      <label class="srow"><span>Tempo <b id="bpmVal">—</b></span>
+        <input type="range" id="bpm" min="32" max="190" step="1" value="74"></label>
+      <label class="srow"><span>Warmth</span>
+        <input type="range" id="warmth" min="0" max="1" step="0.01" value="0.6"></label>
+      <label class="srow"><span>Room</span>
+        <input type="range" id="space" min="0" max="1" step="0.01" value="0.5"></label>
+      <label class="srow"><span>Wobble</span>
+        <input type="range" id="wobble" min="0" max="1" step="0.01" value="0.4"></label>
+      <label class="srow"><span>Volume</span>
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="0.85"></label>
+      <!-- Stops are times, not passes; each becomes a whole number of passes
+           at this tempo. -->
+      <label class="srow"><span>Track length <b id="lenVal">off</b></span>
+        <input type="range" id="trackLen" min="0" max="18" step="1" value="0"></label>
+      <!-- All the way left is off; anywhere else is how far it strays. -->
+      <label class="srow" id="wanderRow"><span>Let the loop wander</span>
+        <input type="range" id="driftAmount" min="0" max="2.4" step="0.05" value="1"></label>
+    </div>
+
+    <div id="viewLayers" class="view layers" data-view="layers" aria-label="Layers" hidden>
+      <div id="layerList" class="layer-list"></div>
+    </div>
+
+    <!-- Save: which albums this loop is in (Favorite Loops first), and
+         sharing and exporting. Saving is ticking an album. -->
+    <div id="viewSave" class="view paged-view save" data-view="save" aria-label="Save and share" hidden>
+      <div class="lib-tabs" role="tablist">
+        <button role="tab" data-stab="albums" aria-label="Save to albums" title="Save"></button>
+        <button role="tab" data-stab="share" aria-label="Share and export" title="Share"></button>
+      </div>
+      <div id="savePages" class="lib-pages">
+        <div id="saveHead" class="lib-head"></div>
+        <div id="saveList" class="lib-list"></div>
+        <div id="saveFoot" class="lib-foot"></div>
+      </div>
+      <div id="saveShare" class="lib-more" hidden>
+        <h2 class="section-head">This loop</h2>
+        <p class="hint">A loop is a recipe, not a recording, so it fits in a code.
+          No internet needed at either end.</p>
+        <div class="row wrap">
+          <button id="copySong" class="ghost">Copy its code</button>
+          <button id="exportMidi" class="ghost">Export MIDI</button>
+        </div>
+        <h2 class="section-head">Bring one in</h2>
+        <div class="row wrap">
+          <button id="pasteCode" class="ghost">Paste a code</button>
+        </div>
+        <p class="hint">A loop code lands in Imported Loops; an album code
+          arrives as an album of its own.</p>
+        <pre id="shareOut" class="diag-out" hidden></pre>
+      </div>
+      <div id="savePager" class="pager" hidden>
+        <button id="spPrev" class="pg" aria-label="Previous page"></button>
+        <span id="spLabel" class="pg-label"></span>
+        <button id="spNext" class="pg" aria-label="Next page"></button>
+      </div>
+    </div>
+
+    <div id="viewLibrary" class="view paged-view library" data-view="library" aria-label="Library" hidden>
+      <div class="lib-tabs" role="tablist">
+        <button role="tab" data-tab="albums">Albums</button>
+        <button role="tab" data-tab="loops">All loops</button>
+        <button role="tab" data-tab="more">More</button>
+      </div>
+
+      <div id="libPages" class="lib-pages">
+        <div id="libHead" class="lib-head"></div>
+        <div id="libList" class="lib-list"></div>
+        <div id="libFoot" class="lib-foot"></div>
+      </div>
+
+      <div id="libMore" class="lib-more" hidden>
+        <h2 class="section-head">Files</h2>
+        <div class="row wrap">
+          <button id="exportJson" class="ghost">Back up all</button>
+          <button id="importBtn" class="ghost">Restore</button>
+          <input type="file" id="importFile" hidden>
+        </div>
+        <div class="row wrap">
+          <button id="copyBackup" class="ghost">Copy backup</button>
+          <button id="pasteBackup" class="ghost">Paste backup</button>
+        </div>
+
+        <h2 class="section-head">Device</h2>
+        <label class="switch">
+          <input type="checkbox" id="liteMode">
+          <span>Lighter on the processor</span>
+        </label>
+
+        <details class="diag">
+          <summary>Diagnostics</summary>
+          <p class="hint">If something misbehaves on your phone, play for a minute
+            with the screen off, come back, then copy this and send it over.</p>
+          <pre id="diagOut" class="diag-out">open to read</pre>
+          <label class="slider"><span>Playhead trim <b id="syncVal">0 ms</b> (normally leave at zero)</span>
+            <input type="range" id="playheadSync" min="-200" max="200" step="5" value="0"></label>
+          <div class="row wrap">
+            <button id="diagRefresh" class="ghost">Refresh</button>
+            <button id="diagCopy" class="ghost">Copy</button>
+            <button id="diagReset" class="ghost">Reset counters</button>
+          </div>
+        </details>
+
+        <p class="colophon">Space plays. N (or Next, outside an album) makes something new.
+          S keeps it in Favorite Loops. 1–5 re-roll a layer. Headset and lock-screen
+          buttons work once it is playing. Everything is generated in the browser
+          and stored on this device.</p>
+      </div>
+
+      <div id="pager" class="pager" hidden>
+        <button id="pgPrev" class="pg" aria-label="Previous page"></button>
+        <span id="pgLabel" class="pg-label"></span>
+        <button id="pgNext" class="pg" aria-label="Next page"></button>
+      </div>
+    </div>
+
   </section>
 
-  <section class="panel" aria-label="Drift">
-    <h2 class="section-head">Drift</h2>
-    <p class="hint">The loop keeps returning to itself, but never plays quite the same way twice.</p>
-    <label class="switch">
-      <input type="checkbox" id="driftToggle">
-      <span>Let the loop wander</span>
-    </label>
-    <label class="slider">
-      <span>How far it strays</span>
-      <input type="range" id="driftAmount" min="0.2" max="2.4" step="0.05" value="1">
-    </label>
-    <div class="row">
-      <span id="loopCounter" class="counter">pass 0</span>
+  <!-- Icons are filled in by ui.js, so the dynamic ones (play, save, the
+       viewport switch) and the static ones come from one place. -->
+  <nav id="buttons" class="buttons" aria-label="Controls">
+    <div class="btn-row transport">
+      <button id="prevBtn" class="pad" aria-label="Previous loop" title="Previous"></button>
+      <button id="playBtn" class="pad play" aria-pressed="false" aria-label="Play" title="Play"></button>
+      <button id="nextBtn" class="pad" aria-label="Next loop" title="Next"></button>
     </div>
-  </section>
-
-  <section class="panel" aria-label="Sound">
-    <h2 class="section-head">Sound</h2>
-    <label class="slider"><span>Tempo <b id="bpmVal">—</b></span>
-      <input type="range" id="bpm" min="32" max="190" step="1" value="74"></label>
-    <label class="slider"><span>Warmth</span>
-      <input type="range" id="warmth" min="0" max="1" step="0.01" value="0.6"></label>
-    <label class="slider"><span>Room</span>
-      <input type="range" id="space" min="0" max="1" step="0.01" value="0.5"></label>
-    <label class="slider"><span>Wobble</span>
-      <input type="range" id="wobble" min="0" max="1" step="0.01" value="0.4"></label>
-    <label class="slider"><span>Volume</span>
-      <input type="range" id="volume" min="0" max="1" step="0.01" value="0.85"></label>
-
-    <label class="slider"><span>Track length <b id="lenVal">off</b></span>
-      <input type="range" id="trackLen" min="0" max="26" step="1" value="0"></label>
-    <label class="switch">
-      <input type="checkbox" id="liteMode">
-      <span>Lighter on the processor</span>
-    </label>
-  </section>
-
-  <section class="panel" aria-label="Share">
-    <h2 class="section-head">Share</h2>
-    <p class="hint">A loop is a recipe, not a recording, so it fits in a code.
-      No internet needed at either end.</p>
-    <div class="row wrap">
-      <button id="copySong" class="ghost">Copy this loop's code</button>
-      <button id="pasteCode" class="ghost">Paste a code</button>
+    <div class="btn-row">
+      <button id="libraryBtn" class="pad" aria-label="Library" title="Library" aria-pressed="false"></button>
+      <button id="saveBtn" class="pad" aria-label="Save and share" title="Save and share" aria-pressed="false"></button>
     </div>
-    <pre id="shareOut" class="diag-out" hidden></pre>
-  </section>
-
-  <section class="panel" aria-label="Albums">
-    <h2 class="section-head">Albums</h2>
-    <div id="albumList"></div>
-    <div class="row wrap">
-      <button id="newAlbum" class="ghost">New album</button>
+    <div class="btn-row">
+      <button id="nowBtn" class="pad" aria-label="Now playing" title="Now playing" aria-pressed="false"></button>
+      <button id="viewBtn" class="pad" aria-label="Show sound" title="Sound"></button>
     </div>
-  </section>
-
-  <section class="panel" aria-label="Saved loops">
-    <h2 class="section-head">Saved</h2>
-    <div id="savedList" class="saved-list"></div>
-    <div class="row wrap">
-      <button id="exportMidi" class="ghost">Export MIDI</button>
-      <button id="exportJson" class="ghost">Back up all</button>
-      <button id="importBtn" class="ghost">Restore</button>
-      <input type="file" id="importFile" hidden>
-    </div>
-    <div class="row wrap">
-      <button id="copyBackup" class="ghost">Copy backup</button>
-      <button id="pasteBackup" class="ghost">Paste backup</button>
-    </div>
-  </section>
-
-  <details class="panel diag">
-    <summary>Diagnostics</summary>
-    <p class="hint">If something misbehaves on your phone, play for a minute
-      with the screen off, come back, then copy this and send it over.</p>
-    <pre id="diagOut" class="diag-out">open to read</pre>
-    <label class="slider"><span>Playhead trim <b id="syncVal">0 ms</b> (normally leave at zero)</span>
-      <input type="range" id="playheadSync" min="-200" max="200" step="5" value="0"></label>
-    <div class="row wrap">
-      <button id="diagRefresh" class="ghost">Refresh</button>
-      <button id="diagCopy" class="ghost">Copy</button>
-      <button id="diagReset" class="ghost">Reset counters</button>
-    </div>
-  </details>
-
-  <footer class="colophon">
-    <p>Space plays. N makes something new. S saves it. 1–5 re-roll a layer.</p>
-    <p>Headset and lock-screen buttons work once it is playing.</p>
-    <p>Everything is generated in the browser and stored on this device.</p>
-  </footer>
+  </nav>
 
 </main>
 

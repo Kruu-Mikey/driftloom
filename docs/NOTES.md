@@ -510,7 +510,7 @@ node tools/perf.mjs --parts path --query engine=rust  # walk the app, reading th
 page live in headless Chromium, the way a listener does, under CPU
 throttling (1x, 4x, 6x), full and lite, visible and with the tab hidden,
 with "Let the loop wander" on. It reports the engine's late ticks (read off
-the Diagnostics panel), the browser's own glitch counter, the audio
+the Diagnostics panel, under Library > More), the browser's own glitch counter, the audio
 thread's render time, the main thread's script, layout and paint time,
 Web Audio nodes created a second, memory over a long run, the time from a
 tap on Play to the first sound, and the page's weight on a first visit.
@@ -611,11 +611,18 @@ A song code is about 111 characters:
 
     DL1-0405P-0020G-80BBK-BG48Y-8PAG3-A9R7D-QQJEX-14P70-S3BEK-...
 
-Albums open to show their tracks. **Adding the current loop to an album
-saves it** -- making someone press Save first was a rule the app imposed for
-its own convenience. Tracks can be replaced in place with whatever is
-playing (keeping their position in the running order), removed, or played
-from. Albums can be renamed.
+Albums open to show their tracks. **A saved loop always lives in at least
+one album** (Mikey, 2026-10-10): saving a loop is putting it in an album,
+Favorite Loops by default, and taking it out of its last album deletes it.
+Favorite Loops and Imported Loops are built in, always first, and cannot be
+deleted or renamed; a pasted loop code lands in Imported Loops (or plays
+from wherever that exact recipe is already saved). Deleting an album deletes
+the loops that were only in it, after saying how many. Saves from before
+this rule moved into Favorite Loops on first launch (`ensureAlbums`), and
+backups now carry the albums. Tracks can be moved to another album,
+removed, or played from; Add loops picks loops into an album without
+playing them. Albums can be renamed: open one in the Library and tap its name on
+the card, the same way a loop is renamed.
 
 An album is a named list of loops and shares the same way, at roughly 110
 characters per loop, and **plays as a playlist** -- the skip buttons walk the
@@ -687,7 +694,7 @@ changes when the album changes and travels in the album code.
 
 ## Diagnostics
 
-There is a Diagnostics panel at the bottom of the page. It reports which
+There is a Diagnostics panel under Library > More. It reports which
 audio path is live, whether the media session was granted, and a count of
 scheduler wake-ups that arrived too late to place a note — which is what a
 stutter looks like from the inside. Play with the screen off for a minute,

@@ -52,14 +52,33 @@ confirm what you are actually running; bump `BUILD` in `js/main.js` and
 |---|---|
 | Space | play / stop |
 | N | a completely new loop |
-| S | save the current one |
+| S | save the current one to Favorite Loops |
 | 1–5 | re-roll drums, bass, keys, melody, air |
+
+The screen is one page that never scrolls: the **card** at the top shows
+what is playing (tap its name to rename it), the **viewport** in the middle,
+and the **buttons** at the bottom: previous, play and next (Next past the
+newest loop makes a new one); Library and Save; Now Playing and the switch
+between Layers and Sound.
+
+- **Now Playing** is the calm view: time left (counting down, with a minus)
+  or time playing (endless loops), album position,
+  what Next will do, and Leave album / Back to album at its bottom edge.
+- **Save** is saving and sharing. A saved loop always lives in at least one
+  album: tap Favorite Loops (or any album) to save it there. Taking a loop
+  out of its last album deletes it. A saved loop that has changed since
+  offers Update or Save as new. Its Share tab holds loop codes, MIDI export
+  and pasting a code in; a pasted loop lands in Imported Loops.
+- **Library** holds albums (Favorite Loops and Imported Loops built in),
+  every loop, and under More: backups, the processor switch and Diagnostics.
+  Album tracks can be moved to another album, and Add loops picks loops in
+  without playing them.
 
 **Re-roll** replaces one layer and leaves the others untouched. Re-rolling the
 keys is the exception — it changes the harmony, so the bass and melody follow
 it while keeping their own rhythms.
 
-**Drift** makes the loop vary as it repeats: a hat drops out, a melody note
+**Drift** ("Let the loop wander"; all the way left is off) makes the loop vary as it repeats: a hat drops out, a melody note
 steps to its neighbor, a layer takes a bar off. It always returns to the loop
 you saved, because the variations are computed fresh from the original each
 pass and never written back.
@@ -69,7 +88,7 @@ so the notes can go to a DAW, a groovebox, or anything with a MIDI in.
 Whatever the browser synth sounds like, the composition itself travels.
 
 Saving, share codes and albums, track length, playing with the screen off,
-and the Diagnostics panel are covered in `docs/NOTES.md`, with the rest of
+and the Diagnostics panel (Library > More) are covered in `docs/NOTES.md`, with the rest of
 how it works inside.
 
 ## Profiles

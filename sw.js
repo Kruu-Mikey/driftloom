@@ -24,6 +24,7 @@ const FILES = [
   './js/media.js',
   './js/share.js',
   './js/cover.js',
+  './js/library.js',
   // Only the FLAC: it is the one every current browser plays, so it is the
   // one the media element picks, and precaching the WAV beside it cost 240
   // KB of a first visit for a file that never played. The WAV stays in the
