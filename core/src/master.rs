@@ -1,6 +1,7 @@
-//! The first half of the master chain (queue item 30): the tape wobble,
-//! the saturator, the tone lowpass and the highpass, from `preBus` to the
-//! bus compressor, as `_build()` in synth.js makes them.
+//! The master chain (queue items 30 and 31), from `preBus` to the
+//! speakers, as `_build()` in synth.js makes it: the tape wobble, the
+//! saturator, the tone lowpass and the highpass, then the bus compressor,
+//! the master gain, the kill gain and the ceiling.
 //!
 //! - **Wobble**: a delay of 14 ms whose time two sine LFOs move, wow (0.32
 //!   Hz) and flutter (6.3 Hz), each through a gain `setTone` sets. The LFOs
@@ -15,7 +16,24 @@
 //!   outright; the new one is read from the next block on.
 //! - **Tone**: a lowpass at 7200 Hz, Q 0.6, that `setTone` moves; then a
 //!   highpass at 38 Hz. The same `Biquad` the voices use.
+//! - **comp**: Chromium's `DynamicsCompressorNode` (`compressor`) at
+//!   -10 dB, a 10 dB knee, 3:1, attack 6 ms, release 0.25 s.
+//! - **master**: a gain at 0.85 that `setVolume` and `setCharacterLevel`
+//!   glide; **kill**: a gain at 1 that `silence` ramps to 0 in 60 ms and
+//!   `unsilence` back in 20 ms (`HOLD` first holds it where it is, as
+//!   `setValueAtTime(g.value, when)` does).
+//! - **ceiling**: a second compressor, the limiter: -3 dB, no knee, 20:1,
+//!   attack 1 ms, release 80 ms.
+//!
+//! **Lanes.** Everything that carries the signal is kept per output
+//! channel (`Lane`), and the compressors link their channels' detection as
+//! Chromium's does; what moves the signal -- the LFOs, the curve, the
+//! parameters -- is shared. The graph is mono, so there is one lane
+//! (`OUT`); a stereo mix is a second lane and a wider mix, not a new chain.
+//! Chromium runs its compressors' mono input as two identical channels,
+//! which is the same thing.
 
+use crate::compressor::{Compressor, Settings};
 use crate::delay::{Delay, buffer_len};
 use crate::filter::{Biquad, Kind};
 use crate::osc::TableOsc;
@@ -47,6 +65,51 @@ const DRIVE: f64 = 1.0;
 pub const MEMORY: usize = QUANTUM + 19200;
 
 const EVENTS: usize = 64;
+// A volume slider moved by hand asks for a glide on every step it passes.
+const VOLUME_EVENTS: usize = 256;
+
+const MASTER: f64 = 0.85;
+const COMP: Settings = Settings {
+    threshold: -10.0,
+    knee: 10.0,
+    ratio: 3.0,
+    attack: 0.006,
+    release: 0.25,
+};
+const CEILING: Settings = Settings {
+    threshold: -3.0,
+    knee: 0.0,
+    ratio: 20.0,
+    attack: 0.001,
+    release: 0.08,
+};
+
+/// The output's channels: one, as the graph is mono.
+pub const OUT: usize = 1;
+
+/// One output channel's share of the chain: everything with memory of the
+/// signal.
+struct Lane {
+    wobble: Delay,
+    memory: [f32; MEMORY],
+    up: Up,
+    down: Down,
+    tone: Biquad,
+    highpass: Biquad,
+}
+
+impl Lane {
+    const fn new() -> Self {
+        Lane {
+            wobble: Delay::new(),
+            memory: [0.0; MEMORY],
+            up: Up::new(),
+            down: Down::new(),
+            tone: Biquad::new(),
+            highpass: Biquad::new(),
+        }
+    }
+}
 
 const fn f(x: f64) -> f32 {
     x as f32
@@ -66,16 +129,20 @@ pub struct Master {
     lfo_block: u64,
     wow_depth: Timeline<EVENTS>,
     flutter_depth: Timeline<EVENTS>,
-    wobble: Delay,
+    wobble_max: f32,
     wobble_time: f32,
-    memory: [f32; MEMORY],
     curve: [f32; CURVE],
-    up: Up,
-    down: Down,
     tone_freq: Timeline<EVENTS>,
-    tone: Biquad,
-    highpass: Biquad,
-    out: Block,
+    lanes: [Lane; OUT],
+    comp: Compressor<OUT>,
+    volume: Timeline<VOLUME_EVENTS>,
+    kill: Timeline<EVENTS>,
+    ceiling: Compressor<OUT>,
+    /// Both compressors routed around (the measure harness's `bypass`).
+    bypass: bool,
+    /// What reaches the bus compressor, and what leaves the ceiling.
+    before_comp: [Block; OUT],
+    out: [Block; OUT],
 }
 
 impl Master {
@@ -90,16 +157,18 @@ impl Master {
             lfo_block: 0,
             wow_depth: Timeline::new(0.0, 0.0, 0.0),
             flutter_depth: Timeline::new(0.0, 0.0, 0.0),
-            wobble: Delay::new(),
+            wobble_max: 0.0,
             wobble_time: 0.0,
-            memory: [0.0; MEMORY],
             curve: [0.0; CURVE],
-            up: Up::new(),
-            down: Down::new(),
             tone_freq: Timeline::new(0.0, 0.0, 0.0),
-            tone: Biquad::new(),
-            highpass: Biquad::new(),
-            out: [0.0; QUANTUM],
+            lanes: [const { Lane::new() }; OUT],
+            comp: Compressor::new(),
+            volume: Timeline::new(0.0, 0.0, 0.0),
+            kill: Timeline::new(0.0, 0.0, 0.0),
+            ceiling: Compressor::new(),
+            bypass: false,
+            before_comp: [[0.0; QUANTUM]; OUT],
+            out: [[0.0; QUANTUM]; OUT],
         }
     }
 
@@ -113,19 +182,30 @@ impl Master {
         self.wow_depth.configure(f(WOW_DEPTH), any.0, any.1);
         self.flutter_depth.configure(f(FLUTTER_DEPTH), any.0, any.1);
         self.start(0.0);
-        let end = self.wobble.place(WOBBLE_MAX, rate, 0);
-        self.wobble_time = f(WOBBLE_TIME).max(0.0).min(self.wobble.max);
-        self.memory.fill(0.0);
-        self.set_drive(DRIVE);
-        self.up.init();
-        self.down.init();
         let r = f(rate);
+        let mut fits = true;
+        for lane in self.lanes.iter_mut() {
+            let end = lane.wobble.place(WOBBLE_MAX, rate, 0);
+            fits &= end <= MEMORY;
+            self.wobble_max = lane.wobble.max;
+            lane.memory.fill(0.0);
+            lane.up.init();
+            lane.down.init();
+            lane.tone.reset();
+            lane.highpass.reset();
+            lane.highpass.set(Kind::Highpass, f(HIGHPASS_HZ), Q, 0.0, r);
+        }
+        self.wobble_time = f(WOBBLE_TIME).max(0.0).min(self.wobble_max);
+        self.set_drive(DRIVE);
         self.tone_freq.configure(f(TONE_HZ), 0.0, r / 2.0);
-        self.tone.reset();
-        self.highpass.reset();
-        self.highpass.set(Kind::Highpass, f(HIGHPASS_HZ), Q, 0.0, r);
-        self.out = [0.0; QUANTUM];
-        end <= MEMORY
+        self.comp.init(rate, COMP);
+        self.volume.configure(f(MASTER), any.0, any.1);
+        self.kill.configure(1.0, any.0, any.1);
+        self.ceiling.init(rate, CEILING);
+        self.bypass = false;
+        self.before_comp = [[0.0; QUANTUM]; OUT];
+        self.out = [[0.0; QUANTUM]; OUT];
+        fits
     }
 
     /// The LFOs' start, in seconds on the host's clock: when the synth
@@ -164,8 +244,45 @@ impl Master {
         &mut self.tone_freq
     }
 
-    /// One block of `preBus` in; what reaches the bus compressor out.
-    pub fn process(&mut self, block: u64, input: &Block, waves: &Waves) -> &Block {
+    /// The master gain (`setVolume`, `setCharacterLevel`).
+    pub fn volume(&mut self) -> &mut Timeline<VOLUME_EVENTS> {
+        &mut self.volume
+    }
+
+    /// The kill gain (`silence`, `unsilence`).
+    pub fn kill(&mut self) -> &mut Timeline<EVENTS> {
+        &mut self.kill
+    }
+
+    /// Route around both compressors, or not.
+    pub fn set_bypass(&mut self, bypass: bool) {
+        self.bypass = bypass;
+    }
+
+    /// The compressors' `reduction`: the bus compressor's (0) or the
+    /// ceiling's (1), in dB.
+    pub fn reduction(&self, which: usize) -> f32 {
+        if which == 0 { self.comp.reduction() } else { self.ceiling.reduction() }
+    }
+
+    /// How hard the signal has pressed the bus compressor (0) or the
+    /// ceiling (1) since this was last asked, in dB (`Compressor::deepest`).
+    pub fn deepest(&mut self, which: usize) -> f32 {
+        if which == 0 { self.comp.deepest() } else { self.ceiling.deepest() }
+    }
+
+    /// What the last block sent to the speakers, a block a lane.
+    pub fn output(&self) -> &[Block; OUT] {
+        &self.out
+    }
+
+    /// What the last block brought to the bus compressor, a block a lane.
+    pub fn before_comp(&self) -> &[Block; OUT] {
+        &self.before_comp
+    }
+
+    /// One block of `preBus` in, a block a lane; the speakers' out.
+    pub fn process(&mut self, block: u64, input: &[Block; OUT], waves: &Waves) -> &[Block; OUT] {
         let rate = self.rate;
         let r32 = f(rate);
         let wave = &waves.sine;
@@ -200,7 +317,7 @@ impl Master {
         }
         // The delay's time: its own value, then each LFO summed in, then
         // held within the parameter's range.
-        let max = self.wobble.max;
+        let max = self.wobble_max;
         let mut times = [0.0f32; QUANTUM];
         for ((t, &w), &fl) in times.iter_mut().zip(wow.iter()).zip(flutter.iter()) {
             let mut x = self.wobble_time;
@@ -208,32 +325,71 @@ impl Master {
             x += fl;
             *t = if x.is_nan() { max } else { x.max(0.0).min(max) };
         }
-        let mut wobbled = [0.0f32; QUANTUM];
-        self.wobble
-            .process(&mut self.memory, input, &times, r32, &mut wobbled);
+        let mut shaped = [[0.0f32; QUANTUM]; OUT];
+        for (lane, (input, shaped)) in self.lanes.iter_mut().zip(input.iter().zip(shaped.iter_mut())) {
+            let mut wobbled = [0.0f32; QUANTUM];
+            lane.wobble.process(&mut lane.memory, input, &times, r32, &mut wobbled);
 
-        // The saturator.
-        let mut shaped = [0.0f32; QUANTUM];
-        if self.full {
-            let mut high = [0.0f32; 2 * QUANTUM];
-            self.up.process(&wobbled, &mut high);
-            shape(&self.curve, &mut high);
-            self.down.process(&high, &mut shaped);
-        } else {
-            shaped = wobbled;
-            shape(&self.curve, &mut shaped);
+            // The saturator.
+            if self.full {
+                let mut high = [0.0f32; 2 * QUANTUM];
+                lane.up.process(&wobbled, &mut high);
+                shape(&self.curve, &mut high);
+                lane.down.process(&high, shaped);
+            } else {
+                *shaped = wobbled;
+                shape(&self.curve, shaped);
+            }
         }
 
-        // Tone, then the highpass.
+        // Tone, then the highpass. The first lane works out the tone's
+        // coefficients, frame by frame, and the others take them.
         let mut freq = [0.0f32; QUANTUM];
         self.tone_freq.fill(block, rate, &mut freq);
         let q = f(TONE_Q);
-        for ((y, &x), &fr) in self.out.iter_mut().zip(shaped.iter()).zip(freq.iter()) {
-            self.tone.set(Kind::Lowpass, fr, q, 0.0, r32);
-            *y = self.highpass.step(self.tone.step(x));
+        for (i, &fr) in freq.iter().enumerate() {
+            let (first, rest) = self.lanes.split_at_mut(1);
+            let Some(lead) = first.first_mut() else { break };
+            lead.tone.set(Kind::Lowpass, fr, q, 0.0, r32);
+            for lane in rest.iter_mut() {
+                lane.tone.follow(&lead.tone);
+            }
+            for ((lane, x), y) in self.lanes.iter_mut().zip(shaped.iter()).zip(self.before_comp.iter_mut()) {
+                if let (Some(&x), Some(y)) = (x.get(i), y.get_mut(i)) {
+                    *y = lane.highpass.step(lane.tone.step(x));
+                }
+            }
         }
-        self.tone.flush();
-        self.highpass.flush();
+        for lane in self.lanes.iter_mut() {
+            lane.tone.flush();
+            lane.highpass.flush();
+        }
+
+        // The bus compressor, the master and kill gains, the ceiling.
+        let mut pressed = [[0.0f32; QUANTUM]; OUT];
+        if self.bypass {
+            pressed = self.before_comp;
+        } else {
+            self.comp.process(&self.before_comp, &mut pressed);
+        }
+        let mut g = [0.0f32; QUANTUM];
+        self.volume.fill(block, rate, &mut g);
+        for lane in pressed.iter_mut() {
+            for (y, &k) in lane.iter_mut().zip(g.iter()) {
+                *y *= k;
+            }
+        }
+        self.kill.fill(block, rate, &mut g);
+        for lane in pressed.iter_mut() {
+            for (y, &k) in lane.iter_mut().zip(g.iter()) {
+                *y *= k;
+            }
+        }
+        if self.bypass {
+            self.out = pressed;
+        } else {
+            self.ceiling.process(&pressed, &mut self.out);
+        }
         &self.out
     }
 }
@@ -284,7 +440,7 @@ fn shape(curve: &[f32; CURVE], samples: &mut [f32]) {
     }
 }
 
-/// The memory the wobble's delay needs at `rate`.
+/// The memory the wobble's delay needs at `rate`, a lane.
 pub fn memory_for(rate: f64) -> usize {
     buffer_len(WOBBLE_MAX, rate)
 }
@@ -334,9 +490,9 @@ mod tests {
                     let n = (b as usize * QUANTUM + i) as f64;
                     (0.1 * (2.0 * core::f64::consts::PI * hz * n / RATE).sin()) as f32
                 });
-                let out = m.process(b * QUANTUM as u64, &input, &waves);
+                m.process(b * QUANTUM as u64, &[input], &waves);
                 if b > 100 {
-                    peak = out.iter().fold(peak, |a, &x| a.max(x.abs()));
+                    peak = m.before_comp()[0].iter().fold(peak, |a, &x| a.max(x.abs()));
                 }
             }
             // tanh is nearly straight at 0.1; the filters pass 1 kHz.

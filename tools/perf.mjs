@@ -96,9 +96,14 @@ driftloom live performance harness
   --seconds <n>       measured window per run           (default 60)
   --warmup <n>        seconds played before measuring   (default 8)
   --parts <list>      which parts to run, any of
-                      load,idle,matrix,hidden,muted,split,memory,fixed
-                      ('fixed' is not in the default set: an offline
-                      breakdown of the graph that runs with no notes)
+                      load,idle,matrix,hidden,muted,split,memory,fixed,path
+                      ('fixed' and 'path' are not in the default set:
+                      'fixed' is an offline breakdown of the graph that
+                      runs with no notes; 'path' walks the app -- play,
+                      stop, play, next and new loop, wander off and on, a
+                      hidden tab, the volume, a quality change and back,
+                      stop -- reading the output's level and Diagnostics
+                      after each step)
                                                         (default all)
   --hidden-throttle <list>  throttles for the hidden runs (default 1,6)
   --hidden-seconds <n>      window for the hidden runs   (default --seconds)
@@ -116,6 +121,11 @@ driftloom live performance harness
                       added -- engine=rust measures the Rust core against
                       the JavaScript synth on the same loops. Memory runs
                       are paired too.
+  --ab-order <o>      'alternate' (the default): each pair of runs swaps
+                      which side goes first, so a slot's luck falls on both
+                      sides alike; 'ab': A first every time
+  --passes <n>        run the matrix (and its A/B pairs) n times over
+                                                        (default 1)
   --url <url>         measure a deployed page instead of this folder
   --query <q>         query string for the page, e.g. engine=rust
   --port <n>          local server port                 (default 8741)
@@ -165,7 +175,7 @@ function parseArgs(argv) {
     seconds: 60, warmup: 8, parts: ['load', 'idle', 'matrix', 'hidden', 'muted', 'split', 'memory'],
     hiddenThrottle: [1, 6], hiddenSeconds: null, gcEvery: 0, memoryMinutes: 5, jsProfile: false,
     url: null, query: '', port: 8741, chrome: null, quick: false, json: null, md: null, pick: false,
-    traceDir: null, traceOver: 20, traceExtra: false,
+    traceDir: null, traceOver: 20, traceExtra: false, abOrder: 'alternate', passes: 1,
   };
   const list = (v) => v.split(',').map((s) => s.trim()).filter(Boolean);
   for (let i = 0; i < argv.length; i++) {
@@ -190,6 +200,8 @@ function parseArgs(argv) {
       case '--url': o.url = next(); break;
       case '--ab': o.ab = path.resolve(next()); break;
       case '--ab-query': o.abQuery = next().replace(/^\?/, ''); break;
+      case '--ab-order': o.abOrder = next(); if (!['alternate', 'ab'].includes(o.abOrder)) fail('--ab-order is alternate or ab'); break;
+      case '--passes': o.passes = Math.max(1, Math.round(Number(next()))); break;
       case '--query': o.query = next().replace(/^\?/, ''); break;
       case '--port': o.port = Number(next()); break;
       case '--chrome': o.chrome = next(); break;
@@ -429,16 +441,48 @@ function instrument(seed) {
   const untap = () => {
     for (const [node, an] of taps.splice(0)) { try { origDisconnect.call(node, an); } catch { /* gone */ } }
   };
+  // The level at the output, for the 'path' part: everything that feeds
+  // the destination also feeds a meter, until it is disconnected from
+  // everything.
+  const meters = new Map();
+  const meterFor = (ctx) => {
+    let m = meters.get(ctx);
+    if (!m) {
+      const analyser = makeAnalyser.call(ctx);
+      analyser.fftSize = 2048;
+      m = { analyser, buf: new Float32Array(2048) };
+      meters.set(ctx, m);
+    }
+    return m;
+  };
+  // What feeds a destination now: a node leaves this when it is
+  // disconnected from everything.
+  P.live = new Set();
   AudioNode.prototype.connect = function (dest, ...rest) {
     P.connects++;
     if (dest instanceof AudioDestinationNode) {
       outs.push(this);
       if (P.armed) tap(this);
+      P.live.add(this);
+      try { origConnect.call(this, meterFor(this.context).analyser, ...rest.slice(0, 1)); } catch { /* no meter */ }
     }
     return origConnect.call(this, dest, ...rest);
   };
+  // The newest context's output over the last 2048 frames: rms and peak,
+  // and what feeds it, by kind.
+  P.level = () => {
+    const last = P.contexts[P.contexts.length - 1];
+    const m = last && meters.get(last.ctx);
+    if (!m) return { rms: 0, peak: 0, feeding: [] };
+    m.analyser.getFloatTimeDomainData(m.buf);
+    let sum = 0, peak = 0;
+    for (const x of m.buf) { sum += x * x; peak = Math.max(peak, Math.abs(x)); }
+    const feeding = [...P.live].filter((n) => n.context === last.ctx).map((n) => n.constructor.name);
+    return { rms: Math.sqrt(sum / m.buf.length), peak, feeding };
+  };
   AudioNode.prototype.disconnect = function (...args) {
     P.disconnects++;
+    if (!args.length) P.live.delete(this);
     return origDisconnect.apply(this, args);
   };
   const origStart = AudioScheduledSourceNode.prototype.start;
@@ -920,6 +964,101 @@ async function run(opts, chromePath, cfg) {
   }
 }
 
+// ------------------------------------------------------------ the app path
+
+// The app as a listener drives it, on one quality, and what comes out after
+// each step: the output's level (rms and peak over the last 46 ms, in
+// dBFS), what feeds the speakers, and Diagnostics' engine line.
+async function pathRun(opts, chromePath, cfg) {
+  const b = await launch(chromePath);
+  try {
+    const tab = await openTab(b, pageUrl(opts), { seed: FIRST_LOOP_SEED, throttle: 1 });
+    await setSwitch(tab, 'liteMode', cfg.quality === 'lite');
+    await setSwitch(tab, 'driftToggle', true);
+    const steps = [];
+    const db = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
+    const note = async (step, { listen = 0 } = {}) => {
+      // The loudest of several reads over `listen` ms, or one read.
+      let level = await tab.eval('window.__perf.level()');
+      for (let t = 0; t < listen; t += 250) {
+        await sleep(250);
+        const l = await tab.eval('window.__perf.level()');
+        if (l.rms > level.rms) level = { ...l, feeding: l.feeding };
+      }
+      const diag = await tab.diagnostics();
+      const loop = await tab.eval("document.getElementById('loopName').textContent");
+      steps.push({ step, rmsDb: db(level.rms), peakDb: db(level.peak), feeding: level.feeding.join(', '), engine: diag.engine, build: diag.build, loop });
+    };
+    await tab.press('#playBtn');
+    await sleep(3000);
+    await note('play (cold)', { listen: 1000 });
+    await tab.press('#playBtn');
+    await sleep(150);
+    await note('stop, 150 ms on');
+    await sleep(1500);
+    await note('stopped, 1.65 s on');
+    await tab.press('#playBtn');
+    await sleep(2000);
+    await note('play (warm)', { listen: 1000 });
+    await tab.press('#nextBtn');
+    await sleep(2000);
+    await note('next loop', { listen: 1000 });
+    await tab.press('#newBtn');
+    await sleep(2000);
+    await note('new loop', { listen: 1000 });
+    await setSwitch(tab, 'driftToggle', false);
+    await sleep(3000);
+    await note('wander off', { listen: 1000 });
+    await setSwitch(tab, 'driftToggle', true);
+    await sleep(3000);
+    await note('wander on', { listen: 1000 });
+    const { targetId } = await b.send('Target.createTarget', { url: 'about:blank', newWindow: false });
+    await b.send('Target.activateTarget', { targetId });
+    await sleep(8000);
+    const hidden = await tab.eval('document.visibilityState');
+    await note(`tab ${hidden}, 8 s`, { listen: 1000 });
+    await b.send('Target.closeTarget', { targetId });
+    await b.send('Target.activateTarget', { targetId: tab.targetId });
+    await sleep(1500);
+    await note('tab visible again', { listen: 1000 });
+    const setVolume = (v) => tab.eval(`(() => {
+      const el = document.getElementById('volume');
+      el.value = ${JSON.stringify(String(v))};
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      return el.value;
+    })()`);
+    await setVolume(0.2);
+    await sleep(1500);
+    await note('volume 0.2', { listen: 1000 });
+    await setVolume(0.85);
+    await sleep(1500);
+    await note('volume 0.85', { listen: 1000 });
+    await setSwitch(tab, 'liteMode', cfg.quality !== 'lite');
+    await sleep(3000);
+    await note(`quality ${cfg.quality !== 'lite' ? 'lite' : 'full'} (a new synth)`, { listen: 1000 });
+    await setSwitch(tab, 'liteMode', cfg.quality === 'lite');
+    await sleep(3000);
+    await note(`quality ${cfg.quality} again`, { listen: 1000 });
+    await tab.press('#playBtn');
+    await sleep(1000);
+    await note('stop, 1 s on');
+    return { ...cfg, part: 'path', steps };
+  } finally {
+    await b.close();
+  }
+}
+
+function pathReport(paths, opts) {
+  const out = [`\n### The app path${opts.query ? ` (?${opts.query})` : ''}\n`];
+  const f = (x) => (Number.isFinite(x) ? x.toFixed(1) : '-inf');
+  for (const p of paths) {
+    out.push(`${p.quality}:`);
+    out.push(table(['step', 'rms dBFS', 'peak dBFS', 'feeding the speakers', 'engine', 'loop'],
+      p.steps.map((s) => [s.step, f(s.rmsDb), f(s.peakDb), s.feeding || '-', s.engine ?? '-', s.loop])));
+  }
+  return out.join('\n');
+}
+
 // Per-second figures between two snapshots.
 function perSecond(m0, m1, s0, s1, trace, seconds) {
   const per = (a, b) => (b - a) / seconds;
@@ -1274,6 +1413,23 @@ function abReport(data, opts) {
       return [part, quality, `${throttle}x`, ...figs.flatMap(([, f]) => [f1(mean(A, f)), f1(mean(B, f))]),
         `${sum(A, (r) => r.lateTicks)} / ${sum(B, (r) => r.lateTicks)}`, `${sum(A, (r) => r.fillEvents)} / ${sum(B, (r) => r.fillEvents)}`];
     })));
+  // Audio health by side: fill-ins, and the render quanta that ran long
+  // (see --trace-dir), with which side ran first in each pair.
+  const health = (x) => {
+    const rs = ok.filter((r) => r.side === x);
+    const worst = rs.map((r) => r.worstRenderMs ?? 0).sort((a, b) => a - b);
+    const at = (q) => (worst.length ? worst[Math.min(worst.length - 1, Math.floor(q * worst.length))] : 0);
+    return {
+      runs: rs.length, fillRuns: rs.filter((r) => r.fillEvents > 0).length, fills: rs.reduce((a, r) => a + (r.fillEvents || 0), 0),
+      firstRuns: rs.filter((r) => r.first === x).length, long: rs.filter((r) => (r.worstRenderMs ?? 0) > 20).length,
+      median: at(0.5), p90: at(0.9),
+    };
+  };
+  const [hA, hB] = [health('A'), health('B')];
+  out.push('\nAudio health (A / B):');
+  out.push(`  runs ${hA.runs} / ${hB.runs}, of them run first in their pair ${hA.firstRuns} / ${hB.firstRuns}`);
+  out.push(`  runs with device fill-ins ${hA.fillRuns} / ${hB.fillRuns} (${hA.fills} / ${hB.fills} events)`);
+  out.push(`  worst render quantum, median ${hA.median.toFixed(1)} / ${hB.median.toFixed(1)} ms, 90th percentile ${hA.p90.toFixed(1)} / ${hB.p90.toFixed(1)} ms; runs with one over 20 ms ${hA.long} / ${hB.long}`);
   out.push('\nPer loop, audio render ms (A -> B):');
   for (const r of ok.filter((x) => x.side === 'B')) {
     const a = ok.find((x) => x.side === 'A' && x.part === r.part && x.loop === r.loop && x.quality === r.quality && x.throttle === r.throttle);
@@ -1355,29 +1511,55 @@ async function main() {
   // (--ab-query), in which case B is this folder with it.
   const optsA = opts.ab ? { ...opts, url: `http://127.0.0.1:${opts.port + 1}/`, side: 'A' } : opts.abQuery ? { ...opts, side: 'A' } : null;
   const optsB = { ...opts, ...(opts.abQuery ? { query: [opts.query, opts.abQuery].filter(Boolean).join('&') } : {}), ...(optsA ? { side: 'B' } : {}) };
+  // With an A side, each pair alternates which side runs first (unless
+  // --ab-order ab): the sandbox's machine freezes now and then, and slot
+  // order showed in item 30's first A/Bs.
+  let pairs = 0;
   const once = async (cfg) => {
-    if (optsA) {
+    const sideA = async (first) => {
       log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''} (A)`);
       try {
-        data.runs.push({ ...(await run(optsA, chromePath, cfg)), side: 'A' });
+        const r = { ...(await run(optsA, chromePath, cfg)), side: 'A', first };
+        data.runs.push(r);
+        log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}, render ${f1(r.renderMs)} ms/s, worst quantum ${(r.worstRenderMs ?? 0).toFixed(2)} ms`);
       } catch (err) {
         log(`  failed: ${err.message}`);
-        data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message, side: 'A' });
+        data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message, side: 'A', first });
       }
-    }
-    log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''}${cfg.jsProfile ? ' profiled' : ''}${optsA ? ' (B)' : ''}`);
-    try {
-      const r = { ...(await run(optsB, chromePath, cfg)), ...(optsA ? { side: 'B' } : {}) };
-      data.runs.push(r);
-      log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}${r.fillTimes && r.fillTimes.length ? ` at ${r.fillTimes.map((f) => `${f.inWindow}s (ctx ${f.ctxTime}s)`).join(', ')}` : ''}, render ${f1(r.renderMs)} ms/s, worst quantum ${(r.worstRenderMs ?? 0).toFixed(2)} ms, worst callback ${(r.worstCallbackMs ?? 0).toFixed(2)} ms, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
-    } catch (err) {
-      log(`  failed: ${err.message}`);
-      data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message });
+    };
+    const sideB = async (first) => {
+      log(`${cfg.loop.name} ${cfg.quality} ${cfg.throttle}x${cfg.hidden ? ' hidden' : ''}${cfg.jsProfile ? ' profiled' : ''}${optsA ? ' (B)' : ''}`);
+      try {
+        const r = { ...(await run(optsB, chromePath, cfg)), ...(optsA ? { side: 'B', first } : {}) };
+        data.runs.push(r);
+        log(`  late ${r.lateTicks}, fill-ins ${r.fillEvents}${r.fillTimes && r.fillTimes.length ? ` at ${r.fillTimes.map((f) => `${f.inWindow}s (ctx ${f.ctxTime}s)`).join(', ')}` : ''}, render ${f1(r.renderMs)} ms/s, worst quantum ${(r.worstRenderMs ?? 0).toFixed(2)} ms, worst callback ${(r.worstCallbackMs ?? 0).toFixed(2)} ms, main ${f1(r.taskMs)} ms/s, nodes ${f0(r.nodesPerSec)}/s, tap ${f0(r.coldMs)}/${f0(r.warmMs)} ms`);
+      } catch (err) {
+        log(`  failed: ${err.message}`);
+        data.runs.push({ ...cfg, loop: cfg.loop.name, error: err.message, ...(optsA ? { side: 'B', first } : {}) });
+      }
+    };
+    if (!optsA) return sideB(null);
+    const bFirst = opts.abOrder === 'alternate' && pairs++ % 2 === 1;
+    if (bFirst) {
+      await sideB('B');
+      await sideA('B');
+    } else {
+      await sideA('A');
+      await sideB('A');
     }
   };
   if (has('matrix')) {
-    for (const loop of loops) for (const quality of opts.quality) for (const throttle of opts.throttle) {
-      await once({ part: 'matrix', loop, quality, throttle, warmup: opts.warmup, seconds: opts.seconds, jsProfile: opts.jsProfile });
+    for (let pass = 0; pass < opts.passes; pass++) {
+      for (const loop of loops) for (const quality of opts.quality) for (const throttle of opts.throttle) {
+        await once({ part: 'matrix', loop, quality, throttle, warmup: opts.warmup, seconds: opts.seconds, jsProfile: opts.jsProfile, pass });
+      }
+    }
+  }
+  if (has('path')) {
+    data.paths = [];
+    for (const quality of opts.quality) {
+      log(`app path ${quality}${optsB.query ? ` ?${optsB.query}` : ''}`);
+      data.paths.push(await pathRun(optsB, chromePath, { quality }));
     }
   }
   if (has('hidden')) {
@@ -1413,7 +1595,8 @@ async function main() {
     }
   }
 
-  const text = optsA ? abReport(data, opts) : report(data, opts);
+  let text = optsA ? abReport(data, opts) : report(data, opts);
+  if (data.paths) text += `\n${pathReport(data.paths, optsB)}`;
   console.log(text);
   if (opts.json) fs.writeFileSync(opts.json, `${JSON.stringify(data, null, 1)}\n`);
   if (opts.md) fs.writeFileSync(opts.md, `${text}\n`);

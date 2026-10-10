@@ -98,6 +98,9 @@ pub const SET: u32 = 0;
 pub const LINEAR: u32 = 1;
 pub const TARGET: u32 = 2;
 pub const CANCEL: u32 = 3;
+/// `cancelScheduledValues(time)` and then `setValueAtTime(value, time)` with
+/// the `value` attribute: held where it is (the synth's `silence`).
+pub const HOLD: u32 = 4;
 
 // Events each parameter holds at once. The duck takes two for every kick,
 // and the measure harness schedules a whole render ahead -- up to seventy
@@ -394,6 +397,10 @@ pub(crate) fn apply<const N: usize>(
         CANCEL => {
             t.cancel_scheduled_values(time, now);
             true
+        }
+        HOLD => {
+            t.cancel_scheduled_values(time, now);
+            t.set_value_at_time(t.value(), time, now)
         }
         _ => false,
     }

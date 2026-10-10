@@ -15,12 +15,14 @@
 //
 // Since queue item 29 the core mixes too: one input per channel, where the
 // synth's own notes for that channel arrive (a note the core could not
-// take), and one output, the mix -- the channel gains, the sends, the duck,
-// the echo and the reverb -- and, since item 30, the wobble, saturator,
-// tone and highpass after it, which the synth sends on to its bus
-// compressor.
-// With `taps`, five more outputs carry each channel as it went into the mix
-// (the measure harness reads them).
+// take), and one output: since item 31 the whole of it, the mix -- the
+// channel gains, the sends, the duck, the echo and the reverb -- through
+// the master chain -- the wobble, saturator, tone and highpass (item 30),
+// the bus compressor, the master and kill gains and the ceiling -- for the
+// speakers.
+// With `taps`, six more outputs carry each channel as it went into the mix,
+// and the signal as it reached the bus compressor (the measure harness
+// reads them).
 
 const QUANTUM = 128;
 const CHANNELS = 5;
@@ -114,6 +116,12 @@ class DriftloomCore extends AudioWorkletProcessor {
           late: core ? core.dl_late() : 0,
           dropped: core ? core.dl_dropped() : 0,
           busy: core ? core.dl_busy() : 0,
+          // The compressors' `reduction`, in dB: the bus compressor's and
+          // the ceiling's.
+          reduction: core ? [core.dl_reduction(0), core.dl_reduction(1)] : [0, 0],
+          // And how hard the signal has pressed each since the last ping:
+          // the deepest its curve has gone under the line.
+          deepest: core ? [core.dl_deepest(0), core.dl_deepest(1)] : [0, 0],
         });
         return;
       default:
@@ -132,7 +140,8 @@ class DriftloomCore extends AudioWorkletProcessor {
       this.views = {
         buffer,
         inputs: runs(buffer, core.dl_inputs(), CHANNELS),
-        bus: runs(buffer, core.dl_bus(), 1)[0],
+        out: runs(buffer, core.dl_out(), core.dl_outputs()),
+        bus: runs(buffer, core.dl_bus(), core.dl_outputs()),
         channels: null,
       };
     }
@@ -153,14 +162,21 @@ class DriftloomCore extends AudioWorkletProcessor {
     const block = this.next !== undefined && currentFrame < this.next ? this.next : currentFrame;
     this.next = block + QUANTUM;
     const at = core.dl_process(block);
-    const out = outputs[0] && outputs[0][0];
-    if (out && out.length === QUANTUM) out.set(views.bus);
+    // A run for each of the output's channels (one: the graph is mono).
+    const out = outputs[0];
+    if (out) {
+      for (let c = 0; c < out.length && c < views.out.length; c++) {
+        if (out[c].length === QUANTUM) out[c].set(views.out[c]);
+      }
+    }
     if (this.taps) {
       if (!views.channels) views.channels = runs(views.buffer, at, CHANNELS);
       for (let c = 0; c < CHANNELS; c++) {
         const tap = outputs[c + 1] && outputs[c + 1][0];
         if (tap && tap.length === QUANTUM) tap.set(views.channels[c]);
       }
+      const bus = outputs[CHANNELS + 1] && outputs[CHANNELS + 1][0];
+      if (bus && bus.length === QUANTUM) bus.set(views.bus[0]);
     }
     return true;
   }

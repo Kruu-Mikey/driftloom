@@ -502,6 +502,8 @@ node tools/perf.mjs --quick                  # a smoke run, one loop, a few minu
 node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
 node tools/perf.mjs --query engine=rust      # the Rust core's voices, as ?engine=rust
 node tools/perf.mjs --ab-query engine=rust   # each run twice, without the flag and with it
+node tools/perf.mjs --ab <folder> --passes 2 # each run twice, <folder> and this one, first in turn
+node tools/perf.mjs --parts path --query engine=rust  # walk the app, reading the output after each step
 ```
 
 `measure.mjs` renders offline, faster than real time; this plays the real
@@ -514,6 +516,12 @@ Web Audio nodes created a second, memory over a long run, the time from a
 tap on Play to the first sound, and the page's weight on a first visit.
 It drives the page only from outside and instruments the Web Audio API
 rather than the app, so a replacement engine is measured by the same tool.
+An A/B (`--ab`, `--ab-query`) runs each configuration on both sides, and by
+default swaps which side goes first from one pair to the next: the sandbox
+machine freezes now and then, and a slot's luck must fall on both sides
+alike. It reports each side's device fill-ins and long render quanta;
+`--trace-dir` keeps the trace of any run with a quantum over
+`--trace-over` ms, to look inside before blaming code.
 The fixed set of loops, how they were chosen and what the first baseline
 found are in [`docs/perf-baseline.md`](perf-baseline.md).
 
@@ -705,24 +713,27 @@ ocarina, flute, pan flute, prepared's knock and temple bell, on the noise
 and the bandpass (item 26); bass, textures and drums (item 27); and the
 sung voices (item 28), so every voice. Then the rest of the sound path:
 the mix -- the five channels, their sends, the kick's duck, the echo, the
-reverb and the tails (item 29) -- and the first half of the master chain:
-the tape wobble, the saturator, the tone lowpass and the highpass (item
-30).
+reverb and the tails (item 29) -- and the master chain: the tape wobble,
+the saturator, the tone lowpass and the highpass (item 30), and the bus
+compressor, the master and kill gains and the ceiling (item 31). With the
+flag on, Web Audio carries only the notes the core cannot take, and the
+output.
 
 `?engine=rust` turns it on; it is off by default, and with it off nothing
 about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
 an AudioWorklet (`js/worklet.js`) with one input per channel and one output,
-the mix through the wobble, saturator, tone and highpass, which feeds the
-bus compressor and the rest of the master chain in JavaScript. Each
+the mix through the whole master chain, connected straight to the speakers.
+Each
 channel's node, where every voice plays into, becomes the core's input for
 that channel: a note the core cannot take (before it has loaded, a sung
 note too long for it) plays there in Web Audio and reaches the core's mix
-like any other. `setTone`, `setEchoTime`, `setMute`, `duck` and the tails'
-fades go to the core as AudioParam calls, which it runs on a port of
-Chromium's own timeline (`timeline.rs`). If the core fails, the JavaScript
-mix takes everything back. JavaScript keeps everything else: scheduling,
-the voice budget (asked exactly as the JavaScript voice asks it), every
-`Math.random` draw, and the master chain. A note travels to the worklet
+like any other. `setTone`, `setEchoTime`, `setMute`, `duck`, the tails'
+fades, `setVolume`, `setCharacterLevel`, `silence` and `unsilence` go to
+the core as AudioParam calls, which it runs on a port of Chromium's own
+timeline (`timeline.rs`). If the core fails, the JavaScript mix takes
+everything back. JavaScript keeps everything else: scheduling, the voice
+budget (asked exactly as the JavaScript voice asks it) and every
+`Math.random` draw. A note travels to the worklet
 with its absolute start time and starts on its exact sample.
 
 The core (`core/`) is a Rust library with no dependencies and nothing
@@ -749,11 +760,17 @@ with Chromium's delay line (`delay.rs`: a buffer a block longer than the
 longest delay, read every frame in 32-bit floats) and its way with a
 feedback loop: a node renders once a block, and one pulled again while it
 renders hands over its last block, so the echo and each comb go round a
-block (128 frames) later than their delay alone. The master chain's half
+block (128 frames) later than their delay alone. The master chain
 (`master.rs`) runs the wobble's two LFOs from when the synth built them,
-reads the saturator's curve as Chromium's WaveShaper does, and on full
-quality oversamples it with Chromium's own half-band filters
-(`resample.rs`). `cargo test` in `core/` runs its own tests.
+reads the saturator's curve as Chromium's WaveShaper does, on full quality
+oversamples it with Chromium's own half-band filters (`resample.rs`), and
+ends in two of Chromium's `DynamicsCompressorNode`s, the bus compressor and
+the ceiling (`compressor.rs`: the knee, the detector, the adaptive release,
+the 6 ms lookahead, the makeup gain and the metering, in Chromium's
+precisions). Everything that carries the signal is kept per output channel
+and the compressors link their channels' detection, so a stereo mix is a
+second lane rather than a new chain; today there is one. `cargo test` in
+`core/` runs its own tests.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -792,7 +809,17 @@ that comes after its time. Notes null to about
 impulses, swept sines and noise played into all five channels at once and
 read where the bus compressor takes them, with `setTone`, the echo's time,
 mutes, ducks on fractions of a frame and the tails' fades, some called
-mid-render, on full and lite; `--null --mix` runs that alone. The 38 Hz
+mid-render, on full and lite; then the chain stage, read at the speakers:
+level steps from -60 to +4 dB, loud bursts and the sweep, with the volume,
+the character level, stops and starts on fractions of a frame, a start in
+the middle of a stop's fade and a stop long enough for Chromium's ceiling
+to stop rendering, and the same 'clean' -- into the melody alone, the
+tails at 0, the wobble still -- where the master chain gets the same signal
+bit for bit on both engines, beside JavaScript against itself with its
+input a part in ten million louder (the compressors' own sensitivity to a
+last-bit difference, which the core is held to). `--null --mix` runs those
+alone, and `--null --loud <n>` nulls the <n> loops of `--n` that press the
+ceiling hardest. The 38 Hz
 highpass sets its floor: its recursion amplifies its own last-bit rounding
 near DC some thirty thousand times, so the smallest difference in what
 reaches it, even the order Chromium adds a node's inputs in, shows as a
