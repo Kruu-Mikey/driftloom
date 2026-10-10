@@ -491,10 +491,11 @@ export class Synth {
     // Notes for a core voice that played in JS instead: the core had not
     // arrived, had failed, or does not serve the note's channel.
     this.fallbacks = 0;
-    if (engine === 'rust' && core) this.attachCore(core);
+    // Handed over as the synth is built, before anything has played.
+    if (engine === 'rust' && core) this.attachCore(core, true);
   }
 
-  attachCore(core) {
+  attachCore(core, fresh = false) {
     if (this.engine !== 'rust' || this.core) return;
     try {
       this.core = new CoreHost(this._raw, core,
@@ -506,7 +507,7 @@ export class Synth {
       return;
     }
     this.core.onfail = () => this._mixInJs();
-    this._mixInCore();
+    this._mixInCore(fresh);
   }
 
   // The core mixes (queue item 29). Each channel's node, where every
@@ -516,7 +517,8 @@ export class Synth {
   // core's mix there. The core's mix goes through the whole master chain
   // (items 30 and 31) and straight to the speakers; Web Audio carries only
   // the fallback notes and the output.
-  _mixInCore() {
+  // `fresh`: nothing has played through the JavaScript mix yet.
+  _mixInCore(fresh) {
     const node = this.core.node;
     CORE_CHANNELS.forEach((name, i) => {
       const g = this.channels[name].gain;
@@ -533,8 +535,9 @@ export class Synth {
     this.core.param(MIX.master, SET, this._gain(), 0);
     if (this._asked.killed) this.core.param(MIX.kill, SET, 0, 0);
     // The JavaScript mix and chain now hear nothing. Cut them off, so Web
-    // Audio stops rendering them -- at once if nothing has played yet, and
-    // once their tails have died away if the core arrived mid-play.
+    // Audio stops rendering them -- at once if nothing has played through
+    // them yet (a new synth, or a context that has not started), and once
+    // their tails have died away if the core arrived mid-play.
     const cut = () => {
       this._ringOut = null;
       try { this.tails.disconnect(); } catch { /* already detached */ }
@@ -542,7 +545,7 @@ export class Synth {
       try { this.hp.disconnect(); } catch { /* already detached */ }
       try { this.ceiling.disconnect(); } catch { /* already detached */ }
     };
-    if (this._raw.currentTime > 0 && typeof setTimeout === 'function') {
+    if (!fresh && this._raw.currentTime > 0 && typeof setTimeout === 'function') {
       this._ringOut = setTimeout(cut, RING_OUT_MS);
     } else {
       cut();
