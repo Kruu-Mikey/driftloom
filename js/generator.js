@@ -621,13 +621,31 @@ function genHarmony(spec, vary = null, besides = null) {
   const events = [];
   let prevVoicing = null;
 
-  // Prototype (ears batch two): long chords -- each chord held for about
-  // eight seconds (two to four bars by tempo) instead of one slot.
-  const hold = (globalThis.PROTO || {}).longChords
-    ? Math.max(1, Math.min(4 * chordsPerBar, Math.ceil(8 / ((spb * 60 / spec.bpm / 4) / chordsPerBar))))
-    : 1;
+  // Prototype (ears batch two): long chords, as a spread rather than one
+  // length. Each loop draws how long its chords last -- as before (35%),
+  // twice that (30%), about eight seconds (20%) or about sixteen (15%,
+  // which may hold one chord for the whole loop) -- and three in ten
+  // shorten the last chord of the progression, a turnaround. Drawn from
+  // a stream of its own, so every draw below is unchanged.
+  let chordAt = (slot) => shape[slot % shape.length];
+  if ((globalThis.PROTO || {}).longChords) {
+    const lr = new Rng(((spec.layerSeeds.chords ^ 0x10c4) >>> 0) || 1);
+    const slotSec = (spb * 60 / spec.bpm / 4) / chordsPerBar;
+    const kind = lr.weighted([['asIs', 35], ['double', 30], ['eight', 20], ['long', 15]]);
+    const target = { asIs: slotSec, double: 2 * slotSec, eight: 8, long: 16 }[kind];
+    let hold = Math.max(1, Math.round(target / slotSec));
+    if (kind !== 'long') hold = Math.min(hold, Math.max(1, Math.floor(slotCount / 2)));
+    const turnaround = hold >= 2 && lr.chance(0.3);
+    const seq = [];
+    for (let k = 0; seq.length < slotCount; k++) {
+      const last = k % shape.length === shape.length - 1;
+      const len = turnaround && last ? Math.max(1, Math.floor(hold / 2)) : hold;
+      for (let j = 0; j < len && seq.length < slotCount; j++) seq.push(shape[k % shape.length]);
+    }
+    chordAt = (slot) => seq[slot];
+  }
   for (let s = 0; s < slotCount; s++) {
-    const chord = shape[Math.floor(s / hold) % shape.length];
+    const chord = chordAt(s);
     const degree = stepDegree(chord);
     // A spelled chord is built, sevenths and ninths too, in its own scale.
     const steps = typeof chord === 'number' ? scale : spelledSteps(scale, chord);

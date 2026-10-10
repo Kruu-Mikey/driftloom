@@ -34,7 +34,7 @@ commas, or `?proto=all`:
 | `dubStab` | After a chord's attack, a short sawtooth chord (G3–C5) through a 820 → 560 Hz bandpass, thrown hard into the echo, on the offbeat of beat one (60%) and of beat three (35%) | "undertow": the stabs and their echoes add -14 dB against the loop |
 | `organ` | Soft drawbars (16', 8', 5 1/3', 4'), notes folded under G4, swelling in over 0.6 s and held until the chord changes, with a 5.4 Hz tremolo | "haven": -11 dB against the loop; 120–250 Hz 19% → 29% |
 | `wash` | Two decorrelated noise loops through a bandpass sweeping 500 Hz → 2 kHz → 500 Hz, swelling in and out once every 20 s, into the texture channel | "vapor": swells peak about -10 dB against the loop |
-| `longChords` | Each chord of the progression held for about eight seconds (two to four bars, by tempo) instead of one bar | "grove": chord changes 24.7 → 9.3 a minute, bass changes 47.6 → 13.3 |
+| `longChords` | Each loop draws how long its chords last: as before (35%), twice that (30%), about 8 s (20%) or about 16 s (15%, which can hold one chord for the whole loop); three in ten shorten the progression's last chord (a turnaround). A stream of its own, so the other draws are unchanged | 400 loops, chord changes a minute (10th / median / 90th percentile): 11 / 26 / 47 → 1.4 / 14 / 37; loops under 2 a minute 2 → 42; one-chord loops 0 → 10% |
 
 All five together, 150 s: "grove" side/mid -98 → -18 dB, drift 60/10
 0.97 → 1.53, 1–5 kHz 0.2% → 1.5%, 40–60 Hz 36% → 3%.
