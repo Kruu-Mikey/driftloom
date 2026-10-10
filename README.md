@@ -124,6 +124,8 @@ overall character when pools change.
   results, methods, current state.
 - `docs/MOODS.md` -- the mood vocabulary and its draft recipes.
 - `docs/ALBUMS.md` -- listening albums waiting for answers.
+- `docs/EARS.md` -- what the ears sessions measured on Mikey's albums
+  against Driftloom, and what they're for; their tools are in `tools/ears/`.
 - `docs/perf-baseline.md` -- the live performance baseline and what came
   of it.
 - `core/` -- the Rust core's source; `js/dlcore.wasm` is built from it.
