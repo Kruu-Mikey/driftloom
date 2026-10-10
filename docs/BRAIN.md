@@ -167,13 +167,13 @@ Stated decisions, not inferences. Dated where the date matters.
 - **Composition depth:** some loops develop, simple ones stay (his
   favorite in the Depth album was a simple 24-bar loop). The share is a
   knob to tune by ear.
-- **No new sound profiles or instruments for now** (2026-09-25). The base is
-  solid; the focus is optimization, composition, and bettering what the
-  app already makes. Fiddle, accordion and drone may get more nuance later.
-  *Partly superseded (2026-10-09/10):* the ears prototypes include new
-  sounds, and Mikey liked the first five as clips (stereo, roundBass,
-  glass, floorDrop, arc: "all the new stuff is sounding really great").
-  Build the ones he approves; no new *profiles* still.
+- **New instruments are welcome again** (2026-10-09; the 2026-09-25
+  pause on new sounds was temporary). Mikey liked the ears' first five
+  as clips (stereo, roundBass, glass, floorDrop, arc: "all the new stuff
+  is sounding really great"); build the ones he approves, in the core.
+  Inspiration only from wholesome, comforting music, not harsh or dark
+  records. No new *profiles* still. Fiddle, accordion and drone may get
+  more nuance later.
 - **The playhead fade is gone for speed** (2026-09-27).
 
 **The words (roadmap 19)**
@@ -344,8 +344,11 @@ Stated decisions, not inferences. Dated where the date matters.
 - **Queued:** item 31b, hardening the core path, revised for the engine
   direction (warm compressor start in the core). Session 12, hands,
   Sonnet 5.5 at high effort.
-- **Waiting on Mikey:** the "Rust, all voices" album (`docs/ALBUMS.md`;
-  one album now covers the whole mix), on his phone; and Depth two.
+- **Heard (2026-10-11):** the "Rust, all voices" album, with the core
+  on: "it sounded great!" With 31b verified, the core can become the
+  default (step 1 below).
+- **Waiting on Mikey:** Depth two (`docs/ALBUMS.md`), for the generator's
+  16-bar form; not blocking anything in the engine.
 - **Then, in order:** (1) make the core the default and retire the flag
   (the JavaScript synth stays only as the fallback for browsers that
   can't run the core; Rust-against-Rust determinism and the measurement
@@ -733,8 +736,9 @@ dip by up to about 10 dB for a few tenths of a second. The JavaScript
 app has always done this; the core copies it, and with the flag on it
 happens when the core arrives (a core arriving mid-music dips again). A
 warm start is one line in the core; in JavaScript it needs a short,
-inaudible signal into both compressors before the music. Keep, or warm
-both?
+inaudible signal into both compressors before the music. *Settled
+(Mikey, 2026-10-10, "The engine"):* warm the core's compressors, in item
+31b; the JavaScript engine keeps its cold start.
 
 **Listening:** the "Rust, all voices" album now covers the whole mix.
 

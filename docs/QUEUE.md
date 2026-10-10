@@ -1162,9 +1162,11 @@ not change), the usual checks.
 ## Later, not queued
 
 Mikey liked the fiddle, accordion and drone as they are, and may want
-more nuance in them later. Not now. No new sound profiles or instruments
-for now (2026-09-25): the base is solid; the focus is optimization and
-bettering what the app already makes.
+more nuance in them later. Not now. New instruments are welcome again
+(Mikey, 2026-10-09; the 2026-09-25 pause was temporary): the ears-approved
+sounds are queued after the core becomes the default, built in the core
+one at a time with the refusal and level checks (`docs/BRAIN.md`, State).
+Inspiration comes only from wholesome, comforting music.
 
 ## Merge policy
 
