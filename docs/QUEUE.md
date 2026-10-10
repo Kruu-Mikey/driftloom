@@ -4,12 +4,16 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-10:** items 0-31b are done (13 stopped at its gate by
+**Status, 2026-10-11:** items 0-31b are done (13 stopped at its gate by
 design): every voice, the mix and the whole master chain play from the
 Rust core behind `?engine=rust`, its output straight to the speakers, and
 the core path is hardened (it falls back to JavaScript if it fails while
-playing, Diagnostics says why, and its compressors start warm). Nothing is
-queued: the brain decides what comes next (`docs/BRAIN.md`, "Start here").
+playing, Diagnostics says why, and its compressors start warm). Next:
+item 32, the core by default. A new Claude Code session starts here: read
+the standing rules and the merge policy, then take the next item.
+
+**Mono only (Mikey, 2026-10-11):** the output stays one channel. Nothing
+is built toward stereo (no panning, width or ping-pong echoes).
 A new Claude Code session starts here: read the standing rules and the
 merge policy, then take the next item.
 
@@ -1161,6 +1165,69 @@ not change), the usual checks.
   JavaScript engine keeps its cold start; the nulls will differ in the
   first second, and that's expected (say by how much, and that after it
   they meet the floor again).
+
+## 32. The core by default (the flag's last step)
+
+Mikey heard "Rust, all voices" on his phone (2026-10-11): "it sounded
+great!", and the brain verified item 31b. The Rust core becomes
+Driftloom's engine. One PR (split into a/b if cleaner), next version.
+
+- **The core plays by default.** No flag needed; `?engine=js` asks for
+  the JavaScript synth (for measurement and comparison), and old
+  `?engine=rust` links keep working. The JavaScript synth stays, only as
+  the fallback: a browser without AudioWorklet or WebAssembly, a core
+  that fails to load, a core that traps (31b's paths). Diagnostics says
+  which engine plays and why: `rust ...`, `js (fallback: <reason>)`, or
+  `js (asked)`.
+- **The first note.** Load the core as early as the browser allows, so
+  that first Play almost always starts on the core. Measure, on the test
+  machine and with a slowed CPU, how long the core takes to be ready
+  after the page loads and after the first tap. If Play comes first, the
+  JavaScript synth plays and hands over as now; add a short wait before
+  first Play only if the measurements show it is short and it removes a
+  handover in most starts. Report the figures either way.
+- **The regression guard.** Nulling against JavaScript stops being the
+  gate for core changes. In its place: a committed **core baseline** of
+  the core's render fingerprints (31b's) for a fixed set of loops, full
+  and lite, beside the measured figures that matter (level per voice and
+  layer, cost, the tone probe, refusals), and a check that fails on any
+  difference. A PR that changes the sound on purpose updates the
+  baseline in the same PR and says what moved and why. Put the check in
+  CI if headless Chromium runs there cheaply; otherwise make it a
+  standing rule every item runs. Update the standing rules to match.
+- **The tools default to the core** (`measure.mjs`, `perf.mjs`,
+  `core-paths.mjs`), with `--engine js` for the JavaScript synth. The
+  fallback is what a phone without the core hears, so the JavaScript
+  synth keeps passing its own checks (refusals, `--clicks`,
+  `--endings`); `--null` stays available as a tool.
+- **Follow-ups from the brain's check of 31b:**
+  - `CoreHost.dispose()` leaves `onprocessorerror` and `onfail` set: a
+    processor error queued just before a rebuild could run `_mixInJs` on
+    the disposed synth and reconnect its chain. Clear both on dispose.
+  - After a core traps, stay on JavaScript for the rest of the session:
+    a quality toggle should not rebuild a core that failed, and
+    Diagnostics keeps saying why.
+  - The frame count snaps back to `currentFrame` after three stale
+    frames, which hands the core a block that goes backward
+    (`self.next = end`, `lib.rs`). Trace what the core's voices and
+    timelines do with that; make it ride out cleanly if they don't.
+  - The flutter's catch-up error is understated in `osc.rs` and
+    `NOTES.md` (the brain measured about 7e-12 table samples after
+    1,000 blocks and 5.4e-9 after 1.24 million, for a start between
+    frames). Correct the figures; the tolerance is fine.
+  - `measure.mjs` says its figures repeat to a thousandth of a dB, but
+    the JavaScript-vs-JavaScript floor moved by up to 2.8 dB between two
+    identical runs (the core's renders were identical). Find why, or fix
+    the claim.
+- **Performance.** A/B the new default against v82 with `?engine=rust`
+  (should be the same) and against v82 without it (the JavaScript synth,
+  what testers hear today): audio render, main-thread time, fill-ins,
+  full and lite, counterbalanced. 31b added an unexplained +3% render on
+  full: take one look with the trace tools and report; don't chase it
+  past the brief.
+- **Mono stays** (Mikey, 2026-10-11): one output channel.
+- **Docs:** the README intro, the `core.js` header, `NOTES.md`, and the
+  Done line.
 
 ## Later, not queued
 

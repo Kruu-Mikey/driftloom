@@ -170,7 +170,8 @@ Stated decisions, not inferences. Dated where the date matters.
 - **New instruments are welcome again** (2026-10-09; the 2026-09-25
   pause on new sounds was temporary). Mikey liked the ears' first five
   as clips (stereo, roundBass, glass, floorDrop, arc: "all the new stuff
-  is sounding really great"); build the ones he approves, in the core.
+  is sounding really great"); build the ones he approves, in the core,
+  except stereo (dropped 2026-10-11: mono only).
   Inspiration only from wholesome, comforting music, not harsh or dark
   records. No new *profiles* still. Fiddle, accordion and drone may get
   more nuance later.
@@ -218,14 +219,19 @@ Stated decisions, not inferences. Dated where the date matters.
   nulling against Chromium. Changes to sounds he already likes still go
   to blind A/Bs; the balance lock and the refusal checks still hold.
 - Candidates (brain, 2026-10-10, unranked): a warm compressor start (no
-  first-note dip); smooth curve and parameter changes where Chromium
+  first-note dip; done in 31b); smooth curve and parameter changes where Chromium
   switches abruptly (the saturator's curve swap); better oversampling
   and a true-peak ceiling; a reverb designed for this music rather than
-  six plain combs (a sound change: blind A/B); stereo, built in the core
-  (the ears' top item); an offline renderer for audio export (roadmap
+  six plain combs (a sound change: blind A/B); an offline renderer for audio export (roadmap
   17) from the same core; a documented host API for native and game
   hosts (`no_std`-friendly, sample-rate independent, deterministic);
   the generator in Rust when the words settle.
+- **Mono only, for now (Mikey, 2026-10-11).** The ears put stereo first;
+  Mikey decided against it: mono gives a controlled soundscape that
+  sounds the same from system to system, where stereo can sound wildly
+  different. The output stays one channel. The core's per-channel
+  structure (one lane today) costs nothing and can stay, but nothing is
+  built toward stereo: no ping-pong echoes, no panning, no width.
 
 **The platform**
 
@@ -335,38 +341,37 @@ Stated decisions, not inferences. Dated where the date matters.
   Baseline in `docs/perf-baseline.md`.
 - `tools/listen.mjs` -- one-command albums; still not built (roadmap 20).
 
-## State -- 2026-10-10
+## State -- 2026-10-11
 
 ### Start here (for the next brain)
 
-- **Where it is:** `main` at v81. With `?engine=rust` the whole sound
-  path runs in the Rust core (every voice, the mix, the master chain)
-  and its output goes straight to the speakers; without the flag the
-  JavaScript synth plays as before. Brain-verified through item 31.
-- **Queued:** item 31b, hardening the core path, revised for the engine
-  direction (warm compressor start in the core). Session 12, hands,
-  Sonnet 5.5 at high effort.
+- **Where it is:** `main` at v82. With `?engine=rust` the whole sound
+  path runs in the Rust core, hardened by item 31b (#161: it falls back
+  to JavaScript if it fails, Diagnostics says why, its compressors start
+  warm). Without the flag the JavaScript synth plays as before.
+  Brain-verified through item 31b (Session 13).
 - **Heard (2026-10-11):** the "Rust, all voices" album, with the core
-  on, **on his phone**: "it sounded great!" With 31b verified, the core
-  can become the default (step 1 below). And **Depth two**: all four
+  on, **on his phone**: "it sounded great!" And **Depth two**: all four
   developing 16-bar loops "go somewhere"; of the two simple ones, one
   goes somewhere and one loops, which he welcomes ("nice to have long
   loops that sound like they're looping sometimes"). Item 17's 16-bar
   form holds; keep the depth share as it is.
-- **Waiting on Mikey:** nothing blocking. Still for his own time: the
-  word rankings (`/rank`), the open decisions, the iPhone check.
-- **Then, in order:** (1) make the core the default and retire the flag
-  (the JavaScript synth stays only as the fallback for browsers that
-  can't run the core; Rust-against-Rust determinism and the measurement
-  baselines replace nulling against JavaScript as the regression guard);
-  (2) the ears-approved sounds, built in the core: stereo first, then
-  roundBass, glass, floorDrop, arc (Mikey liked all five as clips; the
-  prototypes on draft PR #152 lost old sounds in the live app, likely
-  the voice budget, so rebuild each one at a time with the refusal and
-  level checks); dubStab, organ, wash and longChords wait on his
-  verdict; (3) the engine-excellence candidates under "The engine"
-  above; (4) the generator's port when the words settle; the word
-  rankings (`/rank`) are still the words' bottleneck.
+- **Decided (2026-10-11):** mono only, for now (see "The engine"). The
+  ears' stereo item is dropped; #152 (the ears prototypes) is closed,
+  its branch `ears/prototypes` kept as reference for rebuilding sounds.
+- **Queued:** item 32, the core by default (the flag's last step, with
+  the follow-ups from the 31b check). Session 14, hands, Sonnet 5.5 at
+  high effort.
+- **Waiting on Mikey:** nothing blocking. For his own time: the word
+  rankings (`/rank`), the open decisions, the iPhone check.
+- **Then, in order:** (1) item 32; (2) the ears-approved sounds, built
+  in the core one at a time with the refusal and level checks:
+  roundBass, glass, floorDrop, arc (Mikey liked them as clips; the
+  prototypes lost old sounds in the live app, likely the voice budget);
+  dubStab, organ, wash and longChords wait on his verdict; (3) the
+  engine-excellence candidates under "The engine"; (4) the generator's
+  port when the words settle; the word rankings are still the words'
+  bottleneck.
 - **Read** "The engine" under Mikey's decisions first: it changes how
   every Rust item is judged from here.
 
@@ -764,6 +769,33 @@ the iPhone check.
 
 Not started, for Mikey's own time: the word rankings, Depth two, the
 open decisions above, the iPhone check.
+
+**Session 12 (hands, Sonnet 5.5, high) merged item 31b (#161, v82).
+Brain-verified 2026-10-11 (Session 13).** A Sonnet subagent read the
+diff against the brief: all six parts do what it asks; flag off
+unchanged (every new path behind the flag); no test hook ships (the
+trap is injected by `tools/core-paths.mjs`); v82 in both stamps. The
+warm start plays each compressor on silence until it rests (at most 195
+blocks, at 96 kHz), bit-identical at every sample rate to a long cold
+run. A Haiku subagent reran: worklet and generator tests, the balance
+lock (22 of 22), `core-paths.mjs` twice (29 of 29), `--clicks` and
+`--endings` on the core (clean), and `--null --voice kalimba` twice
+(core renders identical across runs; late and fallback 0; first second
+-15.8 to -22.7 dB against JavaScript's cold start, as expected; after
+it -83.6 to -87.3 dB, at JavaScript's own floor). Cargo tests and the
+`.wasm` byte check can't run here (the pinned toolchain is behind the
+proxy); CI's `core` job ran both, green. **Found, folded into item 32:**
+`dispose()` leaves the failure handlers set (a narrow window where a
+disposed synth reconnects its JS chain); a quality toggle after a trap
+rebuilds the core; a block that goes backward into the core after three
+stale frames is untraced; the flutter's catch-up error is about 1000x
+the stated figure (still harmless); the JS-vs-JS floor moved up to
+2.8 dB between identical runs, against `measure.mjs`'s stated
+repeatability; and 31b's +3% render on full is unexplained.
+
+**Mikey decided: mono only** (see "The engine"), and closed #152.
+
+**Next:** Session 14, hands, **Sonnet 5.5, high**: item 32.
 
 ## History
 
