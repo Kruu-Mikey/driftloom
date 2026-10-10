@@ -4,11 +4,12 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-09:** items 0-29 are done (13 stopped at its gate by
-design): every voice and the mix (channels, sends, duck, echo, reverb) play
-from the Rust core behind `?engine=rust`. Items 30-31 are queued (the
-master chain). A new Claude Code session starts here: read the standing
-rules and the merge policy, then take the next item.
+**Status, 2026-10-10:** items 0-31 are done (13 stopped at its gate by
+design): every voice, the mix and the whole master chain play from the
+Rust core behind `?engine=rust`, its output straight to the speakers.
+Nothing is queued: after item 31 the brain verifies and Mikey listens (see
+"After item 31, stop"). A new Claude Code session starts here: read the
+standing rules and the merge policy, then take the next item.
 
 ## Standing rules, for every item
 
@@ -1577,3 +1578,21 @@ Mikey decides this line:
   sandbox VM's, in both builds (Notes from Claude Code). Play a warm,
   wobbly loop and check Diagnostics reads `engine: rust  late: 0
   fallback: 0`. `.wasm` 149,440 bytes.
+- #156, the Rust core's eleventh step: the compressors and the whole mix in
+  the core (item 31, v81),
+  https://6a4f8d1d-driftloom.nowmichaelclark.workers.dev/?engine=rust:
+  nothing should sound different. With `?engine=rust` the core runs the
+  whole master chain -- after the wobble, saturator, tone and highpass, the
+  bus compressor and the ceiling (Chromium's `DynamicsCompressorNode`,
+  ported), the volume and the stop/start fade -- and its output goes
+  straight to the speakers; Web Audio carries only fallback notes. Whole
+  loops null at the JS-vs-JS floor (-85 to -87 dB), the loudest at full
+  volume too, with the ceiling limiting up to 1.4 dB; with the same signal
+  into both chains, the core sits at the floor Chromium's own compressor
+  gives a last-bit change. Audio render 7-11% lighter than item 30's core.
+  Play a loud loop with the volume up, stop and start a few times, change
+  the quality, and check Diagnostics reads `engine: rust  late: 0
+  fallback: 0`. For his ears: both engines' compressors start cold, so the
+  first notes after a Play (JS) or after the core arrives (Rust) can dip for
+  a few tenths of a second, as Chromium's always have. `.wasm` 157,544
+  bytes; core memory 14.50 MB.
