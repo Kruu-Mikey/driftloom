@@ -277,6 +277,8 @@ Stated decisions, not inferences. Dated where the date matters.
 | Fiddle and accordion, take one (6) | "a toy fiddle and accordion played badly by a child" -> rebuilt |
 | Review album (19) | take two keep; nylon smeared and pan flute static (both fixed, #74, #75); cinder keep; wayfare drums wrong (#79, then #82: "pretty nice") |
 | Depth (blind, 8) | development heard at 24 and 32 bars; weak at 16 (second pass #108) |
+| Depth two (blind, 6 x 16 bars) | 4/4 developing "goes somewhere"; simple: 1 goes somewhere, 1 loops (and looping is welcome sometimes) |
+| Rust, all voices (10, core on, phone) | "it sounded great!" |
 
 ## Methods that proved themselves
 
@@ -345,10 +347,14 @@ Stated decisions, not inferences. Dated where the date matters.
   direction (warm compressor start in the core). Session 12, hands,
   Sonnet 5.5 at high effort.
 - **Heard (2026-10-11):** the "Rust, all voices" album, with the core
-  on: "it sounded great!" With 31b verified, the core can become the
-  default (step 1 below).
-- **Waiting on Mikey:** Depth two (`docs/ALBUMS.md`), for the generator's
-  16-bar form; not blocking anything in the engine.
+  on, **on his phone**: "it sounded great!" With 31b verified, the core
+  can become the default (step 1 below). And **Depth two**: all four
+  developing 16-bar loops "go somewhere"; of the two simple ones, one
+  goes somewhere and one loops, which he welcomes ("nice to have long
+  loops that sound like they're looping sometimes"). Item 17's 16-bar
+  form holds; keep the depth share as it is.
+- **Waiting on Mikey:** nothing blocking. Still for his own time: the
+  word rankings (`/rank`), the open decisions, the iPhone check.
 - **Then, in order:** (1) make the core the default and retire the flag
   (the JavaScript synth stays only as the fallback for browsers that
   can't run the core; Rust-against-Rust determinism and the measurement
