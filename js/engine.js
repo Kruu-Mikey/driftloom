@@ -164,7 +164,8 @@ export class Engine {
       const hits = this.base.tracks.chords.filter((e) => e.vel).length;
       this._glassScale = Math.min(1, hits / bars);
     }
-    this._organAt = -1;
+    this._organKey = null;
+    this._organUntil = 0;
     if (P.wash && this.synth.startWash) this.synth.startWash(this.ctx.currentTime + 0.05, 20);
     for (const [layer, muted] of Object.entries(spec.mutes || {})) {
       this.synth.setMute(layer, muted);

@@ -1097,12 +1097,19 @@ export class Synth {
   // Prototype: the slow arc. The extra lowpass breathes between `lo` and
   // `hi` once every `period` seconds, starting closed and lingering on
   // the dark side; the echo feedback rises a little as it opens.
-  startArc(t0, period = 120, lo = 300, hi = 9000, cycles = 6) {
+  startArc(t0, period = 120, lo = 300, hi = 9000, cycles = 30) {
     if (!this.arcLp) return;
+    // A new loop restarts the arc: clear what the last one scheduled, or
+    // the curves overlap and the browser refuses the load.
+    this.arcLp.frequency.cancelScheduledValues(0);
+    this.echoFb.gain.cancelScheduledValues(0);
+    this.arcLp.frequency.setValueAtTime(lo, t0);
+    if (this._echoFbBase == null) this._echoFbBase = this.echoFb.gain.value;
+    this.echoFb.gain.setValueAtTime(this._echoFbBase, t0);
     const n = 512;
     const curve = new Float32Array(n);
     const fb = new Float32Array(n);
-    const base = this.echoFb.gain.value;
+    const base = this._echoFbBase;
     for (let i = 0; i < n; i++) {
       const ph = (1 - Math.cos(2 * Math.PI * i / (n - 1))) / 2;
       curve[i] = lo * Math.pow(hi / lo, ph * ph);
@@ -3083,8 +3090,16 @@ export class Synth {
 
   // Wash: filtered noise that swells and recedes once every `period`
   // seconds, wide and soft (Porter Ricks' "Port Gentil").
-  startWash(t0, period = 20, seconds = 600) {
+  startWash(t0, period = 20, seconds = 3600) {
     const ctx = this.ctx;
+    // One wash at a time: a new loop stops the last one's.
+    if (this._wash) {
+      const old = this._wash;
+      old.g.gain.cancelScheduledValues(0);
+      old.g.gain.setTargetAtTime(0.0001, t0, 0.3);
+      for (const src of old.srcs) { try { src.stop(t0 + 2); } catch { /* already stopped */ } }
+    }
+    const srcs = [];
     const merge = ctx.createChannelMerger(2);
     for (const [ch, offset] of [[0, 0], [1, 0.73]]) {
       const src = ctx.createBufferSource();
@@ -3093,6 +3108,7 @@ export class Synth {
       src.connect(merge, 0, ch);
       src.start(t0, offset);
       src.stop(t0 + seconds);
+      srcs.push(src);
     }
     const bp = ctx.createBiquadFilter();
     bp.type = 'bandpass';
@@ -3112,6 +3128,7 @@ export class Synth {
       bp.frequency.setValueCurveAtTime(freq, t, period * 0.75);
     }
     merge.connect(bp).connect(g).connect(this.channels.texture.gain);
+    this._wash = { g, srcs };
   }
 
   texture(kind, notes, time, dur, vel, opts = {}) {
