@@ -49,6 +49,9 @@ const MASK: usize = RING - 1;
 /// Where the ring starts before the first block sets the lookahead
 /// (`kDefaultPreDelayFrames`).
 const DEFAULT_PRE_DELAY: usize = 256;
+/// The most `settle` plays out: about four seconds at 44.1 kHz (it rests
+/// well before).
+const SETTLE_BLOCKS: usize = 1400;
 /// The lookahead, in seconds (`kPreDelay`).
 const PRE_DELAY: f32 = 0.006;
 /// Frames per envelope step (`kNumberOfDivisionFrames`).
@@ -233,6 +236,37 @@ impl<const C: usize> Compressor<C> {
         self.warp_for = f32::NAN;
         // `DiscreteTimeConstantForSampleRate`, in 64 bits.
         self.metering_release_k = (1.0 - (-1.0 / (rate * METERING_RELEASE)).exp()) as f32;
+    }
+
+    /// Start warm: as if the node had just been listening to silence, at
+    /// rest. Right after `init`, before the first block. Chromium's `Reset`
+    /// (which `init` is) leaves the detector at 0, as if the signal were
+    /// infinitely loud, so a node that has just been built dips whatever
+    /// first reaches it, by up to 9 dB (the bus compressor) or 14 dB (the
+    /// ceiling), for the next hundred milliseconds or so while the detector
+    /// climbs back and the gain follows. The core is Driftloom's own
+    /// engine, not a copy of Chromium's: this plays that settling out on
+    /// silence, so the node starts where Chromium's own ends up, and only
+    /// the dip is gone. (Where that is, is Chromium's too: the detector's
+    /// climb to 1 stalls in 32-bit floats a hair short of it, which leaves
+    /// the gain 0.03 dB under unity until something presses.)
+    pub fn settle(&mut self) {
+        let silence = [[0.0; QUANTUM]; C];
+        let mut out = [[0.0; QUANTUM]; C];
+        let mut still = 0;
+        let mut last = (self.detector_average.to_bits(), self.compressor_gain.to_bits());
+        for _ in 0..SETTLE_BLOCKS {
+            self.process(&silence, &mut out);
+            let now = (self.detector_average.to_bits(), self.compressor_gain.to_bits());
+            still = if now == last { still + 1 } else { 0 };
+            last = now;
+            // At rest: nothing has moved for a while.
+            if still >= 4 {
+                break;
+            }
+        }
+        // Nothing has pressed yet, and nothing has been heard.
+        self.deepest = 1.0;
     }
 
     /// The node's `reduction`: the metered gain reduction in dB, as of the
@@ -514,6 +548,60 @@ mod tests {
             all.extend_from_slice(&out[0]);
         }
         all
+    }
+
+    // The loudest block's peak against the same tone through a compressor
+    // that has been settled on it, in dB.
+    fn first_blocks(c: &mut Compressor<1>, amp: f32, blocks: usize) -> Vec<f32> {
+        let mut peaks = Vec::new();
+        for b in 0..blocks {
+            let input = [core::array::from_fn(|i| {
+                let n = (b * QUANTUM + i) as f64;
+                amp * (2.0 * core::f64::consts::PI * 440.0 * n / RATE).sin() as f32
+            })];
+            let mut out = [[0.0; QUANTUM]];
+            c.process(&input, &mut out);
+            peaks.push(out[0].iter().fold(0.0f32, |a, &x| a.max(x.abs())));
+        }
+        peaks
+    }
+
+    #[test]
+    fn a_cold_start_dips_the_first_notes_and_a_warm_one_does_not() {
+        for (settings, amp, dip) in [(COMP, 0.8, 5.0), (CEILING, 0.2, 8.0)] {
+            let mut settled = built(settings);
+            let steady = *first_blocks(&mut settled, amp, 600).last().unwrap();
+            let mut cold = built(settings);
+            let cold_peaks = first_blocks(&mut cold, amp, 12);
+            let mut warm = built(settings);
+            warm.settle();
+            let warm_peaks = first_blocks(&mut warm, amp, 12);
+            // Blocks 2-4 are past the lookahead's silence.
+            let db = |x: f32| 20.0 * (x / steady).log10();
+            let cold_dip = (2..5).map(|b| db(cold_peaks[b])).fold(f32::MAX, f32::min);
+            assert!(cold_dip < -dip, "cold {cold_dip}");
+            for b in 2..12 {
+                assert!(db(warm_peaks[b]).abs() < 0.5, "warm block {b}: {}", db(warm_peaks[b]));
+            }
+        }
+    }
+
+    #[test]
+    fn a_warm_start_rests_where_a_cold_one_ends_up() {
+        // What Chromium's own node comes to on silence, the warm one starts
+        // at: the same detector and gain, to the bit.
+        for settings in [COMP, CEILING] {
+            let mut warm = built(settings);
+            warm.settle();
+            let mut cold = built(settings);
+            // Four seconds of silence, plenty.
+            let _ = run(&mut cold, 1400, 0.0);
+            assert_eq!(warm.detector_average.to_bits(), cold.detector_average.to_bits());
+            assert_eq!(warm.compressor_gain.to_bits(), cold.compressor_gain.to_bits());
+            // And it is not at 1 exactly: the detector's climb stalls short.
+            assert!(warm.compressor_gain < 1.0 && warm.compressor_gain > 0.99, "{}", warm.compressor_gain);
+            assert_eq!(warm.deepest.to_bits(), 1.0f32.to_bits());
+        }
     }
 
     #[test]

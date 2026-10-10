@@ -198,10 +198,14 @@ impl Master {
         self.wobble_time = f(WOBBLE_TIME).max(0.0).min(self.wobble_max);
         self.set_drive(DRIVE);
         self.tone_freq.configure(f(TONE_HZ), 0.0, r / 2.0);
+        // Both compressors start warm (`Compressor::settle`): the first
+        // notes after a Play, a rebuild or the core's arrival are not dipped.
         self.comp.init(rate, COMP);
+        self.comp.settle();
         self.volume.configure(f(MASTER), any.0, any.1);
         self.kill.configure(1.0, any.0, any.1);
         self.ceiling.init(rate, CEILING);
+        self.ceiling.settle();
         self.bypass = false;
         self.before_comp = [[0.0; QUANTUM]; OUT];
         self.out = [[0.0; QUANTUM]; OUT];
@@ -259,6 +263,18 @@ impl Master {
         self.bypass = bypass;
     }
 
+    /// Start both compressors as Chromium's start (`cold`) or warm, the
+    /// default (`Compressor::settle`). Before the first block; the measure
+    /// harness's, to null the compressors against Chromium's own.
+    pub fn set_cold(&mut self, cold: bool) {
+        self.comp.init(self.rate, COMP);
+        self.ceiling.init(self.rate, CEILING);
+        if !cold {
+            self.comp.settle();
+            self.ceiling.settle();
+        }
+    }
+
     /// The compressors' `reduction`: the bus compressor's (0) or the
     /// ceiling's (1), in dB.
     pub fn reduction(&self, which: usize) -> f32 {
@@ -289,13 +305,8 @@ impl Master {
         let (wow_hz, flutter_hz) = (f(WOW_HZ), f(FLUTTER_HZ));
 
         // The LFOs run from when the synth built them, rendered or not: a
-        // host that starts later moves them through the blocks it missed.
-        while self.lfo_block < block {
-            let b = self.lfo_block;
-            self.wow(b, wave, wow_hz, r32, None);
-            self.flutter.skip(b, wave, flutter_hz, r32);
-            self.lfo_block += QUANTUM as u64;
-        }
+        // host that starts later has them where they would be.
+        self.catch_up(block, wave);
         let mut wow = [0.0f32; QUANTUM];
         let mut flutter = [0.0f32; QUANTUM];
         let steady = |hz| crate::osc::Pitch::Steady {
@@ -395,6 +406,42 @@ impl Master {
 }
 
 impl Master {
+    // Move the LFOs through every block before `block` that was not
+    // rendered, to where they would be. Only the block they start in can be
+    // partial; the whole blocks after it move each LFO on by one step a
+    // block, so they are done in one multiplication, not stepped through: a
+    // phone that loads the core thirty seconds in has a million frames to
+    // cover, and not in one block of audio. The wow LFO lands bit for bit
+    // where stepping would; the flutter, whose start can fall between two
+    // frames, to within the rounding the stepped sum collects (about
+    // 1e-14 of a table sample; `stepped`, in the tests).
+    fn catch_up(&mut self, block: u64, wave: &crate::wave::Wave) {
+        if self.lfo_block >= block {
+            return;
+        }
+        let (wow_hz, flutter_hz, rate) = (f(WOW_HZ), f(FLUTTER_HZ), f(self.rate));
+        // Blocks before the one they start in move nothing.
+        let start_block = self.wow_start - self.wow_start % QUANTUM as u64;
+        self.lfo_block = self.lfo_block.max(start_block.min(block));
+        // The block they start in.
+        if self.lfo_block == start_block && self.lfo_block < block {
+            let b = self.lfo_block;
+            self.wow(b, wave, wow_hz, rate, None);
+            self.flutter.skip(b, wave, flutter_hz, rate);
+            self.lfo_block += QUANTUM as u64;
+        }
+        let whole = block.saturating_sub(self.lfo_block) / QUANTUM as u64;
+        if whole > 0 {
+            let freq = wow_hz.max(-rate / 2.0).min(rate / 2.0);
+            let incr = f64::from(freq * wave.rate_scale());
+            let size = wave.size() as f64;
+            let moved = self.wow_index + (whole * QUANTUM as u64) as f64 * incr;
+            self.wow_index = moved - (moved / size).floor() * size;
+            self.flutter.skip_whole(whole, wave, flutter_hz, rate);
+        }
+        self.lfo_block = block;
+    }
+
     // The wow LFO's block from frame `block` (`ProcessKRate`'s slow path):
     // each frame read at its place in the table, which then moves on by the
     // step, wrapped, in 64 bits. With no `out`, only its place moves.
@@ -466,6 +513,104 @@ mod tests {
             .expect("master")
     }
 
+    // The catch-up as it was: block by block, from `lfo_block` to `block`.
+    fn stepped(m: &mut Master, block: u64, waves: &Waves) {
+        let (wow_hz, flutter_hz, r32) = (f(WOW_HZ), f(FLUTTER_HZ), f(m.rate));
+        while m.lfo_block < block {
+            let b = m.lfo_block;
+            m.wow(b, &waves.sine, wow_hz, r32, None);
+            m.flutter.skip(b, &waves.sine, flutter_hz, r32);
+            m.lfo_block += QUANTUM as u64;
+        }
+    }
+
+    // How far apart two places in the table are, around its circle.
+    fn apart(a: f64, b: f64, size: usize) -> f64 {
+        let d = (a - b).abs();
+        d.min(size as f64 - d)
+    }
+
+    #[test]
+    fn the_lfos_catch_up_as_if_stepped_through() {
+        let (mut direct, waves) = built(true);
+        let (mut reference, _) = built(true);
+        // Starts in the first block, mid-block, a hair past a frame, and
+        // well in; the blocks asked for run from the start itself to an
+        // hour on.
+        for start in [0.0, 0.00123, 0.5 / RATE, 1.0, 12.3456789, 3600.0] {
+            for blocks in [0u64, 1, 2, 3, 17, 1000, 10_337, 1_238_000] {
+                direct.start(start);
+                reference.start(start);
+                let first = direct.lfo_block;
+                // Possibly mid-way, as after some blocks have been rendered.
+                let at = first + blocks * QUANTUM as u64;
+                direct.catch_up(at, &waves.sine);
+                stepped(&mut reference, at, &waves);
+                assert_eq!(direct.lfo_block, reference.lfo_block, "start {start} blocks {blocks}");
+                assert_eq!(direct.wow_index.to_bits(), reference.wow_index.to_bits(), "wow, start {start} blocks {blocks}");
+                let off = apart(direct.flutter.index(), reference.flutter.index(), waves.sine.size());
+                assert!(off < 1e-7, "flutter {off}, start {start} blocks {blocks}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_lfos_catch_up_across_gaps_between_rendered_blocks() {
+        let (mut direct, waves) = built(true);
+        let (mut reference, _) = built(true);
+        direct.start(0.7);
+        reference.start(0.7);
+        let signal: Block = core::array::from_fn(|i| ((i as f32) * 0.07).sin() * 0.3);
+        let (mut worst, mut peak) = (0.0f32, 0.0f32);
+        // Blocks rendered before the LFOs start, a gap that holds their
+        // start, blocks rendered after it, and another gap: the real thing
+        // `process` does, against stepping every block.
+        for (from, count) in [(0u64, 40u64), (400, 10), (9000, 10), (9100, 3)] {
+            for k in 0..count {
+                let at = (from + k) * QUANTUM as u64;
+                stepped(&mut reference, at, &waves);
+                let a = *direct.process(at, &[signal], &waves);
+                let b = *reference.process(at, &[signal], &waves);
+                assert_eq!(direct.wow_index.to_bits(), reference.wow_index.to_bits(), "block {}", from + k);
+                assert!(apart(direct.flutter.index(), reference.flutter.index(), waves.sine.size()) < 1e-9);
+                for (x, y) in a[0].iter().zip(b[0].iter()) {
+                    worst = worst.max((x - y).abs());
+                    peak = peak.max(x.abs());
+                }
+            }
+        }
+        // The wobble's delay times differ by far less than a thousandth of
+        // a frame.
+        assert!(peak > 0.0 && worst < 1e-6, "{worst} against {peak}");
+    }
+
+    #[test]
+    fn the_compressors_start_warm_unless_asked_to_start_cold() {
+        // A loud steady tone from the first block: cold, the ceiling dips
+        // the first blocks; warm, it does not.
+        let dip = |cold: bool| {
+            let (mut m, waves) = built(true);
+            m.set_cold(cold);
+            let mut first = 0.0f32;
+            let mut last = 0.0f32;
+            for b in 0..300u64 {
+                let input: Block = core::array::from_fn(|i| {
+                    let n = (b as usize * QUANTUM + i) as f64;
+                    (0.5 * (2.0 * core::f64::consts::PI * 440.0 * n / RATE).sin()) as f32
+                });
+                let out = m.process(b * QUANTUM as u64, &[input], &waves)[0];
+                let peak = out.iter().fold(0.0f32, |a, &x| a.max(x.abs()));
+                if b == 12 {
+                    first = peak;
+                }
+                last = peak;
+            }
+            20.0 * (first / last).log10()
+        };
+        assert!(dip(true) < -3.0, "cold {}", dip(true));
+        assert!(dip(false) > -1.0, "warm {}", dip(false));
+    }
+
     #[test]
     fn the_wobble_fits_at_the_highest_rate() {
         assert_eq!(memory_for(crate::mix::MAX_RATE), MEMORY);
@@ -511,4 +656,5 @@ mod tests {
         assert!(x[2].abs() < 1e-3);
     }
 }
+
 

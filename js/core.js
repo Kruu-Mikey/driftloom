@@ -60,14 +60,16 @@ export const KALIMBA_BODY = 2;
 // the synth's graph (the combs' one of each comb, which setTone moves
 // together). `gains` is the first of five, one per channel in the core's
 // order. `master` is the master gain (setVolume, setCharacterLevel) and
-// `kill` the kill gain (silence, unsilence). Three are not AudioParams:
+// `kill` the kill gain (silence, unsilence). Four are not AudioParams:
 // `drive`, the value setTone hands tanhCurve() for the saturator's new
 // curve; `lfoStart`, when the synth started the wobble's LFOs (the call's
 // time); and `bypass`, which routes around both compressors when its value
-// is not 0 (the measure harness's 'bypass').
+// is not 0 (the measure harness's 'bypass'); and `cold`, which starts both
+// compressors as Chromium's start, not warm, when its value is not 0, before
+// the first block (the harness's, to null them against Chromium's own).
 export const MIX = {
   gains: 0, pump: 5, tails: 6, echo: 7, combFb: 8, combFreq: 9, combSum: 10, reverbOut: 11,
-  tone: 12, wow: 13, flutter: 14, drive: 15, lfoStart: 16, master: 17, kill: 18, bypass: 19,
+  tone: 12, wow: 13, flutter: 14, drive: 15, lfoStart: 16, master: 17, kill: 18, bypass: 19, cold: 20,
 };
 // The AudioParam calls a parameter takes. HOLD is two: cancelScheduledValues
 // at the time, then setValueAtTime there with the parameter's `value`
@@ -158,6 +160,9 @@ export class CoreHost {
       processorOptions: { bytes: core.bytes, noise: this.noise ? noise : null, quality },
     });
     this.node.port.onmessage = (e) => this._receive(e.data);
+    // The processor threw while playing (a trap in the core, say): the node
+    // is silent for good, and the synth's JavaScript mix takes over.
+    this.node.onprocessorerror = (e) => this._fail((e && e.message) || 'processor error');
   }
 
   // The output carrying channel `channel` as it went into the mix (`taps`).
@@ -225,9 +230,14 @@ export class CoreHost {
       this._pings.delete(m.id);
       if (resolve) resolve(m);
     }
-    if (m.type === 'failed') {
-      this.failed = m.message;
-      if (this.onfail) this.onfail();
-    }
+    if (m.type === 'failed') this._fail(m.message);
+  }
+
+  // The core does not run, at load or while playing. Once: the synth hears
+  // it and plays everything in JS.
+  _fail(message) {
+    if (this.failed) return;
+    this.failed = message;
+    if (this.onfail) this.onfail();
   }
 }

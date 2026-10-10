@@ -4,11 +4,14 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-10:** items 0-31 are done (13 stopped at its gate by
+**Status, 2026-10-10:** items 0-31b are done (13 stopped at its gate by
 design): every voice, the mix and the whole master chain play from the
-Rust core behind `?engine=rust`, its output straight to the speakers.
-Next: item 31b. A new Claude Code session starts here: read the
-standing rules and the merge policy, then take the next item.
+Rust core behind `?engine=rust`, its output straight to the speakers, and
+the core path is hardened (it falls back to JavaScript if it fails while
+playing, Diagnostics says why, and its compressors start warm). Nothing is
+queued: the brain decides what comes next (`docs/BRAIN.md`, "Start here").
+A new Claude Code session starts here: read the standing rules and the
+merge policy, then take the next item.
 
 **The engine, from here (Mikey, 2026-10-10):** the Rust core is
 Driftloom's own engine, not a copy of Chromium. Matching Chromium was

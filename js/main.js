@@ -9,7 +9,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v81';
+const BUILD = 'v82';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
@@ -41,6 +41,7 @@ const state = {
   media: null,
   // The Rust core for this context, once loaded (`?engine=rust`, js/core.js).
   core: null,
+  coreError: null,        // why it will not come, if it will not
   history: [],            // array of specs (max 5)
   historyIndex: -1,       // current position in history
 };
@@ -69,7 +70,11 @@ function ensureAudio() {
       state.core = core;
       if (state.synth) state.synth.attachCore(core);
     }).catch((err) => {
-      console.warn('Rust core unavailable; playing in JS', err);
+      if (state.ctx !== ctx) return;
+      // Everything plays in JS, and Diagnostics says why. A later synth (the
+      // quality toggle) starts with the same answer.
+      state.coreError = String((err && err.message) || err);
+      if (state.synth) state.synth.coreFailed(err);
     });
   }
 }
@@ -82,7 +87,7 @@ function buildAudio() {
   // element in the DOM.
   if (state.media) state.media.dispose();
   if (state.synth) state.synth.dispose();
-  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full', { engine: ENGINE, core: state.core });
+  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full', { engine: ENGINE, core: state.core, coreError: state.coreError });
   // Route the mix through a media element so the phone gives us lock-screen
   // controls and stops treating us as an idle tab.
   state.media = new MediaBridge(state.ctx);

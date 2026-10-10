@@ -697,8 +697,11 @@ come back, and read `lateTicks` and `worstLateMs`.
 `rust` with the notes that reached the core after their start time had
 been rendered (`late`, started at once) and the ones that played in
 JavaScript instead (`fallback`: before the core had loaded, or if it
-failed to). With the flag on, `rust (failed: ...)` means the browser could
-not run the module, and everything plays in JavaScript.
+failed to). With the flag on, `rust (failed: ...)` means the core is not
+running and everything plays in JavaScript: the module did not arrive or
+the browser could not run it, the worklet node could not be built, or the
+core threw while playing (the node's `onprocessorerror`, queue item 31b).
+`rust (loading)` is only for the moment before the core has arrived.
 
 ## The Rust core
 
@@ -730,8 +733,12 @@ note too long for it) plays there in Web Audio and reaches the core's mix
 like any other. `setTone`, `setEchoTime`, `setMute`, `duck`, the tails'
 fades, `setVolume`, `setCharacterLevel`, `silence` and `unsilence` go to
 the core as AudioParam calls, which it runs on a port of Chromium's own
-timeline (`timeline.rs`). If the core fails, the JavaScript mix takes
-everything back. JavaScript keeps everything else: scheduling, the voice
+timeline (`timeline.rs`). If the core fails -- at load, or while playing,
+when a trap in it makes the worklet's `process` throw -- the JavaScript mix
+and chain take everything back and the notes play in Web Audio; a core that
+arrives mid-play is handed the mix's state (the tone, the echo, the mutes)
+as plain sets, so its values start where the JavaScript ones were asked to
+be and only later changes glide. JavaScript keeps everything else: scheduling, the voice
 budget (asked exactly as the JavaScript voice asks it) and every
 `Math.random` draw. A note travels to the worklet
 with its absolute start time and starts on its exact sample.
@@ -769,8 +776,36 @@ the ceiling (`compressor.rs`: the knee, the detector, the adaptive release,
 the 6 ms lookahead, the makeup gain and the metering, in Chromium's
 precisions). Everything that carries the signal is kept per output channel
 and the compressors link their channels' detection, so a stereo mix is a
-second lane rather than a new chain; today there is one. `cargo test` in
-`core/` runs its own tests.
+second lane rather than a new chain; today there is one. The worklet
+renders the block `currentFrame` says, except that Chromium sometimes hands
+`process()` the last block's frame again, which it rides out by keeping its
+own count; the count trusts the clock again once it is more than two blocks
+ahead of it. A core that loads late has the wobble's LFOs moved to where
+they would be in one step, not stepped there block by block: the wow's
+phase exactly, the flutter's to within rounding (a millionth of a table
+sample, even an hour in).
+
+**The engine is Driftloom's own, not a copy of Chromium (Mikey,
+2026-10-10).** The port used Chromium as its reference so each step could be
+proven; from queue item 31b the core may do better where better is
+possible, judged by measurement and by ear. The first place it does: both
+compressors start *warm* (`Compressor::settle`). Chromium's `Reset` leaves
+the detector at 0, as if the signal were infinitely loud, so a node that
+has just been built dips whatever first reaches it, by up to 9 dB on the
+bus compressor and 14 dB on the ceiling, recovering over the next hundred
+milliseconds or so: the first notes after a Play, a rebuild or the core's
+arrival. The core plays that settling out on silence as it is built (about
+a hundred blocks, under a millisecond) and starts where Chromium's own node
+ends up, so only the dip is gone. (Where that is, is Chromium's too: the
+detector's climb to 1 stalls in 32-bit floats a hair short of it, which
+leaves the gain 0.03 dB under unity until something presses.) The
+JavaScript synth keeps its cold start (the reference), so a whole loop on
+the core differs from it in its first second, and nowhere else; the chain
+stage of `--null` starts the core's compressors cold (the core's `cold`
+parameter, the harness's) so it still proves the port.
+`cargo test` in `core/` runs its own tests, `node test/worklet.test.mjs` the
+worklet's, and `node tools/core-paths.mjs` plays the real app in headless
+Chromium with the core made to fail every way it can.
 
 The built `.wasm` is committed, so the site keeps no build step:
 
@@ -794,6 +829,7 @@ node tools/measure.mjs --null                   # the same notes, both engines, 
 node tools/measure.mjs --voice kalimba,fiddle,pad --engine rust
 node tools/measure.mjs --endings --engine rust
 node tools/perf.mjs --ab-query engine=rust --code <codes>   # live cost, both engines
+node tools/core-paths.mjs                       # the core failing: Diagnostics, fallback, handover
 ```
 
 `--null` renders every voice the core has, in every layer that draws it,
@@ -817,7 +853,10 @@ to stop rendering, and the same 'clean' -- into the melody alone, the
 tails at 0, the wobble still -- where the master chain gets the same signal
 bit for bit on both engines, beside JavaScript against itself with its
 input a part in ten million louder (the compressors' own sensitivity to a
-last-bit difference, which the core is held to). `--null --mix` runs those
+last-bit difference, which the core is held to). The whole loops are split
+at one second -- the core's warm compressors differ from JavaScript's cold
+ones there and only there -- and `--cold` starts the core's the way
+Chromium's start, for the old comparison. `--null --mix` runs those
 alone, and `--null --loud <n>` nulls the <n> loops of `--n` that press the
 ceiling hardest. The 38 Hz
 highpass sets its floor: its recursion amplifies its own last-bit rounding
