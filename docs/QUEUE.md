@@ -1373,6 +1373,20 @@ Mikey decides this line:
   circulation renders differently" are still true, and still the reason
   existing loops render identically, so they stay as written.
 
+- **Item 32: pages that still play the JavaScript synth (2026-10-11).**
+  `rank.html` and `tools/ears/render.mjs` build a `Synth` directly, so they
+  play the JavaScript synth, not the core the app now plays (`rank.html`'s
+  header says "always tests what the app plays"). The core nulls to it at
+  the floor, so rankings and ears albums already made stay valid; wiring the
+  two to the core (the context, `loadCore`, `attachCore`) is a small item if
+  the brain wants it.
+- **Item 32: device fill-ins in the A/B (2026-10-11).** v82 with the flag
+  against this build, same query, 40 runs a side: fill-in runs 1 against 5
+  (2 against 8 events), every one of this build's with a worst render quantum
+  of 3.6-6.3 ms (no stall in the core). The second A/B (v82 on JavaScript
+  against this build), 20 a side, had 0 against 0. Not chased, per the
+  brief; the pooled rate for this build is 5 of 60 runs.
+
 ## Done
 
 - #59, fiddle and accordion take two (v44),
@@ -1747,3 +1761,17 @@ Mikey decides this line:
   ms/s), +1% on lite; fill-in runs 1 of 15 against 0, the VM's usual (the
   main thread, which this cannot touch, was +3% too). `.wasm` 158,942
   bytes; core memory 14.50 MB.
+- #164, the core by default (item 32, v83),
+  https://claude-upbeat-volta-x491oa-driftloom.nowmichaelclark.workers.dev/:
+  nothing should sound different; this makes the Rust core the engine for
+  everyone, no flag. Open it, press Play on a loud loop, and check
+  Diagnostics reads `engine: rust  late: 0  fallback: 0` and `core: loaded
+  ... ms after the page began`; `?engine=js` reads `js (asked)` and plays the
+  JavaScript synth (it is the fallback, and has the cold compressors' dip at
+  the start that the core does not). The core loads as the page loads, so the
+  first Play is on the core (0 notes in JavaScript in 15 first taps at 1x, 4x
+  and 6x; v82 played 4-8). The gate for core changes is now
+  `node tools/baseline.mjs` against `test/core-baseline.json`, in CI. Fixed on
+  the way: a block handed to the core twice made the pads, leads and basses
+  spike 20-40 times their level (never seen in play); time now only goes
+  forward. `.wasm` 158,959 bytes (+17); core memory unchanged.

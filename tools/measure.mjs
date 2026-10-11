@@ -15,12 +15,21 @@
 // rendering. The synth draws noise, jitter and drift from it, so without
 // that the same seed gave slightly different numbers on every run; with it,
 // same seed, same numbers, and the two renders of one loop that the chain
-// comparison needs differ by the chain and nothing else. "Same" to within a
-// thousandth of a dB, not to the bit: Chromium does not fix the order it
-// adds a node's inputs in, and float addition is not associative, so where
-// several sources meet in one node the last few bits move between runs.
-// Every figure printed in dB or LU comes out the same; the last digit of a
-// four-place linear peak can flip when it sits on a rounding boundary.
+// comparison needs differ by the chain and nothing else. On the JavaScript
+// synth "same" is to within a thousandth of a dB for the figures this tool
+// reports from a loop or a note (loudness, level, peak), not to the bit:
+// Chromium does not fix the order it adds a node's inputs in, and float
+// addition is not associative, so where several sources meet in one node
+// the last few bits move between runs. Every figure printed in dB or LU
+// comes out the same; the last digit of a four-place linear peak can flip
+// when it sits on a rounding boundary. What does NOT repeat is a figure that
+// is a difference of two renders -- the "js vs js" floor of --null: it is
+// those last bits and nothing else, and the 38 Hz highpass and the
+// compressors amplify them (the highpass's recursion some thirty thousand
+// times near DC), so the same stage, run twice, moved by up to 13 dB between
+// two identical runs (queue item 32; a run of 36 stages). The core's own
+// renders are exact: the same fingerprint every time (hashOf, below), and
+// that is what tools/baseline.mjs keeps.
 //
 // Web Audio does not exist in Node, and a reimplementation of the graph
 // would measure the reimplementation. So the real `Synth` and the real
