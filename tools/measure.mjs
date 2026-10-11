@@ -71,13 +71,19 @@ driftloom offline audio measurement
   --voice <names>   per-voice probe instead of the corpus report; 'all'
                     probes every voice characters.js draws, by layer
   --note <seconds>  how long each probed note is held       (default 1.6)
+  --reps <count>    with --voice, renders of each note, each with its own
+                    random draws                                (default 3)
+  --stride <n>      with --voice, probe every nth note of the window
+                                                              (default 1)
   --refusals [code] count voice-budget refusals per layer
   --endings         check that every note of every voice fades out
   --retire          check that letting a finished voice go changes nothing
   --profile <id>    keep only loops that profile leads, drawing from the
                     same corpus until --n of them are in
-  --engine <e>      'js' or 'rust': which synth plays the voices the Rust
-                    core has                                   (default js)
+  --engine <e>      'rust' or 'js': which synth plays. 'rust' is the Rust
+                    core, the app's engine; 'js' is the JavaScript synth,
+                    the fallback a phone without the core hears
+                                                              (default rust)
   --null            render the same seeded notes of every voice the core
                     plays, loops, and the mix stage, through both engines
                     and subtract
@@ -144,9 +150,12 @@ driftloom offline audio measurement
   pan flute grace that swelled to full, held and was cut off 0.4 s later
   -- heard as static under the note it led into -- and it catches it.
 
-  --engine rust plays the core's voices through js/dlcore.wasm in an
-  AudioWorklet, as ?engine=rust does in the app, for every report above
-  but --retire (which is about letting go of Web Audio nodes). Everything
+  --engine rust, the default since queue item 32, plays the voices through
+  js/dlcore.wasm in an AudioWorklet, as the app does, for every report above
+  but --retire (which is about letting go of Web Audio nodes, and always
+  runs the JavaScript synth). --engine js plays the JavaScript synth, which
+  the app falls back to when it has no core: it keeps passing its own
+  checks (--refusals, --clicks, --endings). Everything
   else, the voice budget and every random draw included, is unchanged.
   Chromium keeps every offline render that loaded the core until the page
   goes away, so on the core (and for --null) the renders are split across
@@ -172,7 +181,7 @@ driftloom offline audio measurement
   noise's part of each (the note less the same note with the noise silent) is
   compared, over the frames from the start. Those differ only if the first
   frame is wrong. Anything over -90 dBFS is a click, and the run exits
-  non-zero. --engine rust plays the core's voices through the core. With
+  non-zero. --engine rust (the default) plays the voices through the core. With
   --n, the loops of the corpus are scheduled (not rendered) and the buffer
   sources they start counted, and how many start in that window.
 
@@ -192,7 +201,7 @@ function parseArgs(argv) {
   const opts = {
     n: 20, seed: 1, passes: 3, rate: 44100, quality: 'full', port: 8731, chrome: null,
     jobs: 4, chain: true, json: null, voices: null, note: 1.6, refusals: null, selftest: false,
-    profile: null, endings: false, retire: false, engine: 'js', null: false,
+    profile: null, endings: false, retire: false, engine: 'rust', null: false, reps: 3, stride: 1,
   };
   for (let i = 0; i < argv.length; i++) {
     let arg = argv[i];
@@ -240,6 +249,8 @@ function parseArgs(argv) {
         break;
       }
       case '--note': opts.note = Math.max(0.05, number()); break;
+      case '--reps': opts.reps = Math.max(1, Math.round(number())); break;
+      case '--stride': opts.stride = Math.max(1, Math.round(number())); break;
       case '--voice':
         opts.voices = value().split(',').map((v) => v.trim()).filter(Boolean);
         if (!opts.voices.length) fail('--voice needs at least one voice name');
@@ -749,7 +760,12 @@ window.measure = async (opts) => {
 
     const character = characterOf(spec);
     const meta = render(spec).meta;
+    // The core's renders are deterministic, so these say whether a loop
+    // sounds the same: the output as it reaches the speakers and each
+    // layer's tap (tools/baseline.mjs keeps them).
+    const hashes = { out: hashOf(l), layers: Object.fromEntries(LAYERS.map((name, n) => [name, hashOf(buf.getChannelData(n + 2))])) };
     return {
+      hashes,
       seed: spec.seed,
       name: spec.name,
       kit: meta.kit,
@@ -1028,7 +1044,7 @@ window.probeVoice = async (o) => {
   const tasks = [];
   for (const job of o.jobs) {
     for (const vel of o.velocities) {
-      for (let midi = job.low; midi <= job.high; midi++) {
+      for (let midi = job.low; midi <= job.high; midi += o.stride || 1) {
         for (let rep = 0; rep < o.reps; rep++) {
           tasks.push(async () => {
             const d = (await renderNote(job, midi, vel, rep, o)).getChannelData(0);
@@ -1051,7 +1067,7 @@ window.probeVoice = async (o) => {
     for (const vel of o.velocities) {
       const notes = [];
       const tone = [];
-      for (let midi = job.low; midi <= job.high; midi++) {
+      for (let midi = job.low; midi <= job.high; midi += o.stride || 1) {
         let energy = 0, band = 0, total = 0;
         for (let rep = 0; rep < o.reps; rep++) {
           const r = results[i++];
@@ -2513,7 +2529,6 @@ function reportVoices(data, opts, context) {
 // ----------------------------------------------------------------- main
 
 const opts = parseArgs(process.argv.slice(2));
-opts.reps = 3;
 opts.dur = opts.note;
 
 if (opts.selftest) {
@@ -2751,6 +2766,7 @@ if (counting) {
   if (pageErrors.length) {
     console.error(`measure: errors were reported while rendering:\n  ${pageErrors.join('\n  ')}`);
   }
+  writeJson(data);
   console.log(corpus ? reportRefusalsCorpus(data, opts) : reportRefusalsOne(data, opts));
   process.exit(0);
 }
@@ -2929,7 +2945,7 @@ if (probing) {
   const survey = surveyVelocities(opts.seed);
   const o = {
     velocities: PROBE_VELOCITIES, toneVelocity: 0.8,
-    rate: opts.rate, reps: opts.reps, dur: opts.dur, width: opts.jobs, engine: opts.engine,
+    rate: opts.rate, reps: opts.reps, stride: opts.stride, dur: opts.dur, width: opts.jobs, engine: opts.engine,
   };
   // A voice in a layer a page on the core: 150 notes.
   const got = await inPages('probeVoice', batches(jobs, 1).map((b) => ({ ...o, jobs: b })));

@@ -5,7 +5,8 @@
 //
 // What they pin down is which block the worklet asks the core to render
 // (queue item 31b): the frame count that rides out Chromium's stale
-// `currentFrame`, and finds the clock again if it ever runs ahead of it.
+// `currentFrame`, and (item 32) never goes backward, however long the clock
+// stays stale.
 
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -85,32 +86,31 @@ console.log('\nWhich block the worklet renders');
 }
 
 {
-  // A host that called process() twice for each block of real time would
-  // run the count ahead of the clock for good, were it never to look at the
-  // clock again.
+  // A host that called process() twice for each block of real time, or a
+  // clock that stopped: the count runs ahead of it, and stays ahead -- it
+  // never renders a block twice, or one before the last.
   const { processor, blocks } = make();
-  let worst = 0;
   for (let b = 0; b < 400; b++) {
-    for (let k = 0; k < 2; k++) {
-      call(processor, b * QUANTUM);
-      worst = Math.max(worst, processor.next - b * QUANTUM);
-    }
+    for (let k = 0; k < 2; k++) call(processor, b * QUANTUM);
   }
-  check('a count running ahead of the clock finds it again', worst <= 3 * QUANTUM, `${worst / QUANTUM} blocks ahead`);
-  check('and no block is ever rendered twice in a row',
-    blocks.every((x, i) => i === 0 || x !== blocks[i - 1]));
+  check('a count ahead of the clock goes on, one block each call',
+    blocks.every((x, i) => i === 0 || x === blocks[i - 1] + QUANTUM));
 }
 
 {
-  // The count is where the clock says again, so a late-starting core is not
-  // left behind a clock that is far ahead.
+  // Stale for good: the clock stops at block 100.
   const { processor, blocks } = make();
-  call(processor, 100 * QUANTUM);
-  call(processor, 100 * QUANTUM);
-  call(processor, 100 * QUANTUM);
-  call(processor, 100 * QUANTUM);
-  check('the clock is trusted once the count is more than two blocks ahead',
-    blocks.join() === [100, 101, 102, 100].map((b) => b * QUANTUM).join(), blocks.join());
+  for (const frame of [100, 100, 100, 100, 100, 100].map((b) => b * QUANTUM)) call(processor, frame);
+  check('a clock that stops is not followed back',
+    blocks.join() === [100, 101, 102, 103, 104, 105].map((b) => b * QUANTUM).join(), blocks.join());
+}
+
+{
+  // And when it does move on past the count, the count follows it.
+  const { processor, blocks } = make();
+  for (const frame of [100, 100, 100, 100, 200, 201].map((b) => b * QUANTUM)) call(processor, frame);
+  check('and a clock that jumps ahead of the count is followed',
+    blocks.join() === [100, 101, 102, 103, 200, 201].map((b) => b * QUANTUM).join(), blocks.join());
 }
 
 console.log(failures === 0 ? '\nAll good.\n' : `\n${failures} failing.\n`);

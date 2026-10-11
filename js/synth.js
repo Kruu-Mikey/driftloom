@@ -452,12 +452,14 @@ function recordingContext(ctx, synth) {
 }
 
 export class Synth {
-  // `engine` is 'js' or 'rust' (the `?engine=rust` flag, js/core.js), and
-  // `core` what loadCore() gave for this context, if it has arrived; one
-  // that arrives later is handed over with attachCore(). `taps` gives the
-  // core's node an output per channel, as it goes into the mix (the
-  // measure harness reads them).
-  constructor(ctx, quality = 'full', { engine = 'js', core = null, taps = false, coreError = null } = {}) {
+  // `engine` is 'js' or 'rust' (the app passes what `?engine=` asked,
+  // js/core.js), and `core` what loadCore() gave for this context, if it has
+  // arrived; one that arrives later is handed over with attachCore().
+  // `taps` gives the core's node an output per channel, as it goes into the
+  // mix (the measure harness reads them). `onCoreError(message)` hears it
+  // if the core turns out not to run, at any time.
+  constructor(ctx, quality = 'full', { engine = 'js', core = null, taps = false, coreError = null, onCoreError = null } = {}) {
+    this.onCoreError = onCoreError;
     this._building = null;
     this._voiceEnd = null;
     // Finished-to-be voices, earliest end first: { end, nodes }.
@@ -508,7 +510,13 @@ export class Synth {
       this.coreFailed(err);
       return;
     }
-    this.core.onfail = () => this._mixInJs();
+    this.core.onfail = () => {
+      this._mixInJs();
+      // The app keeps this answer for the session: a later synth (the
+      // quality toggle) does not build a core that has failed.
+      this.coreError = this.core.failed;
+      if (this.onCoreError) this.onCoreError(this.coreError);
+    };
     this._mixInCore(fresh);
   }
 
@@ -519,6 +527,7 @@ export class Synth {
     if (this.core) return;
     console.warn('Rust core unavailable; playing in JS', err);
     this.coreError = String((err && err.message) || err);
+    if (this.onCoreError) this.onCoreError(this.coreError);
   }
 
   // The core mixes (queue item 29). Each channel's node, where every
@@ -608,16 +617,17 @@ export class Synth {
     return this._asked;
   }
 
-  // For Diagnostics.
+  // For Diagnostics: the core (with the notes that arrived late and the ones
+  // that fell back to JS), or the JavaScript synth and why.
   engineReport() {
-    if (this.engine !== 'rust') return 'js';
+    if (this.engine !== 'rust') return 'js (asked)';
     const c = this.core;
     if (!c) {
       return this.coreError
-        ? `rust (failed: ${this.coreError})  fallback: ${this.fallbacks}`
+        ? `js (fallback: ${this.coreError})  fallback: ${this.fallbacks}`
         : `rust (loading)  fallback: ${this.fallbacks}`;
     }
-    if (c.failed) return `rust (failed: ${c.failed})  fallback: ${this.fallbacks}`;
+    if (c.failed) return `js (fallback: ${c.failed})  fallback: ${this.fallbacks}`;
     return `rust  late: ${c.late}  fallback: ${this.fallbacks}${c.dropped ? `  dropped: ${c.dropped}` : ''}`;
   }
 

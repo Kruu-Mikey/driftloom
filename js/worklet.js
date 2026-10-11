@@ -152,17 +152,19 @@ class DriftloomCore extends AudioWorkletProcessor {
       const input = inputs[c] && inputs[c][0];
       if (input && input.length === QUANTUM) views.inputs[c].set(input);
     }
-    // The block to render: `currentFrame`, unless it says the block before
-    // the one just rendered. Chromium sometimes hands a process() call the
+    // The block to render: `currentFrame`, unless it says a block the core
+    // has already rendered. Chromium sometimes hands a process() call the
     // last block's frame while it renders the next (seen in offline
     // renders: 9088 again where 9216 was due, then 9344), and a block
     // rendered as the last one would play every envelope in it 128 frames
     // late. A real gap -- a block the node was not asked for -- still moves
-    // the core on. And the count trusts the clock again once it is more
-    // than two blocks ahead of it: a host that called process() faster
-    // than real time would otherwise leave it running ahead for good.
-    const ahead = this.next === undefined ? 0 : this.next - currentFrame;
-    const block = ahead > 0 && ahead <= 2 * QUANTUM ? this.next : currentFrame;
+    // the core on. Time never goes backward, however stale the clock is for
+    // however long: a block rendered again starts the voices that began in
+    // it a second time, and the pads' and leads' filters spiked to thirty
+    // times their level (queue item 32). A count the clock never catches up
+    // with is a lead, and costs nothing but the few notes scheduled inside
+    // it counted late.
+    const block = this.next !== undefined && this.next > currentFrame ? this.next : currentFrame;
     this.next = block + QUANTUM;
     const at = core.dl_process(block);
     // A run for each of the output's channels (one: the graph is mono).

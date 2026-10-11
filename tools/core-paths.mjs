@@ -1,6 +1,7 @@
 // The Rust core's failure paths and its handover, in the real app (queue
-// item 31b): the page as a listener has it, in headless Chromium, with
-// `?engine=rust`, and the core made to fail in every way it can.
+// items 31b and 32): the page as a listener has it, in headless Chromium,
+// with the core on by default, and the core made to fail in every way it
+// can. `?engine=js` and an old `?engine=rust` link are checked too.
 //
 // Run with:  node tools/core-paths.mjs [--port 8741] [--seed 7] [--chrome <path>]
 //
@@ -13,10 +14,10 @@
 //
 //   - the music keeps playing (the JavaScript synth takes over, the page
 //     never goes silent for good),
-//   - Diagnostics says `rust (failed: ...)`, not `loading` for ever and not
+//   - Diagnostics says `js (fallback: <why>)`, not `loading` for ever and not
 //     healthy,
 //   - and a synth the page builds later (the quality toggle) starts with the
-//     same answer.
+//     same answer, without building another core.
 //
 // And the handover: when the core arrives after the page has asked for its
 // tone, the values it starts from are set at once, not glided to from the
@@ -108,6 +109,20 @@ const INSTRUMENT = `(() => {
     }
     return connect.call(this, dest, ...rest);
   };
+  // The core nodes the page builds, and the .wasm files it fetches.
+  window.__nodes = 0;
+  if (window.AudioWorkletNode) {
+    const Real = window.AudioWorkletNode;
+    window.AudioWorkletNode = class extends Real {
+      constructor(...args) { super(...args); window.__nodes++; }
+    };
+  }
+  window.__wasm = 0;
+  const realFetch = window.fetch;
+  window.fetch = function (input, ...rest) {
+    if (String(input && input.url || input).endsWith('dlcore.wasm')) window.__wasm++;
+    return realFetch.call(this, input, ...rest);
+  };
   const post = MessagePort.prototype.postMessage;
   MessagePort.prototype.postMessage = function (m, ...rest) {
     if (m && m.type === 'param') window.__params.push({ id: m.id, op: m.op, value: m.value, tau: m.tau });
@@ -138,15 +153,16 @@ function check(label, ok, detail = '') {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// A fresh page on the app with `?engine=rust`, `setup` run on it first.
-async function open(setup) {
+// A fresh page on the app, `setup` run on it first, with `query` on its URL
+// (none: the core is the default).
+async function open(setup, query = '') {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(INSTRUMENT);
   if (setup) await setup(page, context);
-  await page.goto(`http://127.0.0.1:${PORT}/index.html?engine=rust`);
+  await page.goto(`http://127.0.0.1:${PORT}/index.html${query}`);
   return { page, context, errors };
 }
 async function play(page) {
@@ -158,6 +174,13 @@ async function engineLine(page) {
   await page.click('#diagRefresh');
   const text = await page.textContent('#diagOut');
   return (text.split('\n').find((l) => l.startsWith('engine:')) || '').trim();
+}
+// Diagnostics' core line (when the core arrived), as the page prints it.
+async function coreLine(page) {
+  await page.evaluate(() => document.querySelector('.diag').setAttribute('open', ''));
+  await page.click('#diagRefresh');
+  const text = await page.textContent('#diagOut');
+  return (text.split('\n').find((l) => l.startsWith('core:')) || '').trim();
 }
 // The loudest the speakers got over the next `ms`.
 async function loudest(page, ms) {
@@ -176,12 +199,44 @@ const AUDIBLE = 0.005;
 console.log('\nThe core, healthy');
 {
   const { page, context, errors } = await open();
+  // The core is loaded as the page loads, not on the first tap: it is in
+  // before anything is pressed.
+  await page.waitForFunction(() => { const d = document.querySelector('.diag'); return !!d; });
+  await sleep(1500);
+  const early = await coreLine(page);
+  check('the core loads before Play is pressed', /^core: loaded \d+ ms/.test(early), early);
+  check('and the core is not built into a synth until Play', (await page.evaluate(() => window.__nodes)) === 0);
   await play(page);
   await sleep(2500);
   const line = await engineLine(page);
   check('Diagnostics reads the core, healthy', /^engine: rust\s+late: \d+\s+fallback: \d+/.test(line), line);
   check('and it is playing', (await loudest(page, 2500)) > AUDIBLE);
+  check('on the first note: nothing fell back to JavaScript', /fallback: 0/.test(line), line);
+  check('one core node, one fetch of the .wasm', (await page.evaluate(() => [window.__nodes, window.__wasm])).join() === '1,1');
   check('the page reported no errors', errors.length === 0, errors.join('; '));
+  await context.close();
+}
+
+console.log('\n?engine=js asks for the JavaScript synth');
+{
+  const { page, context, errors } = await open(null, '?engine=js');
+  await play(page);
+  await sleep(2500);
+  const line = await engineLine(page);
+  check('Diagnostics says it was asked for', /^engine: js \(asked\)/.test(line), line);
+  check('it plays', (await loudest(page, 2500)) > AUDIBLE);
+  check('no core is fetched or built', (await page.evaluate(() => [window.__nodes, window.__wasm])).join() === '0,0');
+  check('the page reported no errors', errors.length === 0, errors.join('; '));
+  await context.close();
+}
+
+console.log('\nAn old ?engine=rust link');
+{
+  const { page, context } = await open(null, '?engine=rust');
+  await play(page);
+  await sleep(2500);
+  const line = await engineLine(page);
+  check('plays on the core, as it always asked', /^engine: rust\s+late: \d+/.test(line), line);
   await context.close();
 }
 
@@ -215,10 +270,18 @@ console.log('\nThe core throws from process() while playing (a trap)');
   check('and it is playing', (await loudest(page, 1500)) > AUDIBLE);
   await sleep(2500);
   const after = await engineLine(page);
-  check('after it Diagnostics says the core failed', /^engine: rust \(failed: .+\)/.test(after), after);
+  check('after it Diagnostics says the core failed', /^engine: js \(fallback: .+\)/.test(after), after);
   check('the music did not stop: the JavaScript synth plays on', (await loudest(page, 4000)) > AUDIBLE);
   const later = await engineLine(page);
   check('and the notes the core would have played count as fallbacks', /fallback: [1-9]\d*/.test(later), later);
+  // A core that has failed is not built again in this session.
+  const nodes = await page.evaluate(() => window.__nodes);
+  await page.evaluate(() => { document.querySelector('#liteMode').click(); });
+  await sleep(1500);
+  const rebuilt = await engineLine(page);
+  check('the quality toggle stays on JavaScript, and says why', /^engine: js \(fallback: .+\)/.test(rebuilt), rebuilt);
+  check('and builds no second core', (await page.evaluate(() => window.__nodes)) === nodes);
+  check('and plays', (await loudest(page, 2500)) > AUDIBLE);
   check('the page reported no errors', errors.length === 0, errors.join('; '));
   await context.close();
 }
@@ -233,14 +296,14 @@ console.log('\nThe core fails to load (the .wasm never arrives)');
   await play(page);
   await sleep(2500);
   const line = await engineLine(page);
-  check('Diagnostics says the core failed, not loading', /^engine: rust \(failed: .+\)/.test(line), line);
+  check('Diagnostics says the core failed, not loading', /^engine: js \(fallback: .+\)/.test(line), line);
   check('the music plays in JavaScript', (await loudest(page, 3000)) > AUDIBLE);
   check('and the notes count as fallbacks', /fallback: [1-9]\d*/.test(await engineLine(page)));
   // A synth the page builds later starts with the same answer.
   await page.evaluate(() => { document.querySelector('#liteMode').click(); });
   await sleep(1500);
   const rebuilt = await engineLine(page);
-  check('a rebuilt synth (the quality toggle) says so too', /^engine: rust \(failed: .+\)/.test(rebuilt), rebuilt);
+  check('a rebuilt synth (the quality toggle) says so too', /^engine: js \(fallback: .+\)/.test(rebuilt), rebuilt);
   check('and plays', (await loudest(page, 2500)) > AUDIBLE);
   check('the page reported no errors', errors.length === 0, errors.join('; '));
   await context.close();
@@ -254,7 +317,7 @@ console.log('\nThe .wasm is not a module');
   await play(page);
   await sleep(2500);
   const line = await engineLine(page);
-  check('Diagnostics says the core failed', /^engine: rust \(failed: .+\)/.test(line), line);
+  check('Diagnostics says the core failed', /^engine: js \(fallback: .+\)/.test(line), line);
   check('the music plays in JavaScript', (await loudest(page, 3000)) > AUDIBLE);
   await context.close();
 }
@@ -272,8 +335,37 @@ console.log('\nThe worklet node cannot be built');
   await play(page);
   await sleep(2500);
   const line = await engineLine(page);
-  check('Diagnostics says the core failed, with why', /^engine: rust \(failed: no worklet node here\)/.test(line), line);
+  check('Diagnostics says the core failed, with why', /^engine: js \(fallback: no worklet node here\)/.test(line), line);
   check('the music plays in JavaScript', (await loudest(page, 3000)) > AUDIBLE);
+  await context.close();
+}
+
+console.log('\nA browser without AudioWorklet');
+{
+  const { page, context, errors } = await open(async (p) => {
+    await p.addInitScript(() => { delete window.AudioWorkletNode; });
+  });
+  await play(page);
+  await sleep(2500);
+  const line = await engineLine(page);
+  check('Diagnostics says why', /^engine: js \(fallback: no AudioWorklet in this browser\)/.test(line), line);
+  check('the music plays in JavaScript', (await loudest(page, 3000)) > AUDIBLE);
+  check('the .wasm is not even fetched', (await page.evaluate(() => window.__wasm)) === 0);
+  check('the page reported no errors', errors.length === 0, errors.join('; '));
+  await context.close();
+}
+
+console.log('\nA browser without WebAssembly');
+{
+  const { page, context, errors } = await open(async (p) => {
+    await p.addInitScript(() => { delete window.WebAssembly; });
+  });
+  await play(page);
+  await sleep(2500);
+  const line = await engineLine(page);
+  check('Diagnostics says why', /^engine: js \(fallback: no WebAssembly in this browser\)/.test(line), line);
+  check('the music plays in JavaScript', (await loudest(page, 3000)) > AUDIBLE);
+  check('the page reported no errors', errors.length === 0, errors.join('; '));
   await context.close();
 }
 

@@ -8,11 +8,13 @@ Everything is synthesized in the browser from oscillators and one noise
 buffer. No samples, no libraries, no build step, nothing to download. It
 runs from a single folder on a cheap Android phone.
 
-The synth is moving to a small Rust core, compiled to WebAssembly, so the
-same engine can one day run a phone app (roadmap 16). Every voice, the
-mix and the master chain already play from it behind `?engine=rust`;
-without the flag everything plays in JavaScript. The built `js/dlcore.wasm` is committed,
-so there is still no build step.
+The engine is a small Rust core, compiled to WebAssembly, so the same engine
+can one day run a phone app (roadmap 16). Every voice, the mix and the master
+chain play from it by default. The JavaScript synth stays as the fallback, for
+a browser without AudioWorklet or WebAssembly, a core that fails to load or
+fails while playing; Diagnostics says which engine plays and why, and
+`?engine=js` asks for the JavaScript synth on purpose. The built
+`js/dlcore.wasm` is committed, so there is still no build step.
 
 Live at <https://driftloom.nowmichaelclark.workers.dev/>.
 

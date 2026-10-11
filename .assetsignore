@@ -13,3 +13,4 @@ tools
 core
 .github
 .gitignore
+node_modules
