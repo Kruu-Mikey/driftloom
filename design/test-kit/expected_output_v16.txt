@@ -1,0 +1,195 @@
+
+=== Gallery audit at 100/130/150/200% (page's own auditPhones) ===
+100 -> Audit @ 100% · 9 phones · no overflow · zones 205 / 319 / 240 unchanged
+130 -> Audit @ 130% · 9 phones · no overflow · zones 205 / 319 / 240 unchanged · alternating: mix ↔ mood, key ↔ meter
+150 -> Audit @ 150% · 9 phones · no overflow · zones 205 / 319 / 240 unchanged · alternating: mix ↔ mood, key ↔ meter
+200 -> Audit @ 200% · 9 phones · no overflow · zones 205 / 319 / 240 unchanged · alternating: mix ↔ mood, key ↔ meter
+console/page errors: none
+
+=== Which alternation mode at each size ===
+100%: still | 120%: rot-km | 126%: rot-mm
+
+=== 51 sizes x plain/spaced x name lengths (observer only) ===
+plain         ok (51 sizes, observer only) | trims {"still":10,"key ↔ meter":3,"mix ↔ mood, key ↔ meter":38} | split 0 stack 0 min name 28
+spacing       ok (51 sizes, observer only) | trims {"mix ↔ mood, key ↔ meter":6,"all four in turn":45} | split 39 stack 9 min name 28
+spacing 8ch   ok (51 sizes, observer only) | trims {"mix ↔ mood, key ↔ meter":6,"all four in turn":45} | split 39 stack 9 min name 28
+spacing 12ch  ok (51 sizes, observer only) | trims {"all four in turn":51} | split 39 stack 9 min name 20
+plain 12ch    ok (51 sizes, observer only) | trims {"mix ↔ mood, key ↔ meter":11,"key ↔ meter":2,"all four in turn":38} | split 0 stack 0 min name 28
+spacing loomwave ok (51 sizes, observer only) | trims {"all four in turn":51} | split 39 stack 9 min name 24
+plain loomwave ok (51 sizes, observer only) | trims {"still":10,"mix ↔ mood, key ↔ meter":41} | split 0 stack 0 min name 28
+errors none
+
+=== Non-text contrast: notes (all layers on) ===
+t-dawn        notes(on): Drums 3.68, Bass 5.23, Keys 3.67, Melody 5.45, Air 3.78 | off-layer:  | beat 3.48 offbeat 1.58 | lit centre 3.73 edge 3.57 edge-vs-aura 3.87 edge-vs-panel 3.42
+t-ember       notes(on): Drums 3.6, Bass 5.42, Keys 3.56, Melody 5.43, Air 4.17 | off-layer:  | beat 3.52 offbeat 1.86 | lit centre 3.75 edge 3.56 edge-vs-aura 5.34 edge-vs-panel 3.48
+t-tidal       notes(on): Drums 5.67, Bass 3.59, Keys 5.23, Melody 3.66, Air 4.8 | off-layer:  | beat 3.56 offbeat 1.76 | lit centre 3.73 edge 3.53 edge-vs-aura 4.53 edge-vs-panel 3.42
+t-dark        notes(on): Drums 6.26, Bass 8.02, Keys 6.95, Melody 8.62, Air 9.54 | off-layer:  | beat 3.5 offbeat 1.97 | lit centre 5.42 edge 4.36 edge-vs-aura 2.88 edge-vs-panel 3.77
+t-amoled      notes(on): Drums 7.73, Bass 10.3, Keys 6.46, Melody 10.25, Air 9.9 | off-layer:  | beat 3.74 offbeat 1.89 | lit centre 7.8 edge 6.35 edge-vs-aura 3.92 edge-vs-panel 5.57
+t-nightlight  notes(on): Drums 5.54, Bass 4.25, Keys 5.42, Melody 8.93, Air 4.3 | off-layer:  | beat 3.44 offbeat 1.79 | lit centre 9.15 edge 7.89 edge-vs-aura 4.47 edge-vs-panel 7.17
+t-nocturne    notes(on): Drums 5.08, Bass 6.05, Keys 7.92, Melody 9.56, Air 6.14 | off-layer:  | beat 3.19 offbeat 1.61 | lit centre 8.7 edge 7.45 edge-vs-aura 1.19 edge-vs-panel 1.77
+t-abyss       notes(on): Drums 8.97, Bass 6.66, Keys 5.99, Melody 7.84, Air 10.76 | off-layer:  | beat 3.29 offbeat 1.73 | lit centre 9.41 edge 8.12 edge-vs-aura 1.15 edge-vs-panel 1.6
+t-olive       notes(on): Drums 3.65, Bass 6.34, Keys 3.67, Melody 6.72, Air 3.76 | off-layer:  | beat 3.54 offbeat 1.66 | lit centre 3.64 edge 3.48 edge-vs-aura 1.49 edge-vs-panel 1.51
+
+=== Non-text contrast: beats, lit cell (themes 1-6) ===
+t-dawn        notes(on): Bass 5.23, Keys 3.67, Melody 5.45 | off-layer: Drums 2, Air 1.85 | beat 3.48 offbeat 1.58 | lit centre 3.73 edge 3.57 edge-vs-aura 3.87 edge-vs-panel 3.42
+t-ember       notes(on): Bass 5.42, Keys 3.56, Melody 5.43 | off-layer: Drums 1.95, Air 2.05 | beat 3.52 offbeat 1.86 | lit centre 3.75 edge 3.56 edge-vs-aura 5.34 edge-vs-panel 3.48
+t-tidal       notes(on): Bass 3.59, Keys 5.23, Melody 3.66 | off-layer: Drums 2.19, Air 2.03 | beat 3.56 offbeat 1.76 | lit centre 3.73 edge 3.53 edge-vs-aura 4.53 edge-vs-panel 3.42
+t-dark        notes(on): Bass 8.02, Keys 6.95, Melody 8.62 | off-layer: Drums 2.58, Air 3.33 | beat 3.5 offbeat 1.97 | lit centre 5.42 edge 4.36 edge-vs-aura 2.88 edge-vs-panel 3.77
+t-amoled      notes(on): Bass 10.3, Keys 6.46, Melody 10.25 | off-layer: Drums 2.71, Air 3.12 | beat 3.74 offbeat 1.89 | lit centre 7.8 edge 6.35 edge-vs-aura 3.92 edge-vs-panel 5.57
+t-nightlight  notes(on): Bass 4.25, Keys 5.42, Melody 8.93 | off-layer: Drums 2.38, Air 1.99 | beat 3.44 offbeat 1.79 | lit centre 9.15 edge 7.89 edge-vs-aura 4.47 edge-vs-panel 7.17
+t-nocturne    notes(on): Bass 6.05, Keys 7.92, Melody 9.56 | off-layer: Drums 2.28, Air 2.45 | beat 3.19 offbeat 1.61 | lit centre 8.7 edge 7.45 edge-vs-aura 1.19 edge-vs-panel 1.77
+t-abyss       notes(on): Bass 6.66, Keys 5.99, Melody 7.84 | off-layer: Drums 3.33, Air 3.63 | beat 3.29 offbeat 1.73 | lit centre 9.41 edge 8.12 edge-vs-aura 1.15 edge-vs-panel 1.6
+t-olive       notes(on): Bass 6.34, Keys 3.67, Melody 6.72 | off-layer: Drums 1.79, Air 1.82 | beat 3.54 offbeat 1.66 | lit centre 3.64 edge 3.48 edge-vs-aura 1.49 edge-vs-panel 1.51
+
+=== Non-text contrast: beats, lit cell (themes 7-9) ===
+t-nocturne    notes(on): Bass 6.05, Keys 7.92, Melody 9.58 | off-layer: Drums 2.28, Air 2.46 | beat 3.15 offbeat 1.61 | lit centre 9.12 edge 7.81 edge-vs-aura 3.98 edge-vs-panel 7.05
+t-abyss       notes(on): Bass 6.66, Keys 5.99, Melody 7.83 | off-layer: Drums 3.33, Air 3.66 | beat 3.29 offbeat 1.74 | lit centre 9.89 edge 8.49 edge-vs-aura 4.8 edge-vs-panel 7.72
+t-olive       notes(on): Bass 6.34, Keys 3.67, Melody 6.72 | off-layer: Drums 1.79, Air 1.83 | beat 3.54 offbeat 1.66 | lit centre 3.54 edge 3.39 edge-vs-aura 4.83 edge-vs-panel 3.24
+
+=== Button word contrast (on / off / roll) ===
+t-dawn         on 10.02  OFF 7.22  OFF(air) 7.59  roll 10.02  roll(off) 9.94
+t-ember        on 11.66  OFF 7.11  OFF(air) 5.74  roll 11.64  roll(off) 12.05
+t-tidal        on 11.06  OFF 7.07  OFF(air) 5.79  roll 11.13  roll(off) 11.38
+t-dark         on 8.46  OFF 9.56  OFF(air) 9.85  roll 8.46  roll(off) 8.45
+t-amoled       on 9.40  OFF 8.57  OFF(air) 8.67  roll 9.40  roll(off) 9.40
+t-nightlight   on 8.83  OFF 8.26  OFF(air) 8.53  roll 8.76  roll(off) 8.73
+t-nocturne     on 9.38  OFF 11.97  OFF(air) 12.93  roll 9.32  roll(off) 8.79
+t-abyss        on 9.88  OFF 10.22  OFF(air) 10.66  roll 9.88  roll(off) 9.87
+t-olive        on 11.68  OFF 6.87  OFF(air) 6.22  roll 11.68  roll(off) 11.79
+
+=== Focus-ring contrast, every control, every theme ===
+t-dawn mini:10.22 switch:10.36 prev:5.32 play:6.45 next:7.67 lib:6.75 save:7.16 now:6.99 sound:7.63
+t-ember mini:8.89 switch:8.42 prev:5.08 play:4.79 next:5.18 lib:6.18 save:5.37 now:9.13 sound:5.19
+t-tidal mini:8.86 switch:8.31 prev:3.39 play:3.13 next:3.36i lib:4.64 save:3.26 now:5.17 sound:3.47
+t-dark mini:12.65 switch:13.09 prev:10.81 play:10.50 next:13.24 lib:11.63 save:11.80 now:14.36 sound:14.99
+t-amoled mini:14.61 switch:15.51 prev:9.39 play:10.79 next:13.87 lib:12.11 save:12.20 now:15.17 sound:16.36
+t-nightlight mini:11.72 switch:12.37 prev:8.87 play:8.16 next:10.52 lib:9.04 save:9.20 now:12.94 sound:13.48
+t-nocturne mini:12.23 switch:13.94 prev:7.81 play:8.02 next:9.05 lib:9.77 save:8.91 now:13.24 sound:8.57
+t-abyss mini:11.53 switch:12.18 prev:9.24 play:10.20 next:11.57 lib:11.18 save:11.53 now:12.76 sound:13.02
+t-olive mini:8.75 switch:8.56 prev:3.29i play:3.21 next:3.42i lib:3.19 save:3.19 now:3.27 sound:3.27
+WORST 5th-percentile ring contrast: 3.13
+
+=== Keyboard order, operation, ARIA tree ===
+TAB ORDER (Dawn): button:Roll Drums | switch:off | button:Roll Bass | switch:on | button:Roll Keys | switch:on | button:Roll Melody | switch:on | button:Roll Air | switch:off | button:Previous | button:Pause | button:Next | button:Library | button:Save or share | button:Now playing | button:Sound
+Drums switch via Space: false,off,true -> true,on,false
+Play via Enter -> playing: false label: Play
+Roll via Enter: Drums pattern: 9 notes in 16 steps, 4 accented x.xxx.x.x.x.x.x.x.......x.......x.....x.x.....x.x..x.x..x.x..x....x.......x..... -> Drums pattern: 9 notes in 16 steps, 4 accented x.x.xxx.xxxx....x.......x.......x.....x.x.....x.x..x.x..x.x..x....x.......x.....
+FOCUS RING  theme kind focus-visible samples %>=3:1 min
+  t-dawn  mini  true  208  79  1.00
+  t-dawn  icon  true  452  81  1.00
+  t-dawn  play  true  500  83  1.00
+  t-ember  mini  true  208  79  1.00
+  t-ember  icon  true  452  82  1.00
+  t-ember  play  true  500  83  1.00
+  t-tidal  mini  true  208  79  1.00
+  t-tidal  icon  true  452  81  1.00
+  t-tidal  play  true  500  81  1.00
+  t-dark  mini  true  208  81  1.00
+  t-dark  icon  true  452  83  1.00
+  t-dark  play  true  500  85  1.00
+  t-amoled  mini  true  208  81  1.00
+  t-amoled  icon  true  452  83  1.00
+  t-amoled  play  true  500  85  1.00
+  t-nightlight  mini  true  208  81  1.00
+  t-nightlight  icon  true  452  82  1.00
+  t-nightlight  play  true  500  84  1.00
+  t-nocturne  mini  true  208  81  1.00
+  t-nocturne  icon  true  452  83  1.00
+  t-nocturne  play  true  500  84  1.00
+  t-abyss  mini  true  208  81  1.00
+  t-abyss  icon  true  452  83  1.00
+  t-abyss  play  true  500  84  1.00
+  t-olive  mini  true  208  79  1.00
+  t-olive  icon  true  452  79  1.00
+  t-olive  play  true  500  81  1.00
+motion no-preference {"transform":"none","filter":"none","transition":"0.09s, 0.09s, 0.09s"} playhead fade 0.18s
+motion reduce {"transform":"none","filter":"none","transition":"0s"} playhead fade 0s
+motion sim-toggle none
+ARIA SNAPSHOT (Dawn):
+- region "Dawn Glass mockup":
+  - heading "me-kei" [level=3]
+  - list "Loop details":
+    - listitem: 53% Tide , 47% Glade
+    - listitem: 93% enthusiastic , 7% refreshing
+    - listitem: Bb Mixolydian , 93 bpm
+    - listitem: 6/8 , 8 bars
+  - img "Playhead on step 9 of 16"
+  - group "Layers":
+    - text: Drums
+    - 'img "Drums pattern: 9 notes in 16 steps, 4 accented"'
+    - button "Roll Drums": roll
+    - switch "Drums"
+    - text: Bass
+    - 'img "Bass pattern: 2 notes in 16 steps, 2 accented"'
+    - button "Roll Bass": roll
+    - switch "Bass" [checked]
+    - text: Keys
+    - 'img "Keys pattern: 4 notes in 16 steps, 2 accented"'
+    - button "Roll Keys": roll
+    - switch "Keys" [checked]
+    - text: Melody
+    - 'img "Melody pattern: 6 notes in 16 steps, 2 accented"'
+    - button "Roll Melody": roll
+    - switch "Melody" [checked]
+    - text: Air
+    - 'img "Air pattern: 2 notes in 16 steps, 0 accented"'
+    - button "Roll Air": roll
+    - switch "Air"
+  - group "Controls":
+    - button "Previous"
+    - button "Pause"
+    - button "Next"
+    - button "Library"
+    - button "Save or share"
+    - button "Now playing"
+    - button "Sound"
+errors: none
+
+=== Reduced motion ===
+no preference                    | play press: transform=matrix(1, 0, 0, 1, 0, 1.85169) filter=brightness(0.948867) saturate(0.931822) transition=0.09s, 0.09s, 0.09s | roll press: transform=matrix(1, 0, 0, 1, 0, 1) filter=brightness(0.94) transition=0.09s, 0.09s, 0.09s | library press: transform=matrix(1, 0, 0, 1, 0, 2) filter=brightness(0.94) transition=0.09s, 0.09s, 0.09s | off key at rest: matrix(1, 0, 0, 1, 0, 1) | 162 of 5508 boxes in the phones transition/animate
+prefers-reduced-motion: reduce   | play press: transform=none filter=brightness(0.94) saturate(0.92) transition=0s | roll press: transform=none filter=brightness(0.94) transition=0s | library press: transform=none filter=brightness(0.94) transition=0s | off key at rest: none | 0 of 5508 boxes in the phones transition/animate
+gallery sim switch               | play press: transform=none filter=brightness(0.94) saturate(0.92) transition=0s | roll press: transform=none filter=brightness(0.94) transition=0s | library press: transform=none filter=brightness(0.94) transition=0s | off key at rest: none | 0 of 5508 boxes in the phones transition/animate
+
+=== Alternating info lines: timing, holds, takeover ===
+100%: next button hidden | lines mix+mood+key+meter
+200%: next button shown | page0 mix+key
+playing, 10s, sampled each second: mix+key | mix+key | mix+key | mix+key | mood+meter | mood+meter | mood+meter | mood+meter | mood+meter | mix+key
+hover 6s: before mix+key after mix+key (held)
+tap -> mood+meter
+after tap, 6s playing: stays (manual)
+after Next + 4.6s: mood+meter (auto resumed if it changed from page0)
+focus 6s: held
+Enter -> mix+key (turned)
+Space -> mood+meter
+paused 6s: held | playhead label: Paused at step 9 of 16
+aria (200%):
+- button "Next loop details"
+- heading "me-kei" [level=3]
+- list "Loop details":
+  - listitem: 53% Tide , 47% Glade
+  - listitem: 93% enthusiastic , 7% refreshing
+  - listitem: Bb Mixolydian , 93 bpm
+  - listitem: 6/8 , 8 bars
+- img "Playhead on step 9 of 16"
+element under the name: name
+focusable buttons in Dawn at 200%: 18
+back to 100%: next button hidden | lines mix+mood+key+meter
+errors none
+
+=== Forced colours (writes out/fc_*.png) ===
+forced-colors matches: true
+{
+ "onBg": "rgb(255, 255, 255)",
+ "offBg": "rgb(63, 242, 63)",
+ "halo": "rgb(0, 0, 0) 0px 0px 0px 2px, rgba(0, 230, 255, 0.8) 0px 0px 0px 4px",
+ "playheadOn": "rgb(255, 255, 255)",
+ "playheadCell": "rgb(255, 255, 255)",
+ "btnBorder": "rgba(0, 230, 255, 0.8)",
+ "panelBorder": "solid rgb(255, 255, 255)",
+ "focus": "rgba(0, 230, 255, 0.8) solid 2px"
+}
+
+=== Reflow at 1280 / 640 / 320 ===
+100% zoom {"scrollW":1280,"innerW":1280,"phoneLeft":70,"phoneRight":410,"phoneW":340,"wide":[]}
+200% zoom (1280 window) {"scrollW":640,"innerW":640,"phoneLeft":150,"phoneRight":490,"phoneW":340,"wide":[]}
+400% zoom / 320 reflow {"scrollW":320,"innerW":320,"phoneLeft":17,"phoneRight":303,"phoneW":286,"wide":[]}

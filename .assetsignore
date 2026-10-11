@@ -11,5 +11,7 @@ tools
 # The Rust core's source and its CI. The built js/dlcore.wasm ships; the
 # crate it is built from does not.
 core
+# The UI mockup / design spec and its test kit (not part of the app).
+design
 .github
 .gitignore
