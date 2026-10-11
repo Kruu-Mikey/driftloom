@@ -245,9 +245,11 @@ impl TableOsc {
     /// exact in 64 bits (24 bits of mantissa a step, tens of bits of room),
     /// so the one multiplication equals the repeated addition; what differs
     /// from stepping is only the rounding the stepped sum collects from a
-    /// start that fell between two frames (`lead`), about 1e-14 of a table
-    /// sample per thousand blocks. Only for blocks after the one the
-    /// oscillator started in, and before it stops.
+    /// start that fell between two frames (`lead`): measured at about 7e-12
+    /// of a table sample after a thousand blocks and 5.4e-9 after 1.24
+    /// million (an hour in), far
+    /// under the 1e-7 the tests allow and inaudible. Only for blocks after
+    /// the one the oscillator started in, and before it stops.
     pub fn skip_whole(&mut self, blocks: u64, wave: &Wave, freq: f32, rate: f32) {
         let f = within(freq, rate / 2.0);
         let step = (QUANTUM as f32 * (f * wave.rate_scale())) as f64;

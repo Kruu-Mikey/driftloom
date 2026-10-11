@@ -4,13 +4,14 @@ Written by the brain for Claude Code, so building can carry on while Mikey
 has no time to listen (2026-09-25). Work top to bottom. Mikey's ears come
 later, in listening albums the brain builds from the Done list.
 
-**Status, 2026-10-11:** items 0-31b are done (13 stopped at its gate by
-design): every voice, the mix and the whole master chain play from the
-Rust core behind `?engine=rust`, its output straight to the speakers, and
-the core path is hardened (it falls back to JavaScript if it fails while
-playing, Diagnostics says why, and its compressors start warm). Next:
-item 32, the core by default. A new Claude Code session starts here: read
-the standing rules and the merge policy, then take the next item.
+**Status, 2026-10-11:** items 0-32 are done (13 stopped at its gate by
+design): the Rust core is Driftloom's engine and plays by default; the
+JavaScript synth is the fallback (and `?engine=js`). The gate for a change
+to the core is now its own baseline, `node tools/baseline.mjs` (see the
+standing rules). Next: whatever the brain queues after item 32 (the
+ears-approved new instruments are waiting, "Later, not queued"). A new
+Claude Code session starts here: read the standing rules and the merge
+policy, then take the next item.
 
 **Mono only (Mikey, 2026-10-11):** the output stays one channel. Nothing
 is built toward stereo (no panning, width or ping-pong echoes).
@@ -39,6 +40,16 @@ default, not a goal. See `docs/BRAIN.md`, "The engine".
   catalog median (`measure.mjs --profile <id>`).
 - **Refusals** on full and lite for the loops the item touches: melody at
   full quality stays near zero, and lite no worse than the catalog.
+- **The core baseline (item 32):** run `node tools/baseline.mjs`. It renders
+  a fixed set on the core (40 loops full and lite, every voice, the
+  refusals, the costs) and fails on any difference from
+  `test/core-baseline.json`. A change that is not meant to change the sound
+  must leave it passing; one that is runs `node tools/baseline.mjs
+  --update` in the same PR and says in the body what moved and why.
+  Nulling against JavaScript (`measure.mjs --null`) is no longer the gate
+  for the core; the JavaScript synth is the fallback a phone without the
+  core hears and keeps passing its own checks (`--engine js` with
+  `--refusals`, `--clicks`, `--endings`) when its code is touched.
 - **The balance lock:** run `stats.mjs --check`. If a locked figure moves,
   report which and by how much, re-baseline at `--n 10000`, and say so.
 - **Existing loops:** say exactly what changes for specs that already
@@ -1362,6 +1373,20 @@ Mikey decides this line:
   circulation renders differently" are still true, and still the reason
   existing loops render identically, so they stay as written.
 
+- **Item 32: pages that still play the JavaScript synth (2026-10-11).**
+  `rank.html` and `tools/ears/render.mjs` build a `Synth` directly, so they
+  play the JavaScript synth, not the core the app now plays (`rank.html`'s
+  header says "always tests what the app plays"). The core nulls to it at
+  the floor, so rankings and ears albums already made stay valid; wiring the
+  two to the core (the context, `loadCore`, `attachCore`) is a small item if
+  the brain wants it.
+- **Item 32: device fill-ins in the A/B (2026-10-11).** v82 with the flag
+  against this build, same query, 40 runs a side: fill-in runs 1 against 5
+  (2 against 8 events), every one of this build's with a worst render quantum
+  of 3.6-6.3 ms (no stall in the core). The second A/B (v82 on JavaScript
+  against this build), 20 a side, had 0 against 0. Not chased, per the
+  brief; the pooled rate for this build is 5 of 60 runs.
+
 ## Done
 
 - #59, fiddle and accordion take two (v44),
@@ -1736,3 +1761,17 @@ Mikey decides this line:
   ms/s), +1% on lite; fill-in runs 1 of 15 against 0, the VM's usual (the
   main thread, which this cannot touch, was +3% too). `.wasm` 158,942
   bytes; core memory 14.50 MB.
+- #164, the core by default (item 32, v83),
+  https://claude-upbeat-volta-x491oa-driftloom.nowmichaelclark.workers.dev/:
+  nothing should sound different; this makes the Rust core the engine for
+  everyone, no flag. Open it, press Play on a loud loop, and check
+  Diagnostics reads `engine: rust  late: 0  fallback: 0` and `core: loaded
+  ... ms after the page began`; `?engine=js` reads `js (asked)` and plays the
+  JavaScript synth (it is the fallback, and has the cold compressors' dip at
+  the start that the core does not). The core loads as the page loads, so the
+  first Play is on the core (0 notes in JavaScript in 15 first taps at 1x, 4x
+  and 6x; v82 played 4-8). The gate for core changes is now
+  `node tools/baseline.mjs` against `test/core-baseline.json`, in CI. Fixed on
+  the way: a block handed to the core twice made the pads, leads and basses
+  spike 20-40 times their level (never seen in play); time now only goes
+  forward. `.wasm` 158,959 bytes (+17); core memory unchanged.

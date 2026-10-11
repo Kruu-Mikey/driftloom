@@ -413,8 +413,9 @@ impl Master {
     // phone that loads the core thirty seconds in has a million frames to
     // cover, and not in one block of audio. The wow LFO lands bit for bit
     // where stepping would; the flutter, whose start can fall between two
-    // frames, to within the rounding the stepped sum collects (about
-    // 1e-14 of a table sample; `stepped`, in the tests).
+    // frames, to within the rounding the stepped sum collects (about 7e-12
+    // of a table sample after a thousand blocks, 5.4e-9 after 1.24 million;
+    // `stepped`, in the tests).
     fn catch_up(&mut self, block: u64, wave: &crate::wave::Wave) {
         if self.lfo_block >= block {
             return;

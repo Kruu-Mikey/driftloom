@@ -1,23 +1,35 @@
 // The Rust core, main-thread side (queue item 21, roadmap 16).
 //
-// `?engine=rust` turns it on; it is off by default, and with it off nothing
-// here runs. With it on, the synth hands every voice to an AudioWorkletNode
-// running js/dlcore.wasm, and since queue item 29 the mix as well: the
-// channels, sends, duck, echo and reverb; since item 30 the wobble, the
-// saturator, the tone and the highpass; since item 31 the bus compressor,
-// the master and kill gains and the ceiling, so its output goes straight to
-// the speakers. It keeps everything else: scheduling, the voice budget and
-// every Math.random draw.
-// The JavaScript synth stays the reference the core is proven against
-// (tools/measure.mjs --null).
+// The core is Driftloom's engine (queue item 32): it plays by default, and
+// `?engine=js` asks for the JavaScript synth instead (for measurement and
+// comparison). An old `?engine=rust` link keeps working: it asks for what
+// is already the default. The synth hands every voice to an
+// AudioWorkletNode running js/dlcore.wasm, and since queue item 29 the mix
+// as well: the channels, sends, duck, echo and reverb; since item 30 the
+// wobble, the saturator, the tone and the highpass; since item 31 the bus
+// compressor, the master and kill gains and the ceiling, so its output goes
+// straight to the speakers. It keeps everything else: scheduling, the voice
+// budget and every Math.random draw.
+// The JavaScript synth stays, as the fallback: a browser without
+// AudioWorklet or WebAssembly, a core that fails to load, a core that traps
+// while playing (Diagnostics says which, `js (fallback: ...)`), and what
+// `?engine=js` asks for (`js (asked)`).
 
 export const ENGINE = (() => {
   try {
-    return new URLSearchParams(globalThis.location?.search || '').get('engine') === 'rust' ? 'rust' : 'js';
+    return new URLSearchParams(globalThis.location?.search || '').get('engine') === 'js' ? 'js' : 'rust';
   } catch {
-    return 'js';
+    return 'rust';
   }
 })();
+
+// Why this browser cannot run the core at all, or null: it needs
+// WebAssembly and an AudioWorklet (loadCore() checks the context's own).
+export function coreUnsupported() {
+  if (typeof WebAssembly !== 'object' || typeof WebAssembly.Module !== 'function') return 'no WebAssembly in this browser';
+  if (typeof globalThis.AudioWorkletNode !== 'function') return 'no AudioWorklet in this browser';
+  return null;
+}
 
 // The voices the core plays, by the number it knows them by
 // (core/src/lib.rs), and the parts of a kalimba note (core/src/voice.rs).
@@ -104,6 +116,7 @@ const modules = new WeakMap();
 // module's bytes, with the worklet already added. Async, so the app calls
 // it as soon as it has a context and the synth takes it when it arrives.
 export async function loadCore(ctx) {
+  if (typeof WebAssembly !== 'object') throw new Error('no WebAssembly in this browser');
   if (!ctx.audioWorklet) throw new Error('no AudioWorklet in this browser');
   let added = modules.get(ctx);
   if (!added) {
@@ -212,7 +225,12 @@ export class CoreHost {
     });
   }
 
+  // Nothing the node says afterwards is heard: an error queued just before a
+  // rebuild must not reach the synth that is gone (it would put the
+  // JavaScript chain back on a disposed synth).
   dispose() {
+    this.onfail = null;
+    this.node.onprocessorerror = null;
     this.node.port.postMessage({ type: 'dispose' });
     try { this.node.disconnect(); } catch { /* already detached */ }
     this.node.port.onmessage = null;

@@ -70,7 +70,7 @@ js/moods.js       the mood vocabulary: feelings, words, share-code numbers
 js/characters.js  the sixteen profiles, and how a blend of them is mixed
 js/generator.js   the composer: spec -> pattern, and the drift mutations
 js/synth.js       voices and the reverb/echo bus
-js/core.js        the Rust core, main-thread side (?engine=rust)
+js/core.js        the Rust core, main-thread side (the default; ?engine=js asks for JavaScript)
 js/worklet.js     the Rust core's AudioWorklet host
 js/dlcore.wasm    the Rust core, built from core/ and committed
 js/engine.js      lookahead scheduler
@@ -354,10 +354,14 @@ npm install -g playwright && npx playwright install chromium
 That is a dependency of this one tool. The app still has no build step and
 still runs from a folder.
 
-`--engine rust` plays the voices the Rust core has through it, as
-`?engine=rust` does in the app, for every report here but `--retire`;
-`--null` is the proof that the core is the JavaScript synth (see "The Rust
-core"). Chromium keeps every offline render that loaded the core's worklet
+`--engine rust`, the default since queue item 32, plays the voices through
+the Rust core, as the app does, for every report here but `--retire` (which
+is about Web Audio nodes and always runs the JavaScript synth); `--engine js`
+plays the JavaScript synth, which the app falls back to where it has no core,
+and which keeps passing its own checks (`--refusals`, `--clicks`,
+`--endings`). `--null` is still a tool: it shows how far the core is from the
+JavaScript synth (see "The Rust core"), but it is no longer the gate for a
+change (see "The core baseline" there). Chromium keeps every offline render that loaded the core's worklet
 until the page goes away, so on the core these runs are split across fresh
 loads of the page; a renderer that crashes stops the run with a message.
 
@@ -500,10 +504,10 @@ deterministic, so rewriting it on unchanged code changes nothing.
 node tools/perf.mjs                          # the whole baseline, about 100 minutes
 node tools/perf.mjs --quick                  # a smoke run, one loop, a few minutes
 node tools/perf.mjs --parts matrix --loops cinder-da-yoan --throttle 6
-node tools/perf.mjs --query engine=rust      # the Rust core's voices, as ?engine=rust
-node tools/perf.mjs --ab-query engine=rust   # each run twice, without the flag and with it
+node tools/perf.mjs --query engine=js        # the JavaScript synth (the core is the default)
+node tools/perf.mjs --ab-query engine=js     # each run twice, the core and then the JavaScript synth
 node tools/perf.mjs --ab <folder> --passes 2 # each run twice, <folder> and this one, first in turn
-node tools/perf.mjs --parts path --query engine=rust  # walk the app, reading the output after each step
+node tools/perf.mjs --parts path            # walk the app, reading the output after each step
 ```
 
 `measure.mjs` renders offline, faster than real time; this plays the real
@@ -693,21 +697,25 @@ scheduler wake-ups that arrived too late to place a note — which is what a
 stutter looks like from the inside. Play with the screen off for a minute,
 come back, and read `lateTicks` and `worstLateMs`.
 
-`engine` says which synth plays the voices the Rust core has: `js`, or
-`rust` with the notes that reached the core after their start time had
-been rendered (`late`, started at once) and the ones that played in
-JavaScript instead (`fallback`: before the core had loaded, or if it
-failed to). With the flag on, `rust (failed: ...)` means the core is not
-running and everything plays in JavaScript: the module did not arrive or
-the browser could not run it, the worklet node could not be built, or the
+`engine` says which synth plays: `rust` (the default) with the notes that
+reached the core after their start time had been rendered (`late`, started
+at once) and the ones that played in JavaScript instead (`fallback`: before
+the core had loaded, or if it failed to); or `js (asked)` for `?engine=js`;
+or `js (fallback: <why>)` when the core is not running and everything plays
+in JavaScript: the browser has no WebAssembly or no AudioWorklet, the module
+did not arrive or could not run, the worklet node could not be built, or the
 core threw while playing (the node's `onprocessorerror`, queue item 31b).
-`rust (loading)` is only for the moment before the core has arrived.
+A core that has failed stays failed for the session: a later synth (the
+quality toggle) does not build another. `rust (loading)` is only for the
+moment before the core has arrived, and the `core:` line beneath says when
+it did (milliseconds after the page began): the core is loaded as the page
+loads, not on the first tap.
 
 ## The Rust core
 
-The synth is moving to Rust (roadmap 16), for portability rather than
-speed: the same core is meant to run the phone app, a native build and
-games. It goes a voice at a time, behind a flag: the kalimba (queue item
+The synth is in Rust (roadmap 16), for portability rather than speed: the
+same core is meant to run the phone app, a native build and games. It came
+over a voice at a time, behind a flag: the kalimba (queue item
 21); the fiddle and the pad (item 22), the two that cover the hard parts --
 a custom wave, vibrato, slurs, a body of filters, and a filter that moves;
 every `fm()` voice, sine and tubular (item 23); the wave-table voices
@@ -718,12 +726,13 @@ sung voices (item 28), so every voice. Then the rest of the sound path:
 the mix -- the five channels, their sends, the kick's duck, the echo, the
 reverb and the tails (item 29) -- and the master chain: the tape wobble,
 the saturator, the tone lowpass and the highpass (item 30), and the bus
-compressor, the master and kill gains and the ceiling (item 31). With the
-flag on, Web Audio carries only the notes the core cannot take, and the
-output.
+compressor, the master and kill gains and the ceiling (item 31). Item 32
+made it the default: Web Audio carries only the notes the core cannot take,
+and the output.
 
-`?engine=rust` turns it on; it is off by default, and with it off nothing
-about the app changes. With it on, `js/core.js` loads `js/dlcore.wasm` into
+The core plays unless `?engine=js` asks for the JavaScript synth (an old
+`?engine=rust` link asks for what is already the default), or the browser
+cannot run it. `js/core.js` loads `js/dlcore.wasm` into
 an AudioWorklet (`js/worklet.js`) with one input per channel and one output,
 the mix through the whole master chain, connected straight to the speakers.
 Each
@@ -779,11 +788,17 @@ and the compressors link their channels' detection, so a stereo mix is a
 second lane rather than a new chain; today there is one. The worklet
 renders the block `currentFrame` says, except that Chromium sometimes hands
 `process()` the last block's frame again, which it rides out by keeping its
-own count; the count trusts the clock again once it is more than two blocks
-ahead of it. A core that loads late has the wobble's LFOs moved to where
+own count. Time never goes backward, however stale the clock stays (queue
+item 32): a block rendered a second time starts the voices that began in it
+again, and the pads', leads' and basses' filters spiked to ten or thirty
+times their level when the worklet once handed the core one; the core itself
+now renders a block before the one due as the one due, and a count the
+clock never catches up with is a lead that costs a few notes counted late.
+A core that loads late has the wobble's LFOs moved to where
 they would be in one step, not stepped there block by block: the wow's
-phase exactly, the flutter's to within rounding (a millionth of a table
-sample, even an hour in).
+phase exactly, the flutter's to within rounding (about 7e-12 of a table
+sample after a thousand blocks and 5.4e-9 after 1.24 million, an hour in;
+inaudible, and well inside the 1e-7 the tests allow).
 
 **The engine is Driftloom's own, not a copy of Chromium (Mikey,
 2026-10-10).** The port used Chromium as its reference so each step could be
@@ -807,6 +822,58 @@ parameter, the harness's) so it still proves the port.
 worklet's, and `node tools/core-paths.mjs` plays the real app in headless
 Chromium with the core made to fail every way it can.
 
+### The first note
+
+The core is loaded as the page loads, not on the first tap: `js/main.js`
+makes the AudioContext then (it starts suspended until a tap resumes it),
+fetches `js/dlcore.wasm` and adds the worklet module to it, so by the time
+Play is pressed the core is almost always in and the first synth is built
+with it. If Play comes first, the synth plays in JavaScript and hands over
+when the core arrives, as it always did. `tools/core-start.mjs` measures it
+in the real app under a slowed CPU (medians of five runs, headless
+Chromium on the test machine, queue item 32):
+
+| CPU | core in after the page began (.wasm / module added) | Play pressed at the first moment: core node built | notes that fell back to JavaScript |
+|---|---|---|---|
+| 1x | 178 ms / 190 ms | 59 ms after the tap | 0 |
+| 4x | 489 ms / 516 ms | 167 ms after the tap | 0 |
+| 6x | 763 ms / 801 ms | 249 ms after the tap | 0 |
+
+Before this (v82, the core only behind the flag, loaded from the first tap)
+the same first tap played 4, 5 and 8 notes in JavaScript (medians) at 1x, 4x
+and 6x, in all five runs at each speed, with the node built 118, 335 and 447
+ms after the tap; in the five runs at each speed of this build, none did. So
+no wait before the first Play is needed: even a tap at the first moment the
+button exists reaches the core before the first note is due.
+
+### The core baseline
+
+Until queue item 32 the gate for a change to the core was nulling it against
+the JavaScript synth. The core is the engine now, so the gate is its own
+renders. `tools/baseline.mjs` renders a fixed set through the real app's
+Synth and Engine on the core and compares it with `test/core-baseline.json`:
+
+- **loops**: 40 loops of the corpus (seed 1), full and lite, each as a
+  fingerprint (FNV-1a over the float samples) of the output at the speakers
+  and of every layer's tap, with the loop's loudness, peak and each layer's
+  loudness beside it so a diff says what moved;
+- **voices**: every voice in every layer at 0.4 s notes (every third note of
+  its window, both velocities): the level, the layer's median level, the
+  2-5 kHz share of the melody voices (the coffee shop test), and a
+  fingerprint of the notes;
+- **refusals**: what the voice budget turns away per layer over 100 loops,
+  full and lite;
+- **costs**: `VOICE_COST` and the two budgets as `synth.js` states them (the
+  figures came from render timing, which a baseline cannot keep).
+
+The core's renders are deterministic, so the fingerprints are exact: any
+difference fails the check, and the output lists the figures that moved. A
+PR that changes the sound on purpose runs `node tools/baseline.mjs --update`
+in the same PR and says in its body what moved and why; a PR that does not
+must leave the check passing. The JavaScript synth is not in it: it is the
+fallback, and keeps passing its own checks (`measure.mjs --engine js
+--refusals`, `--clicks`, `--endings`).
+
 The built `.wasm` is committed, so the site keeps no build step:
 
 ```sh
@@ -821,15 +888,19 @@ The module needs Safari 15 or later (2021): Rust's standard library uses
 WebAssembly features older Safari lacks. Anywhere it cannot run, the synth
 plays in JavaScript.
 
-The JavaScript synth stays the reference, and every ported voice is proven
-against it:
+The JavaScript synth was the reference every ported voice was proven against,
+and it stays as the fallback. Since item 32 the gate for a change to the core
+is its own baseline (below); the comparison with JavaScript is a tool:
 
 ```sh
+node tools/baseline.mjs                         # the core against test/core-baseline.json
 node tools/measure.mjs --null                   # the same notes, both engines, subtracted
-node tools/measure.mjs --voice kalimba,fiddle,pad --engine rust
-node tools/measure.mjs --endings --engine rust
-node tools/perf.mjs --ab-query engine=rust --code <codes>   # live cost, both engines
+node tools/measure.mjs --voice kalimba,fiddle,pad            # the core (the default)
+node tools/measure.mjs --voice kalimba,fiddle,pad --engine js
+node tools/measure.mjs --endings --engine js    # the fallback keeps passing its checks
+node tools/perf.mjs --ab-query engine=js --code <codes>      # live cost, core against JavaScript
 node tools/core-paths.mjs                       # the core failing: Diagnostics, fallback, handover
+node tools/core-start.mjs                       # how soon the core is ready, what the first Play hears
 ```
 
 `--null` renders every voice the core has, in every layer that draws it,

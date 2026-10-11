@@ -1,7 +1,9 @@
 # The Rust core, on every PR and every push to main: the committed
 # js/dlcore.wasm must be exactly what its source builds (tools/build-core.sh
-# --check), the core's own tests must pass, and so must the worklet's and the
-# generator's.
+# --check), the core's own tests must pass, and so must the worklet's, the
+# host's and the generator's, and the core's renders must match the committed
+# baseline (tools/baseline.mjs, queue item 32): any change to what the core
+# plays fails here until a PR updates test/core-baseline.json on purpose.
 #
 # The toolchain is pinned in core/rust-toolchain.toml; rustup, already on
 # the runner, installs that exact version and its wasm32 target on first
@@ -31,5 +33,15 @@ jobs:
         run: cargo test --locked
       - name: Worklet tests
         run: node test/worklet.test.mjs
+      - name: Core host tests
+        run: node test/core-host.test.mjs
       - name: Generator tests
         run: node test/generator.test.mjs
+      # Playwright pinned to the version whose Chromium the baseline was
+      # rendered with; the tool is a dependency of the tools, not the app.
+      - name: Chromium, for the baseline
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: The core against its baseline
+        run: node tools/baseline.mjs

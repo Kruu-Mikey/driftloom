@@ -963,11 +963,16 @@ impl Core {
     }
 
     /// Render the block of `QUANTUM` frames that starts at frame `block`
-    /// (a multiple of `QUANTUM`; blocks come in order): every voice into its
+    /// (a multiple of `QUANTUM`; blocks come in order, and one that goes
+    /// backward is rendered where the core is due instead): every voice into its
     /// channel, with what the host wrote into `inputs`, and the channels
     /// through the mix into the bus (`bus`). Returns the channels, one
     /// buffer each, as they went into the mix.
     pub fn process(&mut self, block: u64) -> &[[f32; QUANTUM]; CHANNELS] {
+        // Time only goes forward. A block before the one due is rendered as
+        // the one due: rendering a block again would start the voices that
+        // began in it a second time.
+        let block = block.max(self.next);
         let end = block + QUANTUM as u64;
         self.next = end;
         for ch in self.out.iter_mut() {
@@ -1124,6 +1129,41 @@ mod tests {
         assert_eq!(core.busy(), 0);
         let first = (0.1 * RATE).ceil() as usize;
         assert!(blocks.iter().flatten().take(first).all(|&x| x == 0.0));
+    }
+
+    // A block before the one the core is due to render (the host's frame
+    // count went stale for good, say) is not rendered again: a voice that
+    // started in it would start a second time, and the pads' and leads'
+    // filters, set going again, spiked to thirty times their level. The
+    // core goes on from its own count.
+    #[test]
+    fn a_block_that_goes_backward_is_ridden_out() {
+        let mut a = boxed();
+        let mut b = boxed();
+        // The voices that play from a bare note (the fiddle, the pads and
+        // leads, the stab, a bass and a texture) all start in the blocks
+        // that would repeat.
+        for core in [&mut a, &mut b] {
+            for voice in [1, 2, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 22, 23] {
+                core.note(voice, MELODY, 0.2905, 69.0, 1.0, 0.7, 0, NO);
+            }
+        }
+        let steady = render(&mut a, 160);
+        let mut rewound = Vec::new();
+        let mut asked = (0..103usize).collect::<Vec<_>>();
+        asked.extend(99..156usize);
+        for blk in asked {
+            rewound.push(b.process((blk * QUANTUM) as u64)[0]);
+        }
+        assert_eq!(rewound.len(), steady.len());
+        // Bit for bit (some of these voices are given nothing to play, and
+        // say NaN, which is not equal to itself).
+        let bits = |blocks: &[[f32; QUANTUM]]| blocks.iter().flatten().map(|v| v.to_bits()).collect::<Vec<_>>();
+        let (x, y) = (bits(&rewound), bits(&steady));
+        let first = x.iter().zip(&y).position(|(p, q)| p != q);
+        assert_eq!(first.map(|i| i / QUANTUM), None, "the first block that differs");
+        let peak = steady.iter().flatten().fold(0.0f32, |m, &v| m.max(v.abs()));
+        assert!(peak > 0.05, "the voices play: {peak}");
     }
 
     #[test]

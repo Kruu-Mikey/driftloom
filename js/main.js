@@ -1,6 +1,6 @@
 import { newSpec, rerollLayer, cloneSpec, render, choirOf, LAYERS, STEPS_PER_BAR } from './generator.js';
 import { Synth } from './synth.js';
-import { ENGINE, loadCore, fetchCore } from './core.js';
+import { ENGINE, loadCore, fetchCore, coreUnsupported } from './core.js';
 import { Engine } from './engine.js';
 import { patternToMidi } from './midi.js';
 import { MediaBridge } from './media.js';
@@ -9,7 +9,7 @@ import * as share from './share.js';
 // Build stamp. Shown in Diagnostics so that after a deploy you can confirm
 // in one glance which version you are actually running, rather than
 // guessing whether a change landed. Bump it with CACHE in sw.js.
-const BUILD = 'v82';
+const BUILD = 'v83';
 
 // Reported in Diagnostics. Declared here rather than beside the registration
 // at the foot of the file so it is initialised before anything can read it.
@@ -39,8 +39,10 @@ const state = {
   frameHandle: null,
   lite: false,
   media: null,
-  // The Rust core for this context, once loaded (`?engine=rust`, js/core.js).
+  // The Rust core for this context, once loaded (js/core.js), and when
+  // (ms since the page began).
   core: null,
+  coreAt: null,
   coreError: null,        // why it will not come, if it will not
   history: [],            // array of specs (max 5)
   historyIndex: -1,       // current position in history
@@ -52,31 +54,41 @@ let cells = null;
 
 // --------------------------------------------------------------- audio
 
-function ensureAudio() {
-  if (state.ctx) {
-    if (state.ctx.state === 'suspended') state.ctx.resume();
-    return;
-  }
+// The context, and the core loading into it. Made as the page loads, not on
+// the first tap: a context starts suspended until a gesture resumes it, and
+// the core needs only the context to be added to, so by the time Play is
+// pressed it has almost always arrived and the first note plays on it.
+// Until it does the synth plays its voices in JS, and counts them; a later
+// synth (the quality toggle) takes it from the start.
+function prepareAudio() {
+  if (state.ctx) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   state.ctx = new Ctx({ latencyHint: 'playback' });
-  buildAudio();
-  // The core arrives a moment after the context. Until then the synth plays
-  // its voices in JS, and counts them; a later synth (the quality toggle)
-  // takes it from the start.
-  if (ENGINE === 'rust') {
-    const ctx = state.ctx;
-    loadCore(ctx).then((core) => {
-      if (state.ctx !== ctx) return;
-      state.core = core;
-      if (state.synth) state.synth.attachCore(core);
-    }).catch((err) => {
-      if (state.ctx !== ctx) return;
-      // Everything plays in JS, and Diagnostics says why. A later synth (the
-      // quality toggle) starts with the same answer.
-      state.coreError = String((err && err.message) || err);
-      if (state.synth) state.synth.coreFailed(err);
-    });
+  if (ENGINE !== 'rust') return;
+  const ctx = state.ctx;
+  const why = coreUnsupported();
+  if (why) {
+    state.coreError = why;
+    return;
   }
+  loadCore(ctx).then((core) => {
+    if (state.ctx !== ctx) return;
+    state.core = core;
+    state.coreAt = Math.round(performance.now());
+    if (state.synth) state.synth.attachCore(core);
+  }).catch((err) => {
+    if (state.ctx !== ctx) return;
+    // Everything plays in JS, and Diagnostics says why. A later synth (the
+    // quality toggle) starts with the same answer.
+    state.coreError = String((err && err.message) || err);
+    if (state.synth) state.synth.coreFailed(err);
+  });
+}
+
+function ensureAudio() {
+  prepareAudio();
+  if (state.ctx.state === 'suspended') state.ctx.resume();
+  if (!state.synth) buildAudio();
 }
 
 function buildAudio() {
@@ -87,7 +99,14 @@ function buildAudio() {
   // element in the DOM.
   if (state.media) state.media.dispose();
   if (state.synth) state.synth.dispose();
-  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full', { engine: ENGINE, core: state.core, coreError: state.coreError });
+  // A core that has failed (loading, or while playing) stays failed for the
+  // session: the new synth is not handed it, and says why.
+  state.synth = new Synth(state.ctx, state.lite ? 'lite' : 'full', {
+    engine: ENGINE,
+    core: state.coreError ? null : state.core,
+    coreError: state.coreError,
+    onCoreError: (message) => { state.coreError = message; },
+  });
   // Route the mix through a media element so the phone gives us lock-screen
   // controls and stops treating us as an idle tab.
   state.media = new MediaBridge(state.ctx);
@@ -702,7 +721,7 @@ function wire() {
   ui.el('liteMode').addEventListener('change', (e) => {
     state.lite = e.target.checked;
     store.setPrefs({ lite: state.lite });
-    if (state.ctx) buildAudio();
+    if (state.synth) buildAudio();
   });
 
   ui.el('exportJson').addEventListener('click', () => {
@@ -720,9 +739,10 @@ function wire() {
     // means a dead service worker -- no offline mode -- is otherwise invisible.
     lines.push(`sw: ${swState}`);
     lines.push(`cores: ${navigator.hardwareConcurrency || '?'}  lite: ${state.lite}`);
-    // Which synth plays the voices the Rust core has: js, or rust with the
-    // notes that arrived late and the ones that fell back to JS.
-    lines.push(`engine: ${state.synth ? state.synth.engineReport() : ENGINE}`);
+    // Which synth plays the voices: the Rust core (with the notes that
+    // arrived late and the ones that fell back to JS), or JS and why.
+    lines.push(`engine: ${state.synth ? state.synth.engineReport() : ENGINE === 'js' ? 'js (asked)' : state.coreError ? `js (fallback: ${state.coreError})` : 'rust (loading)'}`);
+    if (ENGINE === 'rust') lines.push(`core: ${state.core ? `loaded ${state.coreAt} ms after the page began` : state.coreError ? 'not loaded' : 'loading'}`);
     // One loop in thirty is a deliberate doubling (roadmap item 12), and
     // "is this one of them?" is otherwise only answerable by ear, which is
     // no use at all when the question is whether it fired.
@@ -877,7 +897,7 @@ function wire() {
   // The scheduler queues further ahead while hidden, so it has to be told
   // when that changes. Resume anything the system paused on the way out.
   document.addEventListener('visibilitychange', () => {
-    if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume();
+    if (state.synth && state.ctx.state === 'suspended') state.ctx.resume();
     if (state.engine) state.engine.retune();
     if (document.visibilityState === 'visible' && state.media && state.engine
         && state.engine.playing) {
@@ -912,8 +932,13 @@ function wire() {
 }
 
 wire();
-// Fetched ahead, so the core is ready by the time Play is pressed.
-if (ENGINE === 'rust') fetchCore().catch(() => {});
+// The core is fetched and loaded ahead, so it is ready by the time Play is
+// pressed. A browser that refuses a context before a gesture still gets the
+// bytes now, and the context on the first tap.
+if (ENGINE === 'rust' && !coreUnsupported()) {
+  fetchCore().catch(() => {});
+  try { prepareAudio(); } catch { state.ctx = null; }
+}
 
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   swState = 'registering';

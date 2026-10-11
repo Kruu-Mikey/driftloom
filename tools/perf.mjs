@@ -19,7 +19,8 @@
 // controls -- and instruments the Web Audio API, not the app's code. A
 // replacement engine that keeps the page and reports the same Diagnostics
 // lines is measured by the same tool with no changes; `--query
-// engine=rust` passes a URL flag through to the page.
+// engine=js` passes a URL flag through to the page (the Rust core is the
+// default since queue item 32, so that asks for the JavaScript synth).
 //
 // Where each figure comes from:
 //
@@ -118,16 +119,16 @@ driftloom live performance harness
                       folder (B), so both sides share the machine and the
                       moment. Reports B against A.
   --ab-query <q>      A/B within this folder: A as it is, B with the query
-                      added -- engine=rust measures the Rust core against
-                      the JavaScript synth on the same loops. Memory runs
-                      are paired too.
+                      added -- engine=js measures the Rust core (A, the
+                      default) against the JavaScript synth (B) on the same
+                      loops. Memory runs are paired too.
   --ab-order <o>      'alternate' (the default): each pair of runs swaps
                       which side goes first, so a slot's luck falls on both
                       sides alike; 'ab': A first every time
   --passes <n>        run the matrix (and its A/B pairs) n times over
                                                         (default 1)
   --url <url>         measure a deployed page instead of this folder
-  --query <q>         query string for the page, e.g. engine=rust
+  --query <q>         query string for the page, e.g. engine=js
   --port <n>          local server port                 (default 8741)
   --chrome <path>     an explicit Chromium executable
   --quick             a short smoke run: one loop, 1x and 6x, 15 s windows
